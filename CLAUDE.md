@@ -368,7 +368,7 @@ Backend paths are relative to `backend/src/viz/`, with tests mirrored under `bac
 - `exp.Bracket` shifts list indexes by one when generating DuckDB SQL. Use `list_extract` through `exp.Anonymous`.
 
 **Python tooling**
-- `ruff format --check` also formats Python code blocks inside Markdown files, so plan docs with code must be formatted too.
+- `ruff format --check` also formats Python code blocks inside Markdown files. `docs/` is excluded in `pyproject.toml`; any other Markdown with Python blocks must be formatted.
 - mypy types `int ** float` as `Any`; use `math.pow` or `math.cbrt`.
 
 **Metadata DB**
