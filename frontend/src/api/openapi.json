@@ -3666,6 +3666,104 @@
         "title": "ChartDataMeta",
         "type": "object"
       },
+      "ProjectDuplicate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          }
+        },
+        "title": "ProjectDuplicate",
+        "type": "object"
+      },
+      "ProjectImportResult": {
+        "additionalProperties": false,
+        "description": "Server-produced only, so every field is required.",
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "datasetsImported": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Datasetsimported",
+            "type": "array"
+          },
+          "datasetsRemapped": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Datasetsremapped",
+            "type": "object"
+          },
+          "datasetsMissing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Datasetsmissing",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project",
+          "datasetsImported",
+          "datasetsRemapped",
+          "datasetsMissing",
+          "warnings"
+        ],
+        "title": "ProjectImportResult",
+        "type": "object"
+      },
+      "ProjectRename": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "revision"
+        ],
+        "title": "ProjectRename",
+        "type": "object"
+      },
+      "ProjectRestore": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "ProjectRestore",
+        "type": "object"
+      },
       "Reduction": {
         "enum": [
           "none",
