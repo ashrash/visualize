@@ -119,6 +119,10 @@ export function chartToSvg(chart: ECharts, o: Pick<ExportOptions, "theme" | "bac
  * jsPDF's built-in fonts only cover Latin-1: CJK, Cyrillic, Greek and symbols such as an arrow
  * come out as garbage. When the title or any chart text needs more, the PDF uses the raster
  * image instead of vector text, which renders every script correctly.
+ *
+ * Note that this also catches everyday characters just above Latin-1: the euro sign, the
+ * ellipsis, and the U+202F narrow no-break space that Intl uses as a thousands separator in
+ * fr and de number formats. Those charts export as raster PDFs; that is intended, not a bug.
  */
 export function needsRasterPdf(svg: string, title?: string): boolean {
   const outsideLatin1 = /[Ā-\u{10ffff}]/u;
@@ -131,7 +135,11 @@ async function pdfBlob(chart: ECharts, o: ExportOptions): Promise<Blob> {
   const width = chart.getWidth();
   const height = chart.getHeight();
   const margin = 24;
-  const titleHeight = o.title ? 28 : 0;
+  const svg = chartToSvg(chart, { theme: o.theme, background: o.background ?? "#ffffff" });
+  const raster = needsRasterPdf(svg, o.title);
+  // A rasterised PDF cannot print the title in a Latin-1 font, so it reserves no room for one
+  // (the chart image carries its own title when the chart has one).
+  const titleHeight = o.title && !raster ? 28 : 0;
   const doc = new jsPDF({
     orientation: width >= height ? "landscape" : "portrait",
     unit: "pt",
@@ -139,8 +147,6 @@ async function pdfBlob(chart: ECharts, o: ExportOptions): Promise<Blob> {
   });
   const x = margin;
   const y = margin + titleHeight;
-  const svg = chartToSvg(chart, { theme: o.theme, background: o.background ?? "#ffffff" });
-  const raster = needsRasterPdf(svg, o.title);
   if (o.title && !raster) {
     doc.setFontSize(14);
     doc.text(o.title, margin, margin + 12);

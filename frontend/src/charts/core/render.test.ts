@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { replaceMergeTypes } from "./EChart";
 import { echarts } from "./echarts";
 import { ciBand } from "./primitives/ciBand";
 import { getPlot } from "./registry";
@@ -95,6 +96,60 @@ describe("merge-mode updates (EChart resetKey path)", () => {
       chart.setOption(option("two"), { notMerge: false, replaceMerge: ["series", "polar"] }),
     ).toThrow(/polar/);
     chart.dispose();
+  });
+});
+
+describe("replaceMergeTypes with real ECharts (W3)", () => {
+  it("replaces every component type in use, never non-components, so nothing goes stale", () => {
+    const withFormatter = {
+      color: ["#111"],
+      backgroundColor: "transparent",
+      aria: { enabled: true },
+      tooltip: { show: true, formatter: () => "OLD" },
+      title: { text: "t" },
+      xAxis: { type: "category", data: ["a", "b"] },
+      yAxis: { type: "value" },
+      series: [{ type: "bar", data: [1, 2] }],
+      dataZoom: [{ type: "inside" }],
+    };
+    const chart = ssr(withFormatter);
+    // The update drops the tooltip formatter and the title.
+    const next = { ...withFormatter, tooltip: { show: true }, title: undefined };
+    const types = replaceMergeTypes(chart.getOption(), next, false);
+    for (const type of ["tooltip", "title", "series", "xAxis", "yAxis"]) {
+      expect(types).toContain(type);
+    }
+    // Non-components would make ECharts throw; the zoom state is kept.
+    for (const type of ["color", "backgroundColor", "dataZoom", "animation"]) {
+      expect(types).not.toContain(type);
+    }
+    expect(() => chart.setOption(next, { notMerge: false, replaceMerge: types })).not.toThrow();
+    const tooltip = (chart.getOption() as { tooltip: { formatter?: unknown }[] }).tooltip[0];
+    expect(tooltip?.formatter).toBeUndefined();
+    chart.dispose();
+  });
+
+  it("covers components the old allowlist missed (dataset, toolbox, timeline)", () => {
+    const types = replaceMergeTypes(
+      {},
+      { dataset: {}, toolbox: {}, timeline: {}, matrix: {} },
+      false,
+    );
+    // matrix needs its own registration; the rest are registered in core echarts or reported
+    // only when registered. What matters: none of them are silently skipped when registered.
+    for (const type of ["dataset", "toolbox", "timeline", "matrix"]) {
+      const registered = (
+        echarts.ComponentModel as unknown as { hasClass(t: string): boolean }
+      ).hasClass(type);
+      expect(types.includes(type)).toBe(registered);
+    }
+  });
+
+  it("includes dataZoom only when its shape changed", () => {
+    expect(replaceMergeTypes({ dataZoom: [{}] }, { dataZoom: [{}] }, false)).not.toContain(
+      "dataZoom",
+    );
+    expect(replaceMergeTypes({ dataZoom: [{}] }, { dataZoom: [{}] }, true)).toContain("dataZoom");
   });
 });
 

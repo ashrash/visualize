@@ -69,8 +69,8 @@ function mergeDeep<T extends object>(base: T, patch: DeepPartial<T> | undefined)
 function dropUnsupported(style: ChartStyle, entry: PlotEntry): ChartStyle {
   const has = (s: StyleSection) => entry.styleSections.includes(s);
   const out: ChartStyle = { ...style };
-  // Value labels are per-plot (a pie defaults to on); the new plot's default decides.
-  out.showLabels = false;
+  // Hidden value labels would still draw: reset them only for a plot with no labels section.
+  if (!has("labels")) out.showLabels = false;
   if (!has("stack")) out.stack = "none";
   if (!has("orientation")) out.orientation = "vertical";
   if (!has("errorBars")) out.errorBars = null;

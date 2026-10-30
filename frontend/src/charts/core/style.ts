@@ -41,6 +41,31 @@ function labelWidth(values: string[]): number {
   return Math.min(140, Math.max(24, longest * 7));
 }
 
+/**
+ * True only for a real multi-grid layout: more than one grid, or axes attached to more than one
+ * distinct `gridIndex`. A single grid given as `grid: [{...}]`, or one grid with x axes on both
+ * the top and the bottom, is still a single-grid chart and stays fully managed.
+ */
+export function hasSeveralGrids(option: Obj): boolean {
+  if (Array.isArray(option.grid) && option.grid.length > 1) return true;
+  const indices = new Set<number>();
+  for (const axis of [
+    ...asArray(option.xAxis as Obj | Obj[]),
+    ...asArray(option.yAxis as Obj | Obj[]),
+  ]) {
+    indices.add(typeof axis.gridIndex === "number" ? axis.gridIndex : 0);
+  }
+  return indices.size > 1;
+}
+
+/** Remove [x, y] points whose x is zero or negative (log x axes). Other items pass through. */
+export function dropNonPositiveX(data: unknown): unknown {
+  if (!Array.isArray(data)) return data;
+  return data.filter(
+    (item) => !(Array.isArray(item) && typeof item[0] === "number" && item[0] <= 0),
+  );
+}
+
 /** Replace non-positive values with null (log axes). Handles plain values and [x, y] pairs. */
 export function dropNonPositive(data: unknown): unknown {
   if (!Array.isArray(data)) return data;
@@ -260,8 +285,7 @@ export function applyStyle(
   const cartesian = option.xAxis !== undefined && option.yAxis !== undefined;
   // Several grids (candlestick + volume, pair plots, marginals) are laid out by the plot: axes
   // and grids are passed through with only the theme applied.
-  const multiGrid =
-    Array.isArray(option.grid) || (Array.isArray(option.xAxis) && option.xAxis.length > 1);
+  const multiGrid = hasSeveralGrids(option);
   const managed = cartesian && opts.axes !== false && !multiGrid;
   const horizontal = managed && (opts.orientable ?? true) && style.orientation === "horizontal";
   const locale = ctx?.locale;
@@ -356,8 +380,12 @@ export function applyStyle(
     );
   }
 
-  const baseX = (managed ? option.xAxis : undefined) as Obj | undefined;
-  const baseY = (managed ? asArray(option.yAxis as Obj | Obj[])[0] : undefined) as Obj | undefined;
+  // One grid can still have several axes (x on the top and bottom): the first is the managed
+  // one, the rest are passed through with theme colors.
+  const xBases = managed ? asArray(option.xAxis as Obj | Obj[]) : [];
+  const yBases = managed ? asArray(option.yAxis as Obj | Obj[]) : [];
+  const baseX = xBases[0];
+  const baseY = yBases[0];
   const xType = (baseX?.type as string | undefined) ?? "category";
   const categories = baseX?.data as unknown[] | undefined;
   const extent = ctx?.viewport?.fullExtent;
@@ -378,7 +406,7 @@ export function applyStyle(
       const ticks = vals.length ? [fmt(maxOf(vals)), fmt(minOf(vals))] : [fmtAuto(0)];
       yAxes.push(
         buildAxis({
-          base: i === 0 ? baseY : { type: "value" },
+          base: yBases[i] ?? { type: "value" },
           style: a,
           role: "y",
           vertical: !horizontal,
@@ -426,11 +454,13 @@ export function applyStyle(
       else bottom += AXIS_TITLE;
     }
     // A secondary value axis on the far side adds width/height for its labels.
+    const extraX = xBases.slice(1).map((a) => themeAxis(a, t));
+    const xOut = extraX.length > 0 ? [xAxis, ...extraX] : xAxis;
     if (horizontal) {
       out.xAxis = yAxes;
-      out.yAxis = xAxis;
+      out.yAxis = xOut;
     } else {
-      out.xAxis = xAxis;
+      out.xAxis = xOut;
       out.yAxis = yAxes.length === 1 ? yAxes[0] : yAxes;
     }
   }
@@ -464,6 +494,8 @@ export function applyStyle(
     const result: Obj = { ...s, type };
     // A log axis cannot draw zero or negative values; drop them rather than draw garbage.
     if (managed && yAxisTypes[ss?.yAxis ?? 0] === "log") result.data = dropNonPositive(s.data);
+    // Likewise a log x axis cannot place x <= 0: those points are left out.
+    if (managed && !horizontal && xType === "log") result.data = dropNonPositiveX(result.data);
     if (managed) {
       const axis = ss?.yAxis ?? 0;
       if (axis > 0 || s[axisKey] !== undefined) result[axisKey] = axis;

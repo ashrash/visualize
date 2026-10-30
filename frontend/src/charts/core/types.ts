@@ -70,18 +70,20 @@ export type ShowIf = { param: string; equals: JsonValue } | { param: string; atL
  *
  * `showIf`: one condition, or an array meaning "any of these".
  *
- * `affectsData` (default false): set it ONLY when the server needs the param to build the
- * chart data (bin count, bandwidth, lags, ...). Params without it are cosmetic or client-side:
- * changing them re-renders from the cached data and never re-queries. Only params with
- * `affectsData: true` are part of the chart-data query key, so a slider that drives a purely
- * visual setting does not hit the server on every step.
+ * `affectsData` is REQUIRED (no default, so nobody forgets to decide): `true` when the server
+ * needs the param to build the chart data (bin count, bandwidth, lags, ...), `false` for
+ * cosmetic or client-side settings. Only `true` params are part of the chart-data query key:
+ * changing one re-queries, changing a `false` one re-renders from the cached data, so a slider
+ * that drives a purely visual setting does not hit the server on every step. `validateEntry`
+ * fails when it is missing. A param wrongly marked `false` shows up as "my control does
+ * nothing".
  */
 export type ParamSchema = {
   name: string;
   label: string;
   help?: string;
   showIf?: ShowIf | ShowIf[];
-  affectsData?: boolean;
+  affectsData: boolean;
 } & (
   | { type: "number"; min?: number; max?: number; step?: number; default: number }
   | { type: "int"; min?: number; max?: number; default: number }
@@ -115,7 +117,7 @@ export type StyleSection =
 
 /**
  * Chart data as columns (`x`, `y0..`, ...). Plots that compute a stat transform on the server
- * (`statOnly`) get an empty table plus the structured `stat` result.
+ * get an empty table plus the structured `stat` result (the response content type decides).
  */
 export type ChartData = ColumnarResult<ChartDataMeta> & { stat?: StatResult };
 
@@ -185,8 +187,6 @@ export interface PlotEntry {
   /** Which generic Style-tab sections apply to this plot. */
   styleSections: StyleSection[];
   defaults: PlotDefaults;
-  /** Data arrives as a JSON StatResult rather than an Arrow chart table. */
-  statOnly?: boolean;
   /** Pure: same inputs, same option. */
   render(
     spec: ChartSpec,
