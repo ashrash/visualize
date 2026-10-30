@@ -73,22 +73,18 @@ def rownum_source(path: Path) -> exp.Expr:
     )
 
 
-def _fold(expr: exp.Expr) -> exp.Expr:
-    """Case- and accent-insensitive form: strip_accents(lower(x))."""
-    return exp.Anonymous(this="strip_accents", expressions=[exp.Lower(this=expr)])
-
-
 def search_sql(version: DatasetVersion, search: str | None) -> exp.Expr | None:
-    """Case- and accent-insensitive "contains" ("zur" finds "Zürich") across text
-    (VARCHAR/ENUM) columns only; numbers and dates aren't searched (filter them with
-    predicates)."""
+    """Case-insensitive "contains" across text (VARCHAR/ENUM) columns only; numbers and dates
+    aren't searched (filter them with predicates). Not accent-insensitive: strip_accents made
+    free-text search ~4x slower at 10M rows, so folding is deferred to the Wave 4 search pass
+    (full-text index or a profile flag)."""
     if not search:
         return None
-    needle = _fold(lit(search))
+    needle = exp.Lower(this=lit(search))
     parts: list[exp.Expr] = [
         exp.Anonymous(
             this="contains",
-            expressions=[_fold(col(c.name)), needle],
+            expressions=[exp.Lower(this=col(c.name)), needle],
         )
         for c in version.columns
         if c.type.upper().startswith(_TEXT_PREFIXES)

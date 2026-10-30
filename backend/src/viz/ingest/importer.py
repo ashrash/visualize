@@ -136,11 +136,18 @@ def not_utf8_warning(encoding: str) -> str:
 
 
 def replaced_warning(count: int) -> str:
+    what = "1 byte that isn't" if count == 1 else f"{count:,} bytes that aren't"
+    verb = "was" if count == 1 else "were"
     return (
-        f"{count:,} byte{'s' if count != 1 else ''} that aren't valid UTF-8 were replaced "
-        "with \ufffd. If the file uses another encoding, set Encoding in the import options "
-        "(or the refresh options)."
+        f"{what} valid UTF-8 {verb} replaced with \ufffd. If the file uses another encoding, "
+        "set Encoding in the import options (or the refresh options)."
     )
+
+
+# Read as UTF-8 with replacement only if invalid sequences are at most this share of the
+# valid multi-byte characters; otherwise the file is more likely cp1252 (where an accent
+# byte pair can accidentally look like one UTF-8 character, e.g. "Ã©").
+MAX_INVALID_SHARE = 0.02
 
 
 @dataclass(frozen=True)
@@ -167,10 +174,10 @@ def choose_encoding(
     - an explicit non-UTF-8 encoding is used as given;
     - a UTF-16 BOM means UTF-16;
     - clean UTF-8 is read as is;
-    - mostly-UTF-8 text (valid multi-byte sequences, and no more invalid bytes than valid
-      ones) or an explicit "utf-8" is transcoded as UTF-8 with the bad bytes replaced, and a
-      warning counts them;
-    - anything else (no valid multi-byte sequence at all) is read as cp1252.
+    - mostly-UTF-8 text (invalid sequences at most `MAX_INVALID_SHARE`, 2%, of the decoded
+      multi-byte characters) or an explicit "utf-8" is transcoded as UTF-8 with the bad
+      bytes replaced, and a warning counts them;
+    - anything else is read as cp1252.
     """
     if kind not in _TEXT_KINDS:
         return EncodingChoice(None, None)
@@ -178,12 +185,11 @@ def choose_encoding(
     if explicit is not None and not readers.is_utf8(explicit):
         return EncodingChoice(explicit, explicit)
     if readers.detect_encoding(readers.read_head(path, 4)) == "utf-16":
-        warn = () if explicit else (not_utf8_warning("utf-16"),)
-        return EncodingChoice("utf-16", "utf-16", warn)
+        return EncodingChoice("utf-16", "utf-16")  # a BOM is unambiguous: no warning
     stats = readers.scan_utf8(path, max_bytes=max_bytes, on_chunk=on_bytes)
     if stats.invalid == 0:
         return EncodingChoice(None, explicit)
-    if explicit is not None or (stats.multibyte > 0 and stats.invalid <= stats.multibyte):
+    if explicit is not None or stats.invalid <= stats.multibyte * MAX_INVALID_SHARE:
         return EncodingChoice("utf-8", "utf-8", (replaced_warning(stats.invalid),))
     return EncodingChoice(
         FALLBACK_ENCODING, FALLBACK_ENCODING, (not_utf8_warning(FALLBACK_ENCODING),)
@@ -243,6 +249,35 @@ def prepare_source(
     else:
         raise InvalidSpecError("give a staged upload or a path")
 
+    try:
+        return _prepare(
+            storage,
+            settings,
+            dataset_id,
+            original,
+            staged_id,
+            in_place_allowed,
+            kind,
+            options,
+            progress,
+        )
+    except FileNotFoundError as exc:
+        if staged_id is not None:
+            raise NotFoundError("the uploaded file was deleted; upload it again") from exc
+        raise NotFoundError(f"{original.name} was moved or deleted during the import") from exc
+
+
+def _prepare(
+    storage: LocalStorage,
+    settings: Settings,
+    dataset_id: str,
+    original: Path,
+    staged_id: str | None,
+    in_place_allowed: bool,
+    kind: SourceKind | None,
+    options: ImportOptions,
+    progress: Progress,
+) -> PreparedSource:
     resolved_kind = readers.sniff_kind(original, kind or readers.detect_kind(original.name))
     size = original.stat().st_size
 

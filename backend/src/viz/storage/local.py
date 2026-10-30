@@ -143,8 +143,18 @@ class LocalStorage:
         files = [p for p in directory.iterdir() if p.is_file() and not p.name.endswith(".tmp")]
         return files[0] if files else None
 
-    def delete_staged(self, staged_id: str) -> None:
-        shutil.rmtree(self.staged_path(staged_id), ignore_errors=True)
+    def delete_staged(self, staged_id: str, *, retry_s: float = 1.0) -> None:
+        """Remove an upload's folder. Retried for `retry_s` (Windows refuses to delete an
+        open file); `ConflictError` if it still can't be removed."""
+        directory = self.staged_path(staged_id)
+        deadline = time.monotonic() + retry_s
+        while True:
+            shutil.rmtree(directory, ignore_errors=True)
+            if not directory.exists():
+                return
+            if time.monotonic() >= deadline:
+                raise ConflictError("the upload is still in use; try again in a moment")
+            time.sleep(0.05)
 
     # -- writes ---------------------------------------------------------------------------
 

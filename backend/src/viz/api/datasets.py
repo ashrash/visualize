@@ -42,6 +42,7 @@ from viz.ingest import catalog, readers
 from viz.ingest.jobs import ImportParams, RefreshParams, dataset_key
 from viz.ingest.preview import finish_staging, preview, resolve_input
 from viz.ingest.rows import column_values, rows_key, rows_page
+from viz.ingest.staging import staged_in_use
 from viz.ingest.upload import UPLOAD_OPENAPI, receive_upload, upload_openapi
 from viz.ingest.views import RowViews
 from viz.jobs import JobRunner
@@ -129,7 +130,12 @@ async def stage_file(request: Request, storage: StorageDep, settings: SettingsDe
 
 @router.delete("/staged/{staged_id}", status_code=204)
 def delete_staged(staged_id: str, storage: StorageDep) -> Response:
-    storage.delete_staged(staged_id)  # 404 for a malformed id
+    """Delete an upload. 409 while an import or refresh is still reading it."""
+    if staged_in_use(staged_id):
+        raise ConflictError(
+            "an import is still reading this upload; delete it after the import finishes"
+        )
+    storage.delete_staged(staged_id)  # 404 for a malformed id; 409 if Windows keeps it open
     return Response(status_code=204)
 
 

@@ -17,6 +17,10 @@ from typing import Any
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
+from sqlglot import exp
+
+from viz.contracts import Dataset
+from viz.ingest.rows import filtered_select
 
 pytestmark = pytest.mark.skipif(os.environ.get("VIZ_PERF") != "1", reason="set VIZ_PERF=1")
 
@@ -50,7 +54,7 @@ def generate_csv(path: Path, rows: int) -> None:
             CASE WHEN i % 10 = 0 THEN NULL ELSE i % 97 END AS maybe,
             'tag_' || (i % 3) AS tag,
             (i * 31) % 1000003 AS code,
-            'x' || (i % 11) AS short
+            'note ' || md5(i::VARCHAR) AS note
           FROM range({rows}) t(i)
         ) TO '{path.as_posix()}' (HEADER)
         """
@@ -130,6 +134,21 @@ def test_import_and_grid_budgets(client: TestClient, tmp_path: Path) -> None:
     while not build_done.is_set() and len(during_build) < 100:
         during_build.append(timed_ms(lambda: engine.query_arrow(agg_sql)))
 
+    # Free-text search (a unique string per row) with no match: every text column is scanned.
+    # Measured, not asserted; plain lower() is expected to be over the 150 ms grid budget.
+    version = Dataset.model_validate(dataset).current()
+    search_full: list[float] = []
+    search_count: list[float] = []
+    for i in range(5):
+        needle = f"zzqx{i}"  # distinct needles, so the filtered-count cache never hits
+        search_full.append(timed_ms(lambda n=needle: page(search=n)))
+        count_sql = exp.select(exp.Count(this=exp.Star())).from_(
+            exp.Subquery(this=filtered_select(parquet, version, [], f"zzqy{i}", None))
+        )
+        search_count.append(
+            timed_ms(lambda q=count_sql: engine.query_arrow(q.sql(dialect="duckdb")))
+        )
+
     # Pages while a second import of the same file runs as a job.
     response = client.post("/api/datasets/import", json={"path": str(csv_path)})
     second = response.json()["id"]
@@ -161,6 +180,10 @@ def test_import_and_grid_budgets(client: TestClient, tmp_path: Path) -> None:
         f"  chart aggregate alone p50 {statistics.median(alone):.1f} ms; during a view build "
         f"n={len(during_build)} p50 {statistics.median(during_build or [0]):.1f} ms "
         f"max {max(during_build or [0]):.1f} ms"
+    )
+    print(
+        f"  free-text search, no match: page+count p50 {statistics.median(search_full):.1f} ms;"
+        f" count alone p50 {statistics.median(search_count):.1f} ms (grid budget 150 ms)"
     )
     if during:
         print(

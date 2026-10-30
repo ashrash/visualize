@@ -347,6 +347,9 @@ class Engine:
             latest = self._latest_generation.get(key)
             if latest is not None and generation < latest:
                 return False
+            # A later cancel of a newer generation must not un-cancel this one: once the newer
+            # generation is the latest, older ones are refused as superseded anyway.
+            self._latest_generation[key] = generation
             self._cancelled_generation[key] = generation
             entry = self._by_key.get(key)
             if entry is not None and entry.generation == generation:
@@ -517,7 +520,12 @@ class Engine:
         `generation` (optional) orders requests on `key`; take it from `next_generation()`.
         A generation the counter never issued is accepted and advances the counter to it,
         so it can't lock the key against later tickets. Without one, the current request
-        owner's ticket is used."""
+        owner's ticket is used.
+
+        Only the newest cursor on a key is registered under it. When one request opens
+        several cursors on the same key (they don't supersede each other), `interrupt(key)`,
+        `cancel(key, generation)` and a newer request's supersede reach only the newest of
+        them; `cancel_owner(owner)` reaches all of them."""
         entry = self._register(key, generation, interactive=True)
         acquired = False
         try:

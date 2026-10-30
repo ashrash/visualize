@@ -25,6 +25,7 @@ from viz.ingest.importer import (
     schema_changes,
     write_version,
 )
+from viz.ingest.staging import using_staged
 from viz.jobs import JobContext, job_handler, job_result
 
 
@@ -59,8 +60,19 @@ def _progress(ctx: JobContext) -> Progress:
 
 @job_handler(JobKind.IMPORT, ImportParams)
 def run_import(ctx: JobContext, params: ImportParams) -> JobResult:
-    """A new dataset. On failure or cancel nothing is left behind: the staged upload is
-    moved back and `sources/<id>` and `datasets/<id>` are removed."""
+    with using_staged(params.staged_id):
+        return _import(ctx, params)
+
+
+@job_handler(JobKind.REFRESH, RefreshParams)
+def run_refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
+    with using_staged(params.staged_id):
+        return _refresh(ctx, params)
+
+
+def _import(ctx: JobContext, params: ImportParams) -> JobResult:
+    """A new dataset. On failure or cancel nothing is left behind: `sources/<id>` and
+    `datasets/<id>` are removed; the staged upload is untouched."""
     source: PreparedSource | None = None
     try:
         ctx.progress(0.0, "Reading source")
@@ -101,10 +113,9 @@ def run_import(ctx: JobContext, params: ImportParams) -> JobResult:
     return job_result(dataset_id=dataset.id, version=version.n, warnings=source.warnings)
 
 
-@job_handler(JobKind.REFRESH, RefreshParams)
-def run_refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
+def _refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
     """A new version of an existing dataset. On failure the new source copy and Parquet file
-    are removed and a re-uploaded file goes back to staging; earlier versions are untouched."""
+    are removed; earlier versions and the staged upload are untouched."""
     with ctx.session() as db:
         dataset = catalog.get_dataset(db, params.dataset_id)
     options = params.options or (dataset.current().options if dataset.versions else None)
