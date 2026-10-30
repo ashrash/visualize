@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import Field, JsonValue
 
 from viz.contracts.base import AggFn, Contract, SourceRef
+from viz.contracts.dataset import ColumnSemantic
 from viz.contracts.predicate import Predicate
 
 
@@ -213,9 +214,25 @@ PLOT_FAMILY: dict[PlotType, PlotFamily] = {
 }
 
 
+class ChannelInfo(Contract):
+    """A channel a plot's server module validates. Server-produced."""
+
+    name: str
+    # None = any column type.
+    accepts: list[ColumnSemantic] | None
+    # 0 = optional.
+    min: int
+    # None = unbounded.
+    max: int | None
+
+
 class PlotInfo(Contract):
     type: PlotType
     family: PlotFamily
+    # From the plot's server module; None when it uses the generic aggregate path.
+    channels: list[ChannelInfo] | None = None
+    # JSON schema of the plot's params model; None when it has no server module.
+    params_schema: dict[str, JsonValue] | None = None
 
 
 class TimeUnit(StrEnum):
@@ -247,6 +264,12 @@ class AxisStyle(Contract):
     min: float | str | None = None
     max: float | str | None = None
     grid: bool = True
+    # Where the axis sits: "start" = bottom/left, "end" = top/right. None = automatic.
+    position: Literal["start", "end"] | None = None
+    inverse: bool | None = None
+    tick_rotate: float | None = None
+    # Log scale base; None = 10.
+    log_base: float | None = None
 
 
 class LegendStyle(Contract):
@@ -270,6 +293,61 @@ class RefLine(Contract):
     line_style: Literal["solid", "dashed", "dotted"] = "dashed"
 
 
+class TrendlineKind(StrEnum):
+    LINEAR = "linear"
+    POLYNOMIAL = "polynomial"
+    EXPONENTIAL = "exponential"
+    LOGARITHMIC = "logarithmic"
+    POWER = "power"
+    LOESS = "loess"
+    MOVING_AVERAGE = "moving_average"
+
+
+class Trendline(Contract):
+    """A server-computed overlay fitted to one y series."""
+
+    kind: TrendlineKind = TrendlineKind.LINEAR
+    # Index into the y channel.
+    series: int = 0
+    # Polynomial degree.
+    degree: int = 2
+    # Moving-average window, in points.
+    window: int | None = None
+    # Confidence band level, e.g. 0.95; None = no band.
+    ci_level: float | None = None
+    show_equation: bool = False
+    show_r2: bool = False
+
+
+class ErrorBars(Contract):
+    kind: Literal["sd", "se", "ci", "fixed"] = "sd"
+    # Confidence level when kind is "ci".
+    level: float = 0.95
+    # Half-width when kind is "fixed".
+    value: float | None = None
+
+
+class SeriesStyle(Contract):
+    """Per-series overrides, keyed by index into the y channel."""
+
+    index: int
+    # Which entry of ChartStyle.y_axes this series uses.
+    y_axis: int = 0
+    color: str | None = None
+    # Combo charts: draw this series as a different mark.
+    kind: Literal["bar", "line", "area", "scatter"] | None = None
+    marker: bool | None = None
+    line_width: float | None = None
+    line_style: Literal["solid", "dashed", "dotted"] | None = None
+
+
+class TooltipStyle(Contract):
+    show: bool = True
+    # None = the plot's default trigger.
+    trigger: Literal["axis", "item"] | None = None
+    format: str | None = None
+
+
 class ChartStyle(Contract):
     title: str | None = None
     subtitle: str | None = None
@@ -288,6 +366,15 @@ class ChartStyle(Contract):
     annotations: list[Annotation] = Field(default_factory=list)
     ref_lines: list[RefLine] = Field(default_factory=list)
     template_id: str | None = None
+    series: list[SeriesStyle] = Field(default_factory=list)
+    trendlines: list[Trendline] = Field(default_factory=list)
+    error_bars: ErrorBars | None = None
+    tooltip: TooltipStyle = Field(default_factory=TooltipStyle)
+    font_family: str | None = None
+    font_size: float | None = None
+    smooth: bool | None = None
+    area_opacity: float | None = None
+    label_position: Literal["auto", "inside", "outside", "top", "end"] | None = None
 
 
 class Interactions(Contract):

@@ -145,5 +145,8 @@ def chart_data(
         cached=False,
         ms=round(elapsed_ms, 2),
         warnings=warnings,
+        rows_matched=None,
+        params={},
+        x_domain=None,
     )
     return table, meta
