@@ -62,9 +62,16 @@ DASHBOARD_BUDGET_S = 1.0
 DESCRIBE_BUDGET_S = 3.0
 
 # Failures that docs/STATUS.md already tracks (they do not fail the run unless --strict).
+_LARGE_DATASETS = 'STATUS MVP 1 "Large dataset handling" (data-core)'
 KNOWN_ISSUES = {
     # Keys are the case labels used by Bench.cold_case / grid_case.
-    "sorted, cold": "STATUS (data-core): first sorted page ~190 ms cold; deferred to Wave 4",
+    "sorted, cold": f"{_LARGE_DATASETS}: first sorted page ~190 ms cold; Wave 4",
+    "sorted, deep offset, cold": (
+        f"{_LARGE_DATASETS}: a deep page before its view is ready (~2.7 s at 10M); Wave 4"
+    ),
+    "filtered range, deep offset, cold": (
+        f"{_LARGE_DATASETS}: a deep page before its view is ready (~0.7 s at 10M); Wave 4"
+    ),
 }
 
 TERMINAL_JOB = {"succeeded", "failed", "cancelled"}
@@ -209,11 +216,17 @@ class Server:
 
 
 class PeakMemory:
-    """Peak resident memory of the server process tree, if psutil happens to be installed."""
+    """Peak resident memory of the server process tree (psutil is a dev dependency).
+
+    Needs a server this script started (a pid); with --url it reports nothing. `baseline` is the
+    resident size when sampling began, `total` the machine's RAM, for context.
+    """
 
     def __init__(self, pid: int | None) -> None:
         self.pid = pid
         self.peak = 0
+        self.baseline = 0
+        self.total = 0
         self.available = False
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -225,13 +238,25 @@ class PeakMemory:
             root = psutil.Process(self.pid)
         except psutil.Error:
             return
+        self.total = psutil.virtual_memory().total
         while not self._stop.is_set():
             try:
                 total = sum(p.memory_info().rss for p in [root, *root.children(recursive=True)])
+                self.baseline = self.baseline or total
                 self.peak = max(self.peak, total)
             except psutil.Error:
                 pass
-            self._stop.wait(0.25)
+            self._stop.wait(0.05)
+
+    def describe(self) -> str:
+        if not self.available or not self.peak:
+            return "peak RSS n/a"
+        gib = 2**30
+        share = f" = {100 * self.peak / self.total:.0f}% of RAM" if self.total else ""
+        return (
+            f"peak RSS {self.peak / gib:.2f} GiB (+{(self.peak - self.baseline) / gib:.2f} GiB "
+            f"over start){share}"
+        )
 
     def __enter__(self) -> PeakMemory:
         if self.pid is not None:
@@ -706,7 +731,10 @@ class Bench:
                         budget,
                         "n/a (plot not implemented)",
                         "N/A",
-                        note="501 from the Phase 0 chart-data endpoint (transform)",
+                        note=(
+                            "501: this plot is not implemented in the chart-data endpoint yet "
+                            "(transform); the row activates by itself once it answers"
+                        ),
                     )
                 )
                 continue
@@ -717,7 +745,23 @@ class Bench:
                         budget,
                         f"HTTP {response.status_code}",
                         "FAIL",
-                        note=response.text[:160],
+                        note=f"{response.text[:160]} (does the request match the plot's channels?)",
+                    )
+                )
+                continue
+            if response.headers.get("content-type", "").startswith("application/json"):
+                # A stat-transform plot answers with a JSON StatResult instead of an Arrow table.
+                size = len(response.content)
+                status, known = verdict(size <= PAYLOAD_CAP_BYTES)
+                self.add(
+                    Result(
+                        name,
+                        budget,
+                        f"JSON result, {size / 2**20:.2f} MB",
+                        status,
+                        note=fmt_ms(ms),
+                        known=known,
+                        data={"bytes": size, "ms": ms},
                     )
                 )
                 continue
@@ -877,7 +921,7 @@ class Bench:
             alive = self.api.client.get("/api/health").status_code == 200
         server_alive = alive and (self.server.proc is None or self.server.proc.poll() is None)
         status, known = verdict(ok_count == len(bodies) and server_alive)
-        peak = f", peak RSS {memory.peak / 2**30:.2f} GiB" if memory.available else ""
+        peak = f"; {memory.describe()}"
         self.add(
             Result(
                 "12 concurrent chart queries",
@@ -892,6 +936,8 @@ class Bench:
                     "ok": ok_count,
                     "seconds": elapsed,
                     "peakRssBytes": memory.peak,
+                    "startRssBytes": memory.baseline,
+                    "ramBytes": memory.total,
                     "statuses": statuses,
                 },
             )
@@ -913,6 +959,9 @@ class Bench:
                 )
             )
             return
+        # DescribeRequest (contracts/stats.py): source, fields, filters, include_mode, ... Ungrouped
+        # (no groupBy), modes on (includeMode defaults to true; sent explicitly). The
+        # never-repeating filter keeps the result cache from answering.
         fields = [
             "sales",
             "unit_price",
@@ -921,12 +970,13 @@ class Bench:
             "lat",
             "lon",
             "discount",
+            "order_date",
             "category",
             "region",
-            "customer_id",
         ]
         times = []
-        for k in range(4):
+        problems: list[str] = []
+        for k in range(5):
             body = {
                 "source": {"kind": "dataset", "id": self.dataset_id},
                 "fields": fields,
@@ -947,16 +997,27 @@ class Bench:
                     )
                 )
                 return
-            if k > 0:
-                times.append(elapsed)
+            if k == 0:
+                continue  # warm-up
+            times.append(elapsed)
+            result = response.json()
+            summaries = result.get("values", {}).get("summaries", [])
+            overall = [s for s in summaries if s.get("group") is None]
+            if [s.get("field") for s in overall] != fields:
+                problems.append(f"summaries for {[s.get('field') for s in overall]}")
+            if any(s.get("distinct") is None for s in overall):
+                problems.append("modes missing (distinct is null)")
+            if result.get("sampled"):
+                problems.append("result is sampled, expected exact")
         stats = summarize(times)
-        status, known = verdict(stats["p50"] <= DESCRIBE_BUDGET_S)
+        status, known = verdict(stats["p50"] <= DESCRIBE_BUDGET_S and not problems)
         self.add(
             Result(
                 name,
                 budget,
                 f"p50 {fmt_s(stats['p50'])} (max {fmt_s(stats['max'])})",
                 status,
+                note="; ".join(sorted(set(problems))) or "10 fields, ungrouped, modes on, exact",
                 known=known,
                 data=stats,
             )
