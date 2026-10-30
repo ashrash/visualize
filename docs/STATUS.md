@@ -48,8 +48,17 @@ items in their final report and the lead updates this file. Status values: `todo
 - 2026-10-30: ui-data follow-up merged (a63e9b4): staged import wizard (upload/path, live preview,
   per-sheet import jobs with SSE progress and cancel), server rows (sort/filter/search), CSV/Excel
   export jobs, rename/refresh/delete with 409-then-force. Data-core flags removed; `pipelineApi`
-  still off. Reviewer: approve with nits. Follow-ups in progress: mount the jobs indicator (per-tab
-  job ownership), single staging for multi-sheet imports, wizard focus and tab stops.
+  still off. Reviewer: approve with nits. Follow-ups merged (4af3c4c): jobs indicator with per-tab
+  job ownership (survives reload), one staged upload per workbook, Back-to-options retry after a
+  cancel or failure, poll fallback for lost job streams, wizard focus and tab stops. Next batch in
+  progress: close-while-starting race, axe findings (Project menu name, aria-hidden focus), save
+  indicator role.
+- 2026-10-30: qa Wave 1 in review: samples for every Plots.md family, 10M generator, bench.py over
+  HTTP for every §6 budget, Playwright e2e (73 tests + @large 10M grid), axe, contract-drift check,
+  CI matrix (Windows, macOS arm64, macOS Intel). Full 10M bench (idle): import 8.2 s; grid pages
+  ~20 ms; chart queries p50 56-85 ms; 6-chart refresh p95 0.24 s during a 10M import; 12
+  concurrent queries ok at 5% RAM; describe p50 2.99 s (at budget, no margin). Known (Wave 4):
+  sorted cold first page 216 ms, cold deep pages 0.6 s filtered / 1.8 s sorted.
 
 ## MVP.md
 
@@ -57,8 +66,8 @@ items in their final report and the lead updates this file. Status values: `todo
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| CSV / TSV import | data-core · ui-data | partial | Backend done: staged upload/path, preview, options, import job. UI: staged wizard with live preview and per-sheet jobs. Remaining: jobs indicator, focus nits. |
-| Excel import | data-core · ui-data | partial | Backend done (fastexcel, sheets, header row, skip rows). UI: sheet selection, one dataset per sheet. Remaining: stage once for all sheets. |
+| CSV / TSV import | data-core · ui-data | partial | Backend done: staged upload/path, preview, options, import job. UI: staged wizard with live preview and per-sheet jobs. Jobs indicator and per-tab ownership done. Remaining: close-while-starting race. |
+| Excel import | data-core · ui-data | partial | Backend done (fastexcel, sheets, header row, skip rows). UI: sheet selection, one staged upload, parallel per-sheet imports. |
 | JSON import | data-core · ui-data | partial | Backend done (array/NDJSON, nested-JSON hint). Not exercised in the UI yet. |
 | Data preview | data-core · ui-data | partial | Backend done: rows with sort/filter/search, values, materialized views for deep pages. UI: server sort/filter/search, filtered counts, columns menu. |
 | Data refresh | data-core · ui-data | partial | Backend done (new version, cache invalidation). UI: dataset menu refresh (verified against the backend). |
