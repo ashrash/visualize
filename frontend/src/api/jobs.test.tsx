@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useJob } from "../data/useJob";
-import { followJob, isTerminal } from "./jobs";
+import { followJob, isTerminal, MAX_STREAMS, resetJobStreams } from "./jobs";
 import type { Job } from "./types";
 
 type Listener = (event: unknown) => void;
@@ -45,6 +45,7 @@ const source = () => MockEventSource.instances.at(-1) as MockEventSource;
 
 describe("followJob", () => {
   beforeEach(() => {
+    resetJobStreams();
     MockEventSource.instances = [];
   });
 
@@ -67,12 +68,66 @@ describe("followJob", () => {
     expect(seen).toHaveLength(1);
   });
 
-  it("reports a connection that closed before the job finished", () => {
+  it("looks the job up once before reporting a lost connection", async () => {
+    const finished = job("succeeded", 9);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(finished), { status: 200 })),
+    );
+    const seen: Job[] = [];
+    const onError = vi.fn();
+    followJob("j1", { onJob: (j) => seen.push(j), onError }, MockEventSource as never);
+    source().readyState = 2;
+    source().emit("error");
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]?.status).toBe("succeeded");
+    expect(onError).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("reports a lost connection when the job cannot be found either", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 404 })),
+    );
     const onError = vi.fn();
     followJob("j1", { onJob: vi.fn(), onError }, MockEventSource as never);
     source().readyState = 2;
     source().emit("error");
-    expect(onError).toHaveBeenCalledWith("Lost connection to the job");
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Lost connection to the job"));
+    vi.unstubAllGlobals();
+  });
+
+  it("shares one EventSource between followers of the same job and replays the latest snapshot", () => {
+    const a: Job[] = [];
+    const b: Job[] = [];
+    followJob("j1", { onJob: (j) => a.push(j) }, MockEventSource as never);
+    source().emit("job", job("running", 1));
+    followJob("j1", { onJob: (j) => b.push(j) }, MockEventSource as never);
+    expect(MockEventSource.instances).toHaveLength(1);
+    expect(b.map((j) => j.seq)).toEqual([1]); // late joiner gets the current snapshot
+    source().emit("job", job("running", 2));
+    expect(a).toHaveLength(2);
+    expect(b).toHaveLength(2);
+  });
+
+  it("keeps the stream until the last follower stops", () => {
+    const stopA = followJob("j1", { onJob: vi.fn() }, MockEventSource as never);
+    const stopB = followJob("j1", { onJob: vi.fn() }, MockEventSource as never);
+    stopA();
+    expect(source().closed).toBe(false);
+    stopB();
+    expect(source().closed).toBe(true);
+  });
+
+  it("caps open streams and connects waiting jobs as slots free up", () => {
+    const ids = Array.from({ length: MAX_STREAMS + 2 }, (_, i) => `j${i}`);
+    for (const id of ids) followJob(id, { onJob: vi.fn() }, MockEventSource as never);
+    expect(MockEventSource.instances).toHaveLength(MAX_STREAMS);
+    // The first job finishes: its slot goes to the next waiting job.
+    MockEventSource.instances[0]?.emit("job", { ...job("succeeded", 1), id: "j0" });
+    expect(MockEventSource.instances).toHaveLength(MAX_STREAMS + 1);
+    expect(source().url).toBe(`/api/jobs/${ids[MAX_STREAMS]}/events`);
   });
 
   it("does not treat a reconnecting source as a failure", () => {
@@ -99,6 +154,7 @@ describe("followJob", () => {
 
 describe("useJob", () => {
   beforeEach(() => {
+    resetJobStreams();
     MockEventSource.instances = [];
     vi.stubGlobal("EventSource", MockEventSource);
   });
@@ -138,12 +194,16 @@ describe("useJob", () => {
     expect(source().url).toBe("/api/jobs/b/events");
   });
 
-  it("surfaces a lost connection", () => {
+  it("surfaces a lost connection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 404 })),
+    );
     const { result } = renderHook(() => useJob("j1"));
     act(() => {
       source().readyState = 2;
       source().emit("error");
     });
-    expect(result.current.error).toBe("Lost connection to the job");
+    await vi.waitFor(() => expect(result.current.error).toBe("Lost connection to the job"));
   });
 });

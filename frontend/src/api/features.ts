@@ -28,10 +28,17 @@ const DEFAULTS: Features = {
   platformProjects: true,
 };
 
+/** Only known flags with boolean values are accepted from localStorage; anything else is ignored. */
 function overrides(): Partial<Features> {
   try {
-    const raw = localStorage.getItem("viz.features");
-    return raw ? (JSON.parse(raw) as Partial<Features>) : {};
+    const raw: unknown = JSON.parse(localStorage.getItem("viz.features") ?? "null");
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+    const out: Partial<Features> = {};
+    for (const key of Object.keys(DEFAULTS) as (keyof Features)[]) {
+      const value = (raw as Record<string, unknown>)[key];
+      if (typeof value === "boolean") out[key] = value;
+    }
+    return out;
   } catch {
     return {};
   }

@@ -13,6 +13,7 @@ import {
   deleteCurrentProject,
   renameCurrentProject,
   restoreProjectVersion,
+  runGuarded,
 } from "./projectActions";
 import { openProject, useInvalidateProjects } from "./useProjectSession";
 
@@ -48,10 +49,11 @@ export function RenameDialog({
           onSubmit={(event) => {
             event.preventDefault();
             if (!value.trim()) return;
-            renameCurrentProject(value).then(
-              () => onOpenChange(false),
-              (e: unknown) => setError(message(e)),
-            );
+            // Unsaved-changes prompts and errors are handled by the shared guard.
+            void runGuarded(
+              (discard) => renameCurrentProject(value, { discard }),
+              "Couldn't rename",
+            ).then((ok) => ok && onOpenChange(false));
           }}
         >
           <Field label="Name">
@@ -190,11 +192,10 @@ export function ImportProjectDialog({
               <Button
                 variant="primary"
                 onClick={() =>
-                  openProject(result.project.id).then(
-                    () => onOpenChange(false),
-                    (e: unknown) =>
-                      toast("Couldn't open project", { variant: "error", description: message(e) }),
-                  )
+                  void runGuarded(
+                    (discard) => openProject(result.project.id, { discard }),
+                    "Couldn't open project",
+                  ).then((ok) => ok && onOpenChange(false))
                 }
               >
                 Open imported project
@@ -307,14 +308,14 @@ export function VersionsDialog({
                     size="sm"
                     variant="danger"
                     onClick={() =>
-                      restoreProjectVersion(v.id).then(
-                        () => {
-                          toast("Version restored", { variant: "success" });
-                          onOpenChange(false);
-                        },
-                        (e: unknown) =>
-                          toast("Couldn't restore", { variant: "error", description: message(e) }),
-                      )
+                      void runGuarded(
+                        (discard) => restoreProjectVersion(v.id, { discard }),
+                        "Couldn't restore",
+                      ).then((ok) => {
+                        if (!ok) return;
+                        toast("Version restored", { variant: "success" });
+                        onOpenChange(false);
+                      })
                     }
                   >
                     Confirm restore

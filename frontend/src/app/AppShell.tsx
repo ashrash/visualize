@@ -8,7 +8,14 @@ import { DatasetList } from "../data/DatasetList";
 import { ImportDialog } from "../data/ImportDialog";
 import { useActiveDataset } from "../data/useActiveDataset";
 import { useSelection } from "../state/selection";
-import { ConflictDialog, ProjectMenu, SaveButton, SaveIndicator, UndoRedo } from "./ProjectHeader";
+import {
+  ConflictDialog,
+  DiscardDialog,
+  ProjectMenu,
+  SaveButton,
+  SaveIndicator,
+  UndoRedo,
+} from "./ProjectHeader";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { useProjectBootstrap, useProjectShortcuts } from "./useProjectSession";
 
@@ -94,6 +101,7 @@ export function AppShell() {
         onImported={(d) => selectDataset(d.id)}
       />
       <ConflictDialog />
+      <DiscardDialog />
       <Toaster />
     </TooltipProvider>
   );

@@ -15,6 +15,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { Field, Input } from "../components/ui/input";
 import { toast } from "../components/ui/toast";
+import { useJobsStore } from "../state/jobs";
 import { useProjectStore } from "../state/projectStore";
 import { useJob } from "./useJob";
 
@@ -194,6 +195,8 @@ function RefreshDialog({
         { stagedId: staged?.stagedId ?? null, options: null },
         signal,
       );
+      // Settlement (refreshing the catalog) is the jobs store's job, so it survives closing.
+      useJobsStore.getState().track(started);
       setJobId(started.id);
     } catch (e) {
       if (!signal.aborted) setError(message(e));

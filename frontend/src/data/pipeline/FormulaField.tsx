@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { StepError } from "../../api/types";
 import { FormulaEditor } from "./FormulaEditor";
 import type { FormContext } from "./StepForm";
@@ -29,11 +30,24 @@ export function FormulaField({
     beforeStepId: stepId,
   });
   const hasText = value.trim() !== "";
-  const error: StepError | null = hasText ? (check.data?.error ?? ctx.stepError ?? null) : null;
-  const range =
-    error && error.start !== null && error.end !== null
-      ? { start: error.start, end: error.end, message: error.message }
-      : null;
+  // An ok verdict from the server wins over an older step error from inspect.
+  const error: StepError | null = !hasText
+    ? null
+    : check.data
+      ? check.data.ok
+        ? null
+        : check.data.error
+      : (ctx.stepError ?? null);
+  const errorStart = error?.start ?? null;
+  const errorEnd = error?.end ?? null;
+  const errorMessage = error?.message ?? "";
+  const range = useMemo(
+    () =>
+      errorStart !== null && errorEnd !== null
+        ? { start: errorStart, end: errorEnd, message: errorMessage }
+        : null,
+    [errorStart, errorEnd, errorMessage],
+  );
   return (
     <div className="flex flex-col gap-1">
       <FormulaEditor

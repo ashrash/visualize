@@ -83,3 +83,11 @@ export function projectForSave(): Project | null {
   const { project, revision } = useProjectStore.getState();
   return project ? { ...project, revision } : null;
 }
+
+/** Record a freshly imported dataset in the open project (one undoable edit). */
+export function attachToProject(dataset: { id: string }): void {
+  useProjectStore.getState().update((p) => ({
+    ...p,
+    datasetIds: [...new Set([...(p.datasetIds ?? []), dataset.id])],
+  }));
+}
