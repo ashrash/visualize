@@ -10,6 +10,10 @@ describe("feature flags", () => {
     expect(featureOn("platformProjects")).toBe(true);
   });
 
+  it("has the not-yet-merged Wave 2 stats tests off by default", () => {
+    expect(featureOn("statsTests")).toBe(false);
+  });
+
   it("accepts boolean overrides for known flags", () => {
     set({ platformProjects: false });
     expect(featureOn("platformProjects")).toBe(false);

@@ -63,3 +63,7 @@ export type ProjectRename = Schemas["ProjectRename"];
 export type ProjectDuplicate = Schemas["ProjectDuplicate"];
 export type ProjectRestore = Schemas["ProjectRestore"];
 export type ProjectImportResult = Schemas["ProjectImportResult"];
+export type StatResult = Schemas["StatResult"];
+export type DescribeRequest = Schemas["DescribeRequest"];
+export type FieldSummary = Schemas["FieldSummary"];
+export type Quantile = Schemas["Quantile"];

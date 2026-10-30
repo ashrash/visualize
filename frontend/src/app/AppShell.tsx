@@ -24,6 +24,7 @@ const NAV = [
   { to: "/data", label: "Data" },
   { to: "/pipelines", label: "Pipelines" },
   { to: "/charts", label: "Charts" },
+  { to: "/stats", label: "Stats" },
 ];
 
 export function AppShell() {
