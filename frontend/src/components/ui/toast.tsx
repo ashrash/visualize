@@ -7,7 +7,7 @@ export interface ToastMessage {
   id: number;
   title: string;
   description?: string;
-  variant: "default" | "error" | "success";
+  variant: "default" | "error" | "success" | "warning";
 }
 
 interface ToastStore {
@@ -41,6 +41,7 @@ const variantClass: Record<ToastMessage["variant"], string> = {
   default: "border-line",
   error: "border-danger",
   success: "border-success",
+  warning: "border-warning",
 };
 
 /** Mount once near the root. */
@@ -52,7 +53,9 @@ export function Toaster() {
       {toasts.map((t) => (
         <ToastPrimitive.Root
           key={t.id}
-          type={t.variant === "error" ? "foreground" : "background"}
+          type={t.variant === "error" || t.variant === "warning" ? "foreground" : "background"}
+          // Warnings stay until dismissed: they describe something the user may need to act on.
+          duration={t.variant === "warning" ? Number.POSITIVE_INFINITY : undefined}
           onOpenChange={(open) => {
             if (!open) dismiss(t.id);
           }}

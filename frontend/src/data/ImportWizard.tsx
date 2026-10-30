@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { ColumnarResult } from "../api/arrow";
 import { previewImport } from "../api/datasetRows";
-import { cancelJob, deleteStaged, getDataset, stageFile, startImport } from "../api/datasets";
+import { cancelJob, getDataset, stageFile, startImport } from "../api/datasets";
 import { isTerminal } from "../api/jobs";
 import type { Dataset, ImportPreviewMeta } from "../api/types";
 import { Button } from "../components/ui/button";
@@ -9,7 +9,13 @@ import { Dialog, DialogContent } from "../components/ui/dialog";
 import { Field, Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "../components/ui/toast";
-import { markLocalJob, useJobsStore } from "../state/jobs";
+import {
+  addStagedJob,
+  beginStagedCleanup,
+  closeStagedWizard,
+  startLocalJob,
+  useJobsStore,
+} from "../state/jobs";
 import { GridView } from "./GridView";
 import { ImportOptionsForm } from "./ImportOptionsForm";
 import {
@@ -104,6 +110,7 @@ function SelectStep({
 
 /** Live preview: re-runs (debounced) whenever the source, sheet or options change. */
 function usePreview(state: ConfigureState, dispatch: Dispatch) {
+  // The last good preview stays on screen while the next one loads.
   const [data, setData] = useState<ColumnarResult<ImportPreviewMeta> | null>(null);
   const request = JSON.stringify(buildPreviewRequest(state));
   useEffect(() => {
@@ -141,6 +148,7 @@ function ConfigureStep({
 }) {
   const data = usePreview(state, dispatch);
   const meta = state.preview.status === "ready" ? state.preview.meta : null;
+  const shownMeta = data?.meta ?? null;
   const source = state.source.kind === "staged" ? state.source.fileName : state.source.path;
   return (
     <div className="flex flex-col gap-3">
@@ -203,12 +211,12 @@ function ConfigureStep({
             {w}
           </p>
         ))}
-        {data && meta ? (
+        {data && shownMeta ? (
           <div className="h-56">
             <GridView
               gridKey={`preview:${JSON.stringify(buildPreviewRequest(state))}`}
               label="Import preview"
-              columns={meta.columns}
+              columns={shownMeta.columns}
               totalRows={data.rowCount}
               fetchPage={async ({ offset, limit }) => ({
                 ...data,
@@ -223,7 +231,7 @@ function ConfigureStep({
               sort={NO_SORT}
               filters={NO_FILTERS}
               controlsEnabled={false}
-              controlsTip="Sorting and filtering apply after import"
+              interactive={false}
             />
           </div>
         ) : null}
@@ -253,6 +261,13 @@ export function ImportWizardDialog({
   const stagedRef = useRef<string | null>(null);
   const finished = useRef(false);
   const startCtl = useRef<AbortController | null>(null);
+  // However the wizard goes away (close button, Escape, parent unmount), release its upload.
+  useEffect(
+    () => () => {
+      if (stagedRef.current) closeStagedWizard(stagedRef.current);
+    },
+    [],
+  );
 
   // Upload to staging as soon as a file is chosen. The File itself is not serialisable state,
   // so it is parked in a ref and the machine only learns its name.
@@ -265,6 +280,7 @@ export function ImportWizardDialog({
     stageFile(file, controller.signal).then(
       (staged) => {
         stagedRef.current = staged.stagedId;
+        beginStagedCleanup(staged.stagedId);
         dispatch({ type: "staged", file: staged });
       },
       (error: unknown) => {
@@ -296,7 +312,12 @@ export function ImportWizardDialog({
       (dataset) => {
         toast(`Imported ${dataset.name}`, { variant: "success" });
         onImported(dataset);
-        if (state.warnings.length === 0) onOpenChange(false);
+        if (state.warnings.length === 0) {
+          // Auto-close goes through the same release as the close button.
+          if (stagedRef.current) closeStagedWizard(stagedRef.current);
+          stagedRef.current = null;
+          onOpenChange(false);
+        }
       },
       (error: unknown) =>
         toast("Imported, but couldn't load the dataset", {
@@ -309,10 +330,9 @@ export function ImportWizardDialog({
   const close = (next: boolean) => {
     if (!next) {
       startCtl.current?.abort(); // abandon import requests that have not returned a job yet
-      // Free the staged upload if it was never imported.
-      if (stagedRef.current && state.phase !== "done" && state.phase !== "importing") {
-        void deleteStaged(stagedRef.current).catch(() => undefined);
-      }
+      // The jobs store deletes the staged upload once nothing is reading it any more: after
+      // the last import settles, or right now if none was started.
+      if (stagedRef.current) closeStagedWizard(stagedRef.current);
       stagedRef.current = null;
       finished.current = false;
       dispatch({ type: "reset" });
@@ -327,25 +347,23 @@ export function ImportWizardDialog({
     startCtl.current = new AbortController();
     const { signal } = startCtl.current;
     try {
+      // One staged upload serves every sheet: the imports run in parallel from the same id.
       const results = await Promise.allSettled(
-        buildImportRequests(state).map(async ({ sheet, request }, index) => {
-          // An import consumes its staged upload ("the uploaded file has expired"), so every
-          // sheet after the first stages its own copy of the file.
-          let body = request;
-          if (index > 0 && request.stagedId && fileRef.current) {
-            const copy = await stageFile(fileRef.current, signal);
-            body = { ...request, stagedId: copy.stagedId };
-          }
-          return { sheet, job: await startImport(body, signal) };
+        buildImportRequests(state).map(async ({ sheet, request }) => {
+          // Recorded as ours, and registered with the staged upload, the moment the id is known.
+          const job = await startLocalJob(
+            () => startImport(request, signal),
+            (started) => {
+              if (stagedRef.current) addStagedJob(stagedRef.current, started);
+            },
+          );
+          return { sheet, job };
         }),
       );
       const started = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
       const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
       // Follow every job that did start, even if a sibling request failed.
-      for (const { job } of started) {
-        markLocalJob(job.id);
-        useJobsStore.getState().track(job);
-      }
+      for (const { job } of started) useJobsStore.getState().track(job);
       if (started.length === 0) {
         dispatch({ type: "importFailedToStart", message: describeImportError(failures[0]) });
         return;
@@ -367,6 +385,14 @@ export function ImportWizardDialog({
       <DialogContent
         title="Import data"
         className="w-[min(94vw,52rem)]"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          document
+            .querySelector<HTMLElement>(
+              "[role=dialog] [role=tab], [role=dialog] input, [role=dialog] select",
+            )
+            ?.focus();
+        }}
         description="Pick a file, check the preview, then import."
       >
         {state.phase === "select" ? (
@@ -416,9 +442,15 @@ export function ImportWizardDialog({
         ) : null}
         {state.phase === "failed" ? (
           <div className="flex flex-col gap-3">
-            <p role="alert" className="text-sm text-danger">
-              {state.message}
-            </p>
+            {state.cancelled ? (
+              <p role="status" className="text-sm text-muted">
+                {state.message}
+              </p>
+            ) : (
+              <p role="alert" className="text-sm text-danger">
+                {state.message}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button onClick={() => close(false)}>Close</Button>
               <Button variant="primary" onClick={() => dispatch({ type: "back" })}>

@@ -44,7 +44,9 @@ export function DataGrid({ dataset }: { dataset: Dataset }) {
   // The search text is part of the cache key: a different search is a different set of rows.
   const gridKey = `${dataset.id}:${version?.n}:${search ?? ""}`;
   const head = useGridHead({ gridKey, sort, filters, fetchPage });
-  const totalRows = (head.data?.meta as RowsPageMeta | undefined)?.totalRows ?? 0;
+  // Until the first page arrives, show the dataset's own count instead of "0 of N".
+  const totalRows =
+    (head.data?.meta as RowsPageMeta | undefined)?.totalRows ?? version?.rowCount ?? 0;
   const datasetRows = version?.rowCount ?? 0;
 
   const valuesLoader = (field: string): LoadValues => {
