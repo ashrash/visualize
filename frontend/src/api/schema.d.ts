@@ -158,6 +158,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Project */
+        post: operations["import_project_api_projects_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -170,6 +187,25 @@ export interface paths {
         /** Save Project */
         put: operations["save_project_api_projects__project_id__put"];
         post?: never;
+        /** Delete Project */
+        delete: operations["delete_project_api_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Project */
+        patch: operations["rename_project_api_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/projects/{project_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Duplicate Project */
+        post: operations["duplicate_project_api_projects__project_id__duplicate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -185,6 +221,57 @@ export interface paths {
         };
         /** List Versions */
         get: operations["list_versions_api_projects__project_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version */
+        get: operations["get_version_api_projects__project_id__versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/versions/{version_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Version */
+        post: operations["restore_version_api_projects__project_id__versions__version_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Project */
+        get: operations["export_project_api_projects__project_id__export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -253,6 +340,11 @@ export interface components {
             tickRotate?: number | null;
             /** Logbase */
             logBase?: number | null;
+        };
+        /** Body_import_project_api_projects_import_post */
+        Body_import_project_api_projects_import_post: {
+            /** File */
+            file: string;
         };
         /** Body_upload_dataset_api_datasets_upload_post */
         Body_upload_dataset_api_datasets_upload_post: {
@@ -1140,6 +1232,40 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** ProjectDuplicate */
+        ProjectDuplicate: {
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * ProjectImportResult
+         * @description Server-produced only, so every field is required.
+         */
+        ProjectImportResult: {
+            project: components["schemas"]["Project"];
+            /** Datasetsimported */
+            datasetsImported: string[];
+            /** Datasetsremapped */
+            datasetsRemapped: {
+                [key: string]: string;
+            };
+            /** Datasetsmissing */
+            datasetsMissing: string[];
+            /** Warnings */
+            warnings: string[];
+        };
+        /** ProjectRename */
+        ProjectRename: {
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+        };
+        /** ProjectRestore */
+        ProjectRestore: {
+            /** Revision */
+            revision: number;
+        };
         /** ProjectSummary */
         ProjectSummary: {
             /** Id */
@@ -2016,43 +2142,6 @@ export interface components {
             /** Filters */
             filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
         };
-        /** ProjectDuplicate */
-        ProjectDuplicate: {
-            /**
-             * Name
-             * @default null
-             */
-            name: string | null;
-        };
-        /**
-         * ProjectImportResult
-         * @description Server-produced only, so every field is required.
-         */
-        ProjectImportResult: {
-            project: components["schemas"]["Project"];
-            /** Datasetsimported */
-            datasetsImported: string[];
-            /** Datasetsremapped */
-            datasetsRemapped: {
-                [key: string]: string;
-            };
-            /** Datasetsmissing */
-            datasetsMissing: string[];
-            /** Warnings */
-            warnings: string[];
-        };
-        /** ProjectRename */
-        ProjectRename: {
-            /** Name */
-            name: string;
-            /** Revision */
-            revision: number;
-        };
-        /** ProjectRestore */
-        ProjectRestore: {
-            /** Revision */
-            revision: number;
-        };
         /** Quantile */
         Quantile: {
             /** P */
@@ -2511,6 +2600,39 @@ export interface operations {
             };
         };
     };
+    import_project_api_projects_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_project_api_projects_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_project_api_projects__project_id__get: {
         parameters: {
             query?: never;
@@ -2546,6 +2668,7 @@ export interface operations {
         parameters: {
             query?: {
                 autosave?: boolean;
+                label?: string | null;
             };
             header?: never;
             path: {
@@ -2579,9 +2702,111 @@ export interface operations {
             };
         };
     };
-    list_versions_api_projects__project_id__versions_get: {
+    delete_project_api_projects__project_id__delete: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_project_api_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRename"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_project_api_projects__project_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectDuplicate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_api_projects__project_id__versions_get: {
+        parameters: {
+            query?: {
+                kind?: ("save" | "autosave") | null;
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 project_id: string;
@@ -2598,6 +2823,105 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProjectVersion"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_version_api_projects__project_id__versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_version_api_projects__project_id__versions__version_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRestore"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_project_api_projects__project_id__export_get: {
+        parameters: {
+            query?: {
+                includeData?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

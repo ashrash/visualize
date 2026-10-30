@@ -34,7 +34,8 @@ def test_save_and_reload_round_trip(client: TestClient, sales_dataset: dict[str,
 
 def test_stale_revision_is_rejected(client: TestClient) -> None:
     created = client.post("/api/projects", json={"name": "P"}).json()
-    autosaved = client.put(f"/api/projects/{created['id']}?autosave=true", json=created)
+    changed = {**created, "name": "P2"}
+    autosaved = client.put(f"/api/projects/{created['id']}?autosave=true", json=changed)
     assert autosaved.status_code == 200
     stale = client.put(f"/api/projects/{created['id']}", json=created)
     assert stale.status_code == 409
