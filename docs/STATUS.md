@@ -20,8 +20,8 @@ items in their final report and the lead updates this file. Status values: `todo
   main. Plans live in `docs/plans/<agent>.md`.
 - 2026-10-30: stats seam merged (`stats/relation.py` Relation, `plots/` registry and dispatch).
 - 2026-10-30: platform merged (MVP §10 backend). Reviewer: approve with nits after one fix round.
-  Open nits: duplicate manifest ids, Parquet column-type check, `schemaVersion` stamp in
-  `create_from_doc`, streaming upload size limit (needs middleware).
+  Follow-up nits merged (manifest id/type checks, schemaVersion stamp, 404 on delete race). Open:
+  streaming upload size limit (needs middleware).
 
 ## MVP.md
 
