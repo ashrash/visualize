@@ -40,6 +40,20 @@ def _npm() -> str:
     return npm
 
 
+_BLAS_ENV = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+
+
+def _cap_blas_env(env: dict[str, str] | os._Environ[str]) -> None:
+    """data-core: cap BLAS/OpenMP threads before numpy/scipy load (threadpoolctl can only cap
+    libraries that are already loaded). Explicit user settings win."""
+    from viz.config import get_settings
+
+    settings = get_settings()
+    threads = settings.blas_threads or max(1, (os.cpu_count() or 2) // settings.process_workers)
+    for name in _BLAS_ENV:
+        env.setdefault(name, str(threads))
+
+
 def _process_group_kwargs() -> dict[str, Any]:
     # POSIX: own process group so we can stop the whole tree. Windows: Ctrl+C already reaches
     # every process in the console, and _stop() uses taskkill /T for the tree.
@@ -65,6 +79,7 @@ def dev(
     env = os.environ.copy()
     env.setdefault("VIZ_DATA_DIR", str(REPO_ROOT / ".data"))
     env["VIZ_API_PORT"] = str(port)
+    _cap_blas_env(env)
     api = subprocess.Popen(
         [
             sys.executable,
@@ -118,6 +133,7 @@ def serve(
     open_browser: Annotated[bool, typer.Option("--open/--no-open")] = True,
 ) -> None:
     """Serve the app on one port and open it in the browser."""
+    _cap_blas_env(os.environ)
     import uvicorn
 
     from viz.config import get_settings
