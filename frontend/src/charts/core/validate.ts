@@ -19,7 +19,9 @@ function matchesParam(schema: ParamSchema, value: JsonValue | undefined): boolea
     case "column":
       return typeof value === "string";
     case "range":
-      return Array.isArray(value) && value.length === 2 && value.every((v) => typeof v === "number");
+      return (
+        Array.isArray(value) && value.length === 2 && value.every((v) => typeof v === "number")
+      );
   }
 }
 
@@ -39,7 +41,8 @@ export function validateEntry(entry: PlotEntry): string[] {
     if (dupes.length) problems.push(`${where} duplicate names ${[...new Set(dupes)].join(", ")}`);
   }
   for (const name of paramNames) {
-    if (channelNames.includes(name)) problems.push(`${where} "${name}" is both a channel and a param`);
+    if (channelNames.includes(name))
+      problems.push(`${where} "${name}" is both a channel and a param`);
   }
   if (entry.encodingsSchema.length === 0) {
     problems.push(`${where} declares no channels`);

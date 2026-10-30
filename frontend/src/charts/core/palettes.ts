@@ -61,7 +61,12 @@ export const CIVIDIS = [
 
 export const PALETTES: PaletteInfo[] = [
   { id: "default", label: "Theme default", kind: "categorical", colors: [] },
-  { id: "okabe-ito", label: "Okabe-Ito (color-blind safe)", kind: "categorical", colors: OKABE_ITO },
+  {
+    id: "okabe-ito",
+    label: "Okabe-Ito (color-blind safe)",
+    kind: "categorical",
+    colors: OKABE_ITO,
+  },
   { id: "tableau-10", label: "Tableau 10", kind: "categorical", colors: TABLEAU_10 },
   { id: "viridis", label: "Viridis (color-blind safe)", kind: "sequential", colors: VIRIDIS },
   { id: "cividis", label: "Cividis (color-blind safe)", kind: "sequential", colors: CIVIDIS },
@@ -86,7 +91,11 @@ export function rampColor(stops: string[], t: number): string {
   const frac = position - index;
   const a = hexToRgb(stops[index] as string);
   const b = hexToRgb(stops[index + 1] as string);
-  return rgbToHex([a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac, a[2] + (b[2] - a[2]) * frac]);
+  return rgbToHex([
+    a[0] + (b[0] - a[0]) * frac,
+    a[1] + (b[1] - a[1]) * frac,
+    a[2] + (b[2] - a[2]) * frac,
+  ]);
 }
 
 /** n evenly spaced colors from a ramp (used when a sequential palette colors categories). */

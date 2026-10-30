@@ -1,6 +1,6 @@
 import type { ChartSpec } from "../../../api/types";
 import { makeFormatter } from "../../core/format";
-import { type Obj, categoryLabel, param, resolveStyle } from "../../core/series";
+import { categoryLabel, type Obj, param, resolveStyle } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import {
   type ChartData,
@@ -179,7 +179,13 @@ function pieEntry(donut: boolean): PlotEntry {
     styleSections: SECTIONS,
     defaults: {
       params: donut
-        ? { labelMode: "percent", sortSlices: true, maxSlices: 12, innerRadius: 55, showTotal: true }
+        ? {
+            labelMode: "percent",
+            sortSlices: true,
+            maxSlices: 12,
+            innerRadius: 55,
+            showTotal: true,
+          }
         : { labelMode: "percent", sortSlices: true, maxSlices: 12 },
       style: { showLabels: true },
     },

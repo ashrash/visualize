@@ -15,6 +15,8 @@ import type {
 
 type Schemas = components["schemas"];
 
+export type StatResult = Schemas["StatResult"];
+
 export type AxisStyle = Schemas["AxisStyle"];
 export type SeriesStyle = Schemas["SeriesStyle"];
 export type Trendline = Schemas["Trendline"];
@@ -24,7 +26,13 @@ export type Interactions = Schemas["Interactions"];
 export type Annotation = Schemas["Annotation"];
 export type RefLine = Schemas["RefLine"];
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export type DeepPartial<T> = T extends (infer U)[]
   ? U[]
@@ -90,7 +98,11 @@ export type StyleSection =
   | "palette"
   | "seriesStyle";
 
-export type ChartData = ColumnarResult<ChartDataMeta>;
+/**
+ * Chart data as columns (`x`, `y0..`, ...). Plots that compute a stat transform on the server
+ * (`statOnly`) get an empty table plus the structured `stat` result.
+ */
+export type ChartData = ColumnarResult<ChartDataMeta> & { stat?: StatResult };
 
 /** Server-computed overlay (trendline, regression, confidence band) for one y series. */
 export interface OverlayResult {

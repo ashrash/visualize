@@ -35,7 +35,11 @@ describe("bar family", () => {
     expect(o.xAxis.data).toEqual(["North", "South", "East"]);
     expect(o.xAxis.type).toBe("category");
     expect(o.series).toHaveLength(1);
-    expect(o.series[0]).toMatchObject({ type: "bar", name: "Sum of sales", data: [330.5, 135.25, 80] });
+    expect(o.series[0]).toMatchObject({
+      type: "bar",
+      name: "Sum of sales",
+      data: [330.5, 135.25, 80],
+    });
     expect(o.series[0].yIndex).toBeUndefined();
     expect(o.legend).toBeUndefined();
     expect(o.yAxis.name).toBe("Sum of sales");
@@ -94,7 +98,17 @@ describe("bar family", () => {
       "bar",
       style({
         xAxis: { title: "Region", grid: true },
-        yAxes: [{ scale: "log", logBase: 2, min: 1, max: 1000, format: "compact:1", grid: false, title: "Sales" }],
+        yAxes: [
+          {
+            scale: "log",
+            logBase: 2,
+            min: 1,
+            max: 1000,
+            format: "compact:1",
+            grid: false,
+            title: "Sales",
+          },
+        ],
       }),
     );
     expect(o.yAxis).toMatchObject({ type: "log", logBase: 2, min: 1, max: 1000, name: "Sales" });
@@ -122,7 +136,9 @@ describe("bar family", () => {
     expect(o.series[0].label.position).toBe("top");
     expect(o.series[0].label.formatter({ value: 3 })).toBe("3.0");
     expect(o.grid.top).toBeGreaterThan(40);
-    expect(render("grouped_bar", style({ legend: { show: false, position: "top" } }), grouped).legend).toBeUndefined();
+    expect(
+      render("grouped_bar", style({ legend: { show: false, position: "top" } }), grouped).legend,
+    ).toBeUndefined();
   });
 
   it("draws reference lines and annotations on the first series", () => {
@@ -210,7 +226,10 @@ describe("line and area", () => {
   it("applies markers, line width/style, smoothing and step", () => {
     const o = render(
       "line",
-      { ...style({ markers: true, lineWidth: 3, lineStyle: "dashed", smooth: true }), params: { step: "middle" } },
+      {
+        ...style({ markers: true, lineWidth: 3, lineStyle: "dashed", smooth: true }),
+        params: { step: "middle" },
+      },
       time,
     );
     expect(o.series[0]).toMatchObject({ symbol: "circle", smooth: true, step: "middle" });
@@ -218,7 +237,11 @@ describe("line and area", () => {
   });
 
   it("area fills with the configured opacity and stacks", () => {
-    const o = render("area", { ...style({ stack: "stack", areaOpacity: 0.5 }), params: {} }, grouped);
+    const o = render(
+      "area",
+      { ...style({ stack: "stack", areaOpacity: 0.5 }), params: {} },
+      grouped,
+    );
     expect(o.series[0].areaStyle.opacity).toBe(0.5);
     expect(o.series[0].stack).toBe("total");
   });
@@ -239,7 +262,9 @@ describe("line and area", () => {
     };
     const o = render(
       "line",
-      style({ trendlines: [{ kind: "linear", series: 0, degree: 2, showEquation: true, showR2: true }] }),
+      style({
+        trendlines: [{ kind: "linear", series: 0, degree: 2, showEquation: true, showR2: true }],
+      }),
       time,
       { overlays: [overlay] } as never,
     );
@@ -285,9 +310,17 @@ describe("pie and donut", () => {
   });
 
   it("formats labels by mode", () => {
-    const o = render("pie", { ...style({ showLabels: true }), params: { labelMode: "value" } }, pieData);
+    const o = render(
+      "pie",
+      { ...style({ showLabels: true }), params: { labelMode: "value" } },
+      pieData,
+    );
     expect(o.series[0].label.formatter({ name: "d", value: 60, percent: 60 })).toBe("d: 60");
-    const named = render("pie", { ...style({ showLabels: true }), params: { labelMode: "percent" } }, pieData);
+    const named = render(
+      "pie",
+      { ...style({ showLabels: true }), params: { labelMode: "percent" } },
+      pieData,
+    );
     expect(named.series[0].label.formatter({ name: "d", value: 60, percent: 60 })).toBe("d: 60.0%");
   });
 

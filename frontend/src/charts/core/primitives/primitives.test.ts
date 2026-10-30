@@ -37,7 +37,11 @@ describe("hierarchyToTree", () => {
   });
 
   it("treats missing or non-numeric values as zero", () => {
-    const tree = hierarchyToTree({ rows: [{ a: "x", v: "n/a" }, { a: "x" }], levels: ["a"], value: "v" });
+    const tree = hierarchyToTree({
+      rows: [{ a: "x", v: "n/a" }, { a: "x" }],
+      levels: ["a"],
+      value: "v",
+    });
     expect(tree).toEqual([{ name: "x", value: 0 }]);
   });
 });
@@ -175,7 +179,11 @@ describe("densityFallback", () => {
 
 describe("meta readers", () => {
   it("read params and xDomain defensively", () => {
-    const data = makeData({ x: [1] }, {}, { meta: { params: { binWidth: 2, name: "x" }, xDomain: [1, 9] } });
+    const data = makeData(
+      { x: [1] },
+      {},
+      { meta: { params: { binWidth: 2, name: "x" }, xDomain: [1, 9] } },
+    );
     expect(chartParams(data.meta).number("binWidth")).toBe(2);
     expect(chartParams(data.meta).number("name")).toBeUndefined();
     expect(chartParams(data.meta).string("name")).toBe("x");

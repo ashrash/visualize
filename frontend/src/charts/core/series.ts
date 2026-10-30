@@ -173,11 +173,7 @@ export function cartesianSeries(data: ChartData): CartesianData {
 }
 
 /** Series data for the chosen x axis: aligned values for categories, [x, y] pairs otherwise. */
-export function seriesData(
-  xs: unknown[],
-  values: (number | null)[],
-  type: XAxisType,
-): unknown[] {
+export function seriesData(xs: unknown[], values: (number | null)[], type: XAxisType): unknown[] {
   if (type === "category") return values;
   return xs.map((x, i) => [x, values[i] ?? null]);
 }

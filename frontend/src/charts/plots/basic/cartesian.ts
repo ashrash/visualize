@@ -1,24 +1,33 @@
 import type { ChartSpec } from "../../../api/types";
 import { errorBars } from "../../core/primitives/errorBars";
 import {
-  type Obj,
-  type XAxisType,
   cartesianSeries,
   categoryLabel,
   dataZoomOption,
   isHorizontal,
+  type Obj,
   param,
   resolveStyle,
   seriesData,
+  type XAxisType,
   xAxisType,
 } from "../../core/series";
 import { applyStyle } from "../../core/style";
-import type { ChartData, ChartTheme, ChannelSchema, ParamSchema, RenderContext } from "../../core/types";
+import type {
+  ChannelSchema,
+  ChartData,
+  ChartTheme,
+  ParamSchema,
+  RenderContext,
+} from "../../core/types";
 
 export type CartesianKind = "bar" | "line" | "area";
 
 /** Channels shared by bar / line / area: x, any number of y measures, and a color group. */
-export function cartesianChannels(xLabel: string, xAccepts: ChannelSchema["accepts"]): ChannelSchema[] {
+export function cartesianChannels(
+  xLabel: string,
+  xAccepts: ChannelSchema["accepts"],
+): ChannelSchema[] {
   return [
     {
       name: "x",
@@ -51,7 +60,15 @@ export function cartesianChannels(xLabel: string, xAccepts: ChannelSchema["accep
 }
 
 export const BAR_PARAMS: ParamSchema[] = [
-  { name: "barWidth", type: "number", label: "Bar width (%)", min: 10, max: 100, step: 5, default: 60 },
+  {
+    name: "barWidth",
+    type: "number",
+    label: "Bar width (%)",
+    min: 10,
+    max: 100,
+    step: 5,
+    default: 60,
+  },
   {
     name: "barGap",
     type: "number",
@@ -122,8 +139,7 @@ export function renderCartesian(
     type === "category"
       ? cd.xs.map((x) => categoryLabel(x, cd.xKind, style.xAxis.format))
       : undefined;
-  const dataFor = (values: (number | null)[]) =>
-    seriesData(categories ?? cd.xs, values, type);
+  const dataFor = (values: (number | null)[]) => seriesData(categories ?? cd.xs, values, type);
 
   const comboBars = style.series.some((s) => s.kind === "bar");
   const barWidth = param(spec, "barWidth", 60);

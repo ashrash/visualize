@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateAuto, FORMAT_PRESETS, isDateFormat, makeFormatter } from "./format";
+import { FORMAT_PRESETS, formatDateAuto, isDateFormat, makeFormatter } from "./format";
 
 const en = (format: string | null) => makeFormatter(format, "en-US");
 

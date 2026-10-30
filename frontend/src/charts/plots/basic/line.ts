@@ -1,10 +1,5 @@
 import { definePlot, type StyleSection } from "../../core/types";
-import {
-  AREA_OPACITY_PARAM,
-  cartesianChannels,
-  LINE_PARAMS,
-  renderCartesian,
-} from "./cartesian";
+import { AREA_OPACITY_PARAM, cartesianChannels, LINE_PARAMS, renderCartesian } from "./cartesian";
 
 const LINE_SECTIONS: StyleSection[] = [
   "title",

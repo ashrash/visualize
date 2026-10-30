@@ -331,9 +331,7 @@ export function applyStyle(
       const onAxis = rawSeries.filter((s, k) => axisOf(s, k) === i);
       const fmt = makeFormatter(yFormatOf(i) ?? "auto");
       const vals = valuesOf(onAxis);
-      const ticks = vals.length
-        ? [fmt(Math.max(...vals)), fmt(Math.min(...vals))]
-        : [fmtAuto(0)];
+      const ticks = vals.length ? [fmt(Math.max(...vals)), fmt(Math.min(...vals))] : [fmtAuto(0)];
       yAxes.push(
         buildAxis({
           base: i === 0 ? baseY : { type: "value" },
@@ -370,7 +368,10 @@ export function applyStyle(
       tickLabels: xLabels,
       theme: t,
       // Horizontal bars read top to bottom: first category at the top.
-      inverse: horizontal && xType === "category" ? !style.xAxis.inverse : style.xAxis.inverse ?? undefined,
+      inverse:
+        horizontal && xType === "category"
+          ? !style.xAxis.inverse
+          : (style.xAxis.inverse ?? undefined),
       fullExtent: extent,
     });
     if (xAxis.name) {
@@ -389,7 +390,10 @@ export function applyStyle(
 
   // Series.
   const valueFormat = (axisIndex: number): string | null | undefined =>
-    style.tooltip.format ?? style.yAxes[axisIndex]?.format ?? style.numberFormat ?? opts.defaultYFormat;
+    style.tooltip.format ??
+    style.yAxes[axisIndex]?.format ??
+    style.numberFormat ??
+    opts.defaultYFormat;
   const labelPosition = (): string | undefined => {
     switch (style.labelPosition) {
       case "inside":
@@ -473,7 +477,10 @@ export function applyStyle(
   for (const ov of overlays) {
     const idx = rawSeries.findIndex((s) => (s.yIndex as number | undefined) === ov.series);
     const base = rawSeries[idx];
-    const color = (seriesOut[idx]?.color as string | undefined) ?? colors[Math.max(idx, 0) % colors.length] ?? t.text;
+    const color =
+      (seriesOut[idx]?.color as string | undefined) ??
+      colors[Math.max(idx, 0) % colors.length] ??
+      t.text;
     const spec_ = style.trendlines.find((tl) => tl.series === ov.series);
     const bits = [TREND_LABEL[ov.kind] ?? "trend"];
     if (spec_?.showR2 && ov.r2 !== null) bits.push(`R² ${ov.r2.toFixed(3)}`);
@@ -493,7 +500,10 @@ export function applyStyle(
   if (cartesian && (style.refLines.length > 0 || style.annotations.length > 0)) {
     let host = seriesOut.findIndex((s) => s.silent !== true);
     if (host < 0) {
-      seriesOut = [{ type: "line", data: [], silent: true, tooltip: { show: false } }, ...seriesOut];
+      seriesOut = [
+        { type: "line", data: [], silent: true, tooltip: { show: false } },
+        ...seriesOut,
+      ];
       host = 0;
     }
     const target = { ...seriesOut[host] } as Obj;
@@ -572,15 +582,16 @@ export function applyStyle(
     ...optionTooltip,
     show: style.tooltip.show,
     trigger:
-      style.tooltip.trigger ?? optionTooltip?.trigger ?? opts.defaultTrigger ?? (cartesian ? "axis" : "item"),
+      style.tooltip.trigger ??
+      optionTooltip?.trigger ??
+      opts.defaultTrigger ??
+      (cartesian ? "axis" : "item"),
     confine: true,
     backgroundColor: t.tooltipBg,
     borderColor: t.border,
     textStyle: { color: t.tooltipText },
   };
 
-  out.grid = cartesian
-    ? { left, right, top, bottom, containLabel: true }
-    : option.grid;
+  out.grid = cartesian ? { left, right, top, bottom, containLabel: true } : option.grid;
   return out;
 }

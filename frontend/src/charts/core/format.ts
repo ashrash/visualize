@@ -106,10 +106,7 @@ export function isDateFormat(format: string | null | undefined): boolean {
 }
 
 /** Build a formatter for a format string. `null` and unknown strings give the `auto` formatter. */
-export function makeFormatter(
-  format: string | null | undefined,
-  locale?: string,
-): ValueFormatter {
+export function makeFormatter(format: string | null | undefined, locale?: string): ValueFormatter {
   const [kind = "auto", a, b] = (format ?? "auto").split(":");
 
   if (DATE_KINDS.has(kind)) {

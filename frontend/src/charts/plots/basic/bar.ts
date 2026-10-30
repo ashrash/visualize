@@ -19,7 +19,8 @@ const SECTIONS: StyleSection[] = [
   "seriesStyle",
 ];
 
-const channels = () => cartesianChannels("Category", ["nominal", "ordinal", "temporal", "quantitative"]);
+const channels = () =>
+  cartesianChannels("Category", ["nominal", "ordinal", "temporal", "quantitative"]);
 
 function recommend(columns: Parameters<NonNullable<PlotEntry["recommend"]>>[0]) {
   const [hasCategory, hasMeasure] = hasMeasureAndCategory(columns, 50);
@@ -60,11 +61,8 @@ const withStyle = (spec: ChartSpec, patch: Partial<NonNullable<ChartSpec["style"
     ...patch,
   }) as ChartSpec["style"];
 
-export const bar = variant(
-  "bar",
-  "Bar chart",
-  "Compare values across categories.",
-  (spec) => withStyle(spec, {}),
+export const bar = variant("bar", "Bar chart", "Compare values across categories.", (spec) =>
+  withStyle(spec, {}),
 );
 
 export const horizontalBar = variant(
