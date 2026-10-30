@@ -1,0 +1,2529 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`multivariate registry entries > andrews_curves renders the same option in light and dark (snapshot) > dark 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "#111111",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 30,
+    "containLabel": true,
+    "left": 30,
+    "right": 20,
+    "top": 42,
+  },
+  "legend": {
+    "data": [
+      "a",
+      "b",
+    ],
+    "left": 8,
+    "pageIconColor": "#aaaaaa",
+    "pageTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "series": [
+    {
+      "data": [
+        [
+          -3.14,
+          1,
+        ],
+        [
+          3.14,
+          2,
+        ],
+      ],
+      "emphasis": {
+        "focus": "series",
+        "lineStyle": {
+          "opacity": 1,
+          "width": 2,
+        },
+      },
+      "itemStyle": {
+        "color": "#0072b2",
+      },
+      "lineStyle": {
+        "color": "#0072b2",
+        "opacity": 0.4,
+        "width": 1,
+      },
+      "name": "a",
+      "showSymbol": false,
+      "symbol": "none",
+      "type": "line",
+    },
+    {
+      "data": [
+        [
+          -3.14,
+          3,
+        ],
+        [
+          3.14,
+          4,
+        ],
+      ],
+      "emphasis": {
+        "focus": "series",
+        "lineStyle": {
+          "opacity": 1,
+          "width": 2,
+        },
+      },
+      "itemStyle": {
+        "color": "#e69f00",
+      },
+      "lineStyle": {
+        "color": "#e69f00",
+        "opacity": 0.4,
+        "width": 1,
+      },
+      "name": "b",
+      "showSymbol": false,
+      "symbol": "none",
+      "type": "line",
+    },
+  ],
+  "textStyle": {
+    "color": "#eeeeee",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#23272f",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "xAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "formatter": [Function],
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "max": 3.141592653589793,
+    "min": -3.141592653589793,
+    "name": "t",
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "f(t)",
+    "nameGap": 36,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "left",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+}
+`;
+
+exports[`multivariate registry entries > andrews_curves renders the same option in light and dark (snapshot) > light 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "transparent",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 30,
+    "containLabel": true,
+    "left": 30,
+    "right": 20,
+    "top": 42,
+  },
+  "legend": {
+    "data": [
+      "a",
+      "b",
+    ],
+    "left": 8,
+    "pageIconColor": "#555555",
+    "pageTextStyle": {
+      "color": "#555555",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "series": [
+    {
+      "data": [
+        [
+          -3.14,
+          1,
+        ],
+        [
+          3.14,
+          2,
+        ],
+      ],
+      "emphasis": {
+        "focus": "series",
+        "lineStyle": {
+          "opacity": 1,
+          "width": 2,
+        },
+      },
+      "itemStyle": {
+        "color": "#0072b2",
+      },
+      "lineStyle": {
+        "color": "#0072b2",
+        "opacity": 0.4,
+        "width": 1,
+      },
+      "name": "a",
+      "showSymbol": false,
+      "symbol": "none",
+      "type": "line",
+    },
+    {
+      "data": [
+        [
+          -3.14,
+          3,
+        ],
+        [
+          3.14,
+          4,
+        ],
+      ],
+      "emphasis": {
+        "focus": "series",
+        "lineStyle": {
+          "opacity": 1,
+          "width": 2,
+        },
+      },
+      "itemStyle": {
+        "color": "#e69f00",
+      },
+      "lineStyle": {
+        "color": "#e69f00",
+        "opacity": 0.4,
+        "width": 1,
+      },
+      "name": "b",
+      "showSymbol": false,
+      "symbol": "none",
+      "type": "line",
+    },
+  ],
+  "textStyle": {
+    "color": "#000000",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "xAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "formatter": [Function],
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "max": 3.141592653589793,
+    "min": -3.141592653589793,
+    "name": "t",
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "f(t)",
+    "nameGap": 36,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "left",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+}
+`;
+
+exports[`multivariate registry entries > cluster renders the same option in light and dark (snapshot) > dark 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "#111111",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 30,
+    "containLabel": true,
+    "left": 30,
+    "right": 20,
+    "top": 42,
+  },
+  "legend": {
+    "left": 8,
+    "pageIconColor": "#aaaaaa",
+    "pageTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "series": [
+    {
+      "data": [
+        {
+          "name": undefined,
+          "value": [
+            0,
+            0,
+          ],
+        },
+        {
+          "name": undefined,
+          "value": [
+            1,
+            1,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "color": "#0072b2",
+        "opacity": 0.75,
+      },
+      "name": "Cluster 1",
+      "symbolSize": 6,
+      "type": "scatter",
+    },
+    {
+      "data": [
+        {
+          "name": undefined,
+          "value": [
+            5,
+            5,
+          ],
+        },
+        {
+          "name": undefined,
+          "value": [
+            6,
+            6,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "color": "#e69f00",
+        "opacity": 0.75,
+      },
+      "name": "Cluster 2",
+      "symbolSize": 6,
+      "type": "scatter",
+    },
+    {
+      "data": [
+        {
+          "name": "Cluster 1 (2 rows)",
+          "value": [
+            0.5,
+            0.5,
+          ],
+        },
+        {
+          "name": "Cluster 2 (2 rows)",
+          "value": [
+            5.5,
+            5.5,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "borderColor": "#111111",
+        "borderWidth": 1.5,
+        "color": "#eeeeee",
+      },
+      "name": "Centroids",
+      "symbol": "diamond",
+      "symbolSize": 16,
+      "type": "scatter",
+      "z": 5,
+    },
+  ],
+  "textStyle": {
+    "color": "#eeeeee",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#23272f",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "formatter": [Function],
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "xAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "PC1 (80.0%)",
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "scale": true,
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "PC2 (20.0%)",
+    "nameGap": 36,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "left",
+    "scale": true,
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+}
+`;
+
+exports[`multivariate registry entries > cluster renders the same option in light and dark (snapshot) > light 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "transparent",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 30,
+    "containLabel": true,
+    "left": 30,
+    "right": 20,
+    "top": 42,
+  },
+  "legend": {
+    "left": 8,
+    "pageIconColor": "#555555",
+    "pageTextStyle": {
+      "color": "#555555",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "series": [
+    {
+      "data": [
+        {
+          "name": undefined,
+          "value": [
+            0,
+            0,
+          ],
+        },
+        {
+          "name": undefined,
+          "value": [
+            1,
+            1,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "color": "#0072b2",
+        "opacity": 0.75,
+      },
+      "name": "Cluster 1",
+      "symbolSize": 6,
+      "type": "scatter",
+    },
+    {
+      "data": [
+        {
+          "name": undefined,
+          "value": [
+            5,
+            5,
+          ],
+        },
+        {
+          "name": undefined,
+          "value": [
+            6,
+            6,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "color": "#e69f00",
+        "opacity": 0.75,
+      },
+      "name": "Cluster 2",
+      "symbolSize": 6,
+      "type": "scatter",
+    },
+    {
+      "data": [
+        {
+          "name": "Cluster 1 (2 rows)",
+          "value": [
+            0.5,
+            0.5,
+          ],
+        },
+        {
+          "name": "Cluster 2 (2 rows)",
+          "value": [
+            5.5,
+            5.5,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "borderColor": "#fff",
+        "borderWidth": 1.5,
+        "color": "#000000",
+      },
+      "name": "Centroids",
+      "symbol": "diamond",
+      "symbolSize": 16,
+      "type": "scatter",
+      "z": 5,
+    },
+  ],
+  "textStyle": {
+    "color": "#000000",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "formatter": [Function],
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "xAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "PC1 (80.0%)",
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "scale": true,
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "PC2 (20.0%)",
+    "nameGap": 36,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "left",
+    "scale": true,
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+}
+`;
+
+exports[`multivariate registry entries > dendrogram renders the same option in light and dark (snapshot) > dark 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "#111111",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 8,
+    "containLabel": true,
+    "left": 30,
+    "right": 20,
+    "top": 12,
+  },
+  "legend": undefined,
+  "series": [
+    {
+      "data": [
+        [
+          1,
+          1,
+        ],
+        [
+          3,
+          2,
+        ],
+        [
+          2,
+          4,
+        ],
+      ],
+      "encode": {
+        "x": 0,
+        "y": 1,
+      },
+      "markLine": {
+        "data": [
+          {
+            "yAxis": 3,
+          },
+        ],
+        "label": {
+          "color": "#aaaaaa",
+          "formatter": "cut",
+        },
+        "lineStyle": {
+          "color": "#aaaaaa",
+          "type": "dashed",
+        },
+        "silent": true,
+        "symbol": "none",
+      },
+      "name": "Merges",
+      "renderItem": [Function],
+      "tooltip": {
+        "formatter": [Function],
+      },
+      "type": "custom",
+    },
+  ],
+  "textStyle": {
+    "color": "#eeeeee",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#23272f",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "xAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "interval": 0,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "boundaryGap": true,
+    "data": [
+      "a",
+      "b",
+      "c",
+      "d",
+    ],
+    "inverse": false,
+    "name": undefined,
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": false,
+    },
+    "type": "category",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "min": 0,
+    "name": "Distance",
+    "nameGap": 36,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "left",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+}
+`;
+
+exports[`multivariate registry entries > dendrogram renders the same option in light and dark (snapshot) > light 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "transparent",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 8,
+    "containLabel": true,
+    "left": 30,
+    "right": 20,
+    "top": 12,
+  },
+  "legend": undefined,
+  "series": [
+    {
+      "data": [
+        [
+          1,
+          1,
+        ],
+        [
+          3,
+          2,
+        ],
+        [
+          2,
+          4,
+        ],
+      ],
+      "encode": {
+        "x": 0,
+        "y": 1,
+      },
+      "markLine": {
+        "data": [
+          {
+            "yAxis": 3,
+          },
+        ],
+        "label": {
+          "color": "#555555",
+          "formatter": "cut",
+        },
+        "lineStyle": {
+          "color": "#555555",
+          "type": "dashed",
+        },
+        "silent": true,
+        "symbol": "none",
+      },
+      "name": "Merges",
+      "renderItem": [Function],
+      "tooltip": {
+        "formatter": [Function],
+      },
+      "type": "custom",
+    },
+  ],
+  "textStyle": {
+    "color": "#000000",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "xAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "interval": 0,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "boundaryGap": true,
+    "data": [
+      "a",
+      "b",
+      "c",
+      "d",
+    ],
+    "inverse": false,
+    "name": undefined,
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": false,
+    },
+    "type": "category",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "min": 0,
+    "name": "Distance",
+    "nameGap": 36,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "left",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+}
+`;
+
+exports[`multivariate registry entries > factor_loading renders the same option in light and dark (snapshot) > dark 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "#111111",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 8,
+    "containLabel": true,
+    "left": 8,
+    "right": 110,
+    "top": 12,
+  },
+  "legend": undefined,
+  "series": [
+    {
+      "data": [
+        [
+          0,
+          2,
+          0.9,
+        ],
+        [
+          1,
+          2,
+          0.1,
+        ],
+        [
+          0,
+          1,
+          0.8,
+        ],
+        [
+          1,
+          1,
+          -0.2,
+        ],
+        [
+          0,
+          0,
+          0.1,
+        ],
+        [
+          1,
+          0,
+          0.7,
+        ],
+      ],
+      "itemStyle": {
+        "borderColor": "#111111",
+        "borderWidth": 1,
+      },
+      "label": {
+        "color": "#eeeeee",
+        "formatter": [Function],
+        "show": true,
+      },
+      "name": "Loading",
+      "type": "heatmap",
+    },
+  ],
+  "textStyle": {
+    "color": "#eeeeee",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#23272f",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "formatter": [Function],
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "visualMap": {
+    "calculable": true,
+    "inRange": {
+      "color": [
+        "#2166ac",
+        "#67a9cf",
+        "#d1e5f0",
+        "#f7f7f7",
+        "#fddbc7",
+        "#ef8a62",
+        "#b2182b",
+      ],
+    },
+    "max": 1,
+    "min": -1,
+    "orient": "vertical",
+    "right": 4,
+    "textStyle": {
+      "color": "#aaaaaa",
+    },
+    "top": "middle",
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "data": [
+      "Factor 1 (50%)",
+      "Factor 2 (20%)",
+    ],
+    "inverse": false,
+    "name": undefined,
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "splitArea": {
+      "show": false,
+    },
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": false,
+    },
+    "type": "category",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "data": [
+      "c",
+      "b",
+      "a",
+    ],
+    "inverse": false,
+    "name": undefined,
+    "nameGap": 40,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "left",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": false,
+    },
+    "type": "category",
+  },
+}
+`;
+
+exports[`multivariate registry entries > factor_loading renders the same option in light and dark (snapshot) > light 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "transparent",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 8,
+    "containLabel": true,
+    "left": 8,
+    "right": 110,
+    "top": 12,
+  },
+  "legend": undefined,
+  "series": [
+    {
+      "data": [
+        [
+          0,
+          2,
+          0.9,
+        ],
+        [
+          1,
+          2,
+          0.1,
+        ],
+        [
+          0,
+          1,
+          0.8,
+        ],
+        [
+          1,
+          1,
+          -0.2,
+        ],
+        [
+          0,
+          0,
+          0.1,
+        ],
+        [
+          1,
+          0,
+          0.7,
+        ],
+      ],
+      "itemStyle": {
+        "borderColor": "transparent",
+        "borderWidth": 1,
+      },
+      "label": {
+        "color": "#000000",
+        "formatter": [Function],
+        "show": true,
+      },
+      "name": "Loading",
+      "type": "heatmap",
+    },
+  ],
+  "textStyle": {
+    "color": "#000000",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "formatter": [Function],
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "visualMap": {
+    "calculable": true,
+    "inRange": {
+      "color": [
+        "#2166ac",
+        "#67a9cf",
+        "#d1e5f0",
+        "#f7f7f7",
+        "#fddbc7",
+        "#ef8a62",
+        "#b2182b",
+      ],
+    },
+    "max": 1,
+    "min": -1,
+    "orient": "vertical",
+    "right": 4,
+    "textStyle": {
+      "color": "#555555",
+    },
+    "top": "middle",
+  },
+  "xAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "data": [
+      "Factor 1 (50%)",
+      "Factor 2 (20%)",
+    ],
+    "inverse": false,
+    "name": undefined,
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "splitArea": {
+      "show": false,
+    },
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": false,
+    },
+    "type": "category",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "data": [
+      "c",
+      "b",
+      "a",
+    ],
+    "inverse": false,
+    "name": undefined,
+    "nameGap": 40,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "left",
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": false,
+    },
+    "type": "category",
+  },
+}
+`;
+
+exports[`multivariate registry entries > parallel_coordinates renders the same option in light and dark (snapshot) > dark 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "#111111",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": undefined,
+  "legend": {
+    "data": [
+      "x",
+      "y",
+    ],
+    "left": 8,
+    "pageIconColor": "#aaaaaa",
+    "pageTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "parallel": {
+    "bottom": 40,
+    "left": 60,
+    "right": 60,
+    "top": 60,
+  },
+  "parallelAxis": [
+    {
+      "axisLabel": {
+        "color": "#aaaaaa",
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#cccccc",
+        },
+      },
+      "data": undefined,
+      "dim": 0,
+      "name": "len",
+      "nameTextStyle": {
+        "color": "#aaaaaa",
+      },
+      "scale": true,
+      "type": "value",
+    },
+    {
+      "axisLabel": {
+        "color": "#aaaaaa",
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#cccccc",
+        },
+      },
+      "data": [
+        "a",
+        "b",
+      ],
+      "dim": 1,
+      "name": "kind",
+      "nameTextStyle": {
+        "color": "#aaaaaa",
+      },
+      "scale": false,
+      "type": "category",
+    },
+  ],
+  "series": [
+    {
+      "data": [
+        [
+          1,
+          "a",
+        ],
+        [
+          3,
+          "a",
+        ],
+      ],
+      "lineStyle": {
+        "color": "#0072b2",
+        "opacity": 0.35,
+        "width": 1,
+      },
+      "name": "x",
+      "smooth": false,
+      "type": "parallel",
+    },
+    {
+      "data": [
+        [
+          2,
+          "b",
+        ],
+      ],
+      "lineStyle": {
+        "color": "#e69f00",
+        "opacity": 0.35,
+        "width": 1,
+      },
+      "name": "y",
+      "smooth": false,
+      "type": "parallel",
+    },
+  ],
+  "textStyle": {
+    "color": "#eeeeee",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#23272f",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+}
+`;
+
+exports[`multivariate registry entries > parallel_coordinates renders the same option in light and dark (snapshot) > light 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "transparent",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": undefined,
+  "legend": {
+    "data": [
+      "x",
+      "y",
+    ],
+    "left": 8,
+    "pageIconColor": "#555555",
+    "pageTextStyle": {
+      "color": "#555555",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "parallel": {
+    "bottom": 40,
+    "left": 60,
+    "right": 60,
+    "top": 60,
+  },
+  "parallelAxis": [
+    {
+      "axisLabel": {
+        "color": "#555555",
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#cccccc",
+        },
+      },
+      "data": undefined,
+      "dim": 0,
+      "name": "len",
+      "nameTextStyle": {
+        "color": "#555555",
+      },
+      "scale": true,
+      "type": "value",
+    },
+    {
+      "axisLabel": {
+        "color": "#555555",
+      },
+      "axisLine": {
+        "lineStyle": {
+          "color": "#cccccc",
+        },
+      },
+      "data": [
+        "a",
+        "b",
+      ],
+      "dim": 1,
+      "name": "kind",
+      "nameTextStyle": {
+        "color": "#555555",
+      },
+      "scale": false,
+      "type": "category",
+    },
+  ],
+  "series": [
+    {
+      "data": [
+        [
+          1,
+          "a",
+        ],
+        [
+          3,
+          "a",
+        ],
+      ],
+      "lineStyle": {
+        "color": "#0072b2",
+        "opacity": 0.35,
+        "width": 1,
+      },
+      "name": "x",
+      "smooth": false,
+      "type": "parallel",
+    },
+    {
+      "data": [
+        [
+          2,
+          "b",
+        ],
+      ],
+      "lineStyle": {
+        "color": "#e69f00",
+        "opacity": 0.35,
+        "width": 1,
+      },
+      "name": "y",
+      "smooth": false,
+      "type": "parallel",
+    },
+  ],
+  "textStyle": {
+    "color": "#000000",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+}
+`;
+
+exports[`multivariate registry entries > pca_biplot renders the same option in light and dark (snapshot) > dark 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "#111111",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 30,
+    "containLabel": true,
+    "left": 30,
+    "right": 20,
+    "top": 42,
+  },
+  "legend": {
+    "left": 8,
+    "pageIconColor": "#aaaaaa",
+    "pageTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "series": [
+    {
+      "data": [
+        {
+          "name": undefined,
+          "value": [
+            1,
+            0,
+          ],
+        },
+        {
+          "name": undefined,
+          "value": [
+            0.5,
+            -1,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "color": "#0072b2",
+        "opacity": 0.75,
+      },
+      "label": undefined,
+      "name": "p",
+      "symbolSize": 6,
+      "type": "scatter",
+    },
+    {
+      "data": [
+        {
+          "name": undefined,
+          "value": [
+            -1,
+            1,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "color": "#e69f00",
+        "opacity": 0.75,
+      },
+      "label": undefined,
+      "name": "q",
+      "symbolSize": 6,
+      "type": "scatter",
+    },
+    {
+      "data": [
+        [
+          0,
+          0,
+        ],
+      ],
+      "markLine": {
+        "data": [
+          [
+            {
+              "coord": [
+                0,
+                0,
+              ],
+            },
+            {
+              "coord": [
+                1.8,
+                0.2,
+              ],
+              "label": {
+                "color": "#eeeeee",
+                "formatter": "a",
+                "position": "end",
+                "show": true,
+              },
+              "name": "a",
+              "value": "0.9, 0.1",
+            },
+          ],
+          [
+            {
+              "coord": [
+                0,
+                0,
+              ],
+            },
+            {
+              "coord": [
+                -1,
+                1.6,
+              ],
+              "label": {
+                "color": "#eeeeee",
+                "formatter": "b",
+                "position": "end",
+                "show": true,
+              },
+              "name": "b",
+              "value": "-0.5, 0.8",
+            },
+          ],
+        ],
+        "lineStyle": {
+          "color": "#eeeeee",
+          "type": "solid",
+          "width": 1.5,
+        },
+        "symbol": [
+          "none",
+          "arrow",
+        ],
+        "symbolSize": 8,
+        "tooltip": {
+          "formatter": [Function],
+        },
+      },
+      "name": "Loadings",
+      "silent": true,
+      "symbolSize": 0,
+      "tooltip": {
+        "show": false,
+      },
+      "type": "scatter",
+    },
+  ],
+  "textStyle": {
+    "color": "#eeeeee",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#23272f",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "formatter": [Function],
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "xAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "PC1 (75.0%)",
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "scale": true,
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#aaaaaa",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "PC2 (25.0%)",
+    "nameGap": 36,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "offset": 0,
+    "position": "left",
+    "scale": true,
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+}
+`;
+
+exports[`multivariate registry entries > pca_biplot renders the same option in light and dark (snapshot) > light 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "transparent",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": {
+    "bottom": 30,
+    "containLabel": true,
+    "left": 30,
+    "right": 20,
+    "top": 42,
+  },
+  "legend": {
+    "left": 8,
+    "pageIconColor": "#555555",
+    "pageTextStyle": {
+      "color": "#555555",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "series": [
+    {
+      "data": [
+        {
+          "name": undefined,
+          "value": [
+            1,
+            0,
+          ],
+        },
+        {
+          "name": undefined,
+          "value": [
+            0.5,
+            -1,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "color": "#0072b2",
+        "opacity": 0.75,
+      },
+      "label": undefined,
+      "name": "p",
+      "symbolSize": 6,
+      "type": "scatter",
+    },
+    {
+      "data": [
+        {
+          "name": undefined,
+          "value": [
+            -1,
+            1,
+          ],
+        },
+      ],
+      "itemStyle": {
+        "color": "#e69f00",
+        "opacity": 0.75,
+      },
+      "label": undefined,
+      "name": "q",
+      "symbolSize": 6,
+      "type": "scatter",
+    },
+    {
+      "data": [
+        [
+          0,
+          0,
+        ],
+      ],
+      "markLine": {
+        "data": [
+          [
+            {
+              "coord": [
+                0,
+                0,
+              ],
+            },
+            {
+              "coord": [
+                1.8,
+                0.2,
+              ],
+              "label": {
+                "color": "#000000",
+                "formatter": "a",
+                "position": "end",
+                "show": true,
+              },
+              "name": "a",
+              "value": "0.9, 0.1",
+            },
+          ],
+          [
+            {
+              "coord": [
+                0,
+                0,
+              ],
+            },
+            {
+              "coord": [
+                -1,
+                1.6,
+              ],
+              "label": {
+                "color": "#000000",
+                "formatter": "b",
+                "position": "end",
+                "show": true,
+              },
+              "name": "b",
+              "value": "-0.5, 0.8",
+            },
+          ],
+        ],
+        "lineStyle": {
+          "color": "#000000",
+          "type": "solid",
+          "width": 1.5,
+        },
+        "symbol": [
+          "none",
+          "arrow",
+        ],
+        "symbolSize": 8,
+        "tooltip": {
+          "formatter": [Function],
+        },
+      },
+      "name": "Loadings",
+      "silent": true,
+      "symbolSize": 0,
+      "tooltip": {
+        "show": false,
+      },
+      "type": "scatter",
+    },
+  ],
+  "textStyle": {
+    "color": "#000000",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "formatter": [Function],
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+  "xAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "PC1 (75.0%)",
+    "nameGap": 28,
+    "nameLocation": "middle",
+    "nameRotate": 0,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "bottom",
+    "scale": true,
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+  "yAxis": {
+    "axisLabel": {
+      "color": "#555555",
+      "hideOverlap": true,
+      "rotate": 0,
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisTick": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "inverse": false,
+    "name": "PC2 (25.0%)",
+    "nameGap": 36,
+    "nameLocation": "middle",
+    "nameRotate": 90,
+    "nameTextStyle": {
+      "color": "#555555",
+    },
+    "offset": 0,
+    "position": "left",
+    "scale": true,
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+      "show": true,
+    },
+    "type": "value",
+  },
+}
+`;
+
+exports[`multivariate registry entries > radar renders the same option in light and dark (snapshot) > dark 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "#111111",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": undefined,
+  "legend": {
+    "data": [
+      "A",
+      "B",
+    ],
+    "left": 8,
+    "pageIconColor": "#aaaaaa",
+    "pageTextStyle": {
+      "color": "#aaaaaa",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "radar": {
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisName": {
+      "color": "#aaaaaa",
+    },
+    "center": [
+      "50%",
+      "55%",
+    ],
+    "indicator": [
+      {
+        "max": 1,
+        "min": 0,
+        "name": "u",
+      },
+      {
+        "max": 1,
+        "min": 0,
+        "name": "v",
+      },
+      {
+        "max": 1,
+        "min": 0,
+        "name": "w",
+      },
+    ],
+    "radius": "65%",
+    "splitArea": {
+      "show": false,
+    },
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+  },
+  "series": [
+    {
+      "areaStyle": {
+        "opacity": 0.15,
+      },
+      "colorBy": "data",
+      "data": [
+        {
+          "name": "A",
+          "raw": [
+            2,
+            10,
+            0.5,
+          ],
+          "value": [
+            0.16666666666666666,
+            0,
+            0.5,
+          ],
+        },
+        {
+          "name": "B",
+          "raw": [
+            6,
+            30,
+            1,
+          ],
+          "value": [
+            0.8333333333333334,
+            0.6666666666666666,
+            1,
+          ],
+        },
+      ],
+      "name": "Mean",
+      "symbolSize": 5,
+      "tooltip": {
+        "formatter": [Function],
+      },
+      "type": "radar",
+    },
+  ],
+  "textStyle": {
+    "color": "#eeeeee",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#23272f",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "show": true,
+    "textStyle": {
+      "color": "#eeeeee",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+}
+`;
+
+exports[`multivariate registry entries > radar renders the same option in light and dark (snapshot) > light 1`] = `
+{
+  "animationDuration": 300,
+  "aria": {
+    "enabled": true,
+  },
+  "backgroundColor": "transparent",
+  "color": [
+    "#0072b2",
+    "#e69f00",
+    "#009e73",
+    "#cc79a7",
+  ],
+  "grid": undefined,
+  "legend": {
+    "data": [
+      "A",
+      "B",
+    ],
+    "left": 8,
+    "pageIconColor": "#555555",
+    "pageTextStyle": {
+      "color": "#555555",
+    },
+    "right": 8,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "top": 4,
+    "type": "scroll",
+  },
+  "radar": {
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+    "axisName": {
+      "color": "#555555",
+    },
+    "center": [
+      "50%",
+      "55%",
+    ],
+    "indicator": [
+      {
+        "max": 1,
+        "min": 0,
+        "name": "u",
+      },
+      {
+        "max": 1,
+        "min": 0,
+        "name": "v",
+      },
+      {
+        "max": 1,
+        "min": 0,
+        "name": "w",
+      },
+    ],
+    "radius": "65%",
+    "splitArea": {
+      "show": false,
+    },
+    "splitLine": {
+      "lineStyle": {
+        "color": "#cccccc",
+      },
+    },
+  },
+  "series": [
+    {
+      "areaStyle": {
+        "opacity": 0.15,
+      },
+      "colorBy": "data",
+      "data": [
+        {
+          "name": "A",
+          "raw": [
+            2,
+            10,
+            0.5,
+          ],
+          "value": [
+            0.16666666666666666,
+            0,
+            0.5,
+          ],
+        },
+        {
+          "name": "B",
+          "raw": [
+            6,
+            30,
+            1,
+          ],
+          "value": [
+            0.8333333333333334,
+            0.6666666666666666,
+            1,
+          ],
+        },
+      ],
+      "name": "Mean",
+      "symbolSize": 5,
+      "tooltip": {
+        "formatter": [Function],
+      },
+      "type": "radar",
+    },
+  ],
+  "textStyle": {
+    "color": "#000000",
+    "fontFamily": "sans-serif",
+  },
+  "title": undefined,
+  "tooltip": {
+    "backgroundColor": "#ffffff",
+    "borderColor": "#cccccc",
+    "confine": true,
+    "show": true,
+    "textStyle": {
+      "color": "#000000",
+    },
+    "trigger": "item",
+  },
+  "useUTC": true,
+}
+`;

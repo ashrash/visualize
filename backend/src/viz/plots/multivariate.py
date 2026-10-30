@@ -729,6 +729,7 @@ class ClusterParams(PlotParams):
     diagnostics: bool = True
     # Cosmetic.
     show_centroids: bool = True
+    view: Literal["clusters", "elbow", "silhouette", "kdistance"] = "clusters"
 
 
 def kmeans_fit(x: np.ndarray, k: int, seed: int) -> tuple[np.ndarray, np.ndarray, float]:
