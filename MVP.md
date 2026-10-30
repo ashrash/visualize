@@ -1,0 +1,119 @@
+1. Data Sources & Import
+- CSV / TSV import
+- Excel import
+- JSON import
+- Data preview
+- Data refresh
+- Large dataset handling
+2. Data Preparation & Transformation
+- Data filtering
+- Sorting
+- Grouping
+- Aggregation
+- Missing value handling
+- Duplicate removal
+- Data type conversion
+- Column selection
+- Calculated columns
+- Custom formulas
+- Join and merge datasets
+- Pivot and unpivot
+- Data normalization
+3. Chart & Visualization Types
+- Check Plots.md
+4. Chart Configuration
+- X-axis and Y-axis selection
+- Multiple Y-axis support
+- Color customization
+- Labels and annotations
+- Legend configuration
+- Chart titles and subtitles
+- Axis scaling (linear, logarithmic)
+- Axis formatting
+- Gridline configuration
+- Data point markers
+- Line styles and thickness
+- Error bars
+- Trendlines
+- Regression lines
+- Confidence intervals
+- Tooltips
+- Reference lines
+- Chart orientation
+- Stacking and grouping
+5. Statistical Analysis
+- Mean, median and mode
+- Standard deviation and variance
+- Percentiles and quartiles
+- Correlation analysis
+- Linear regression
+- Multiple regression
+- Hypothesis testing
+- T-tests
+- ANOVA
+- Chi-square tests
+- Distribution fitting
+- Outlier detection
+- Confidence intervals
+- Descriptive statistics
+6. Interactivity
+- Zoom and pan
+- Hover tooltips
+- Click-to-filter
+- Cross-filtering
+- Drill-down
+- Drill-through
+- Data point selection
+- Multi-select
+- Interactive legends
+- Range sliders
+- Date range filters
+- Dynamic chart updates
+- Linked visualizations
+7. Dashboard
+- Multiple charts per dashboard
+- Drag-and-drop layout
+- Resizable chart containers
+- Grid-based layout
+- Dashboard-level filters
+- Global date filters
+- Chart synchronization
+- Multiple dashboard tabs
+- KPI cards
+- Text and image widgets
+- Responsive layouts
+8. Customization & Themes
+- Light and dark themes
+- Custom color palettes
+- Custom fonts
+- Chart templates
+- Reusable styles
+- Number formatting
+- Currency formatting
+- Percentage formatting
+- Date formatting
+- Custom legends
+- Background customization
+9. Export & Sharing
+- Export as PNG
+- Export as SVG
+- Export as PDF
+- Export as JPEG
+- Export as CSV
+- Export underlying data to Excel
+- Copy chart to clipboard
+- Share dashboard through URL
+- Embed visualizations
+- Generate reports
+- Print-friendly layouts
+10. Workspace & Project Management
+- Save projects
+- Open existing projects
+- Autosave
+- Undo and redo
+- Version history
+- Duplicate charts
+- Duplicate dashboards
+- Rename charts
+- Organize charts into folders
+- Import/export project configuration

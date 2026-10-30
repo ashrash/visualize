@@ -1,0 +1,90 @@
+[project]
+name = "visualize"
+version = "0.1.0"
+description = "Local-first data visualization and analysis tool"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.11",
+    "pydantic-settings>=2.6",
+    "duckdb>=2.0,<2.1",
+    "pyarrow>=18",
+    "sqlglot>=26",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+    "platformdirs>=4.3",
+    "typer>=0.15",
+    "python-multipart>=0.0.18",
+    "cachetools>=5.5",
+    "fastexcel>=0.12",
+    "numpy>=2.1",
+    "pandas>=2.2",
+    "scipy>=1.14",
+    "statsmodels>=0.14.4",
+    "scikit-learn>=1.6",
+    "tsdownsample>=0.1.4",
+    "xlsxwriter>=3.2",
+    "threadpoolctl>=3.5",
+]
+
+[project.scripts]
+viz = "viz.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "hypothesis>=6.120",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-cachetools>=5.5",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+dev-mode-dirs = ["backend/src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/src/viz"]
+# The built frontend is git-ignored but must ship inside the wheel.
+artifacts = ["backend/src/viz/static/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["backend/src", "backend/tests"]
+extend-exclude = ["backend/src/viz/meta/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/src/viz/api/*.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "backend/src"
+explicit_package_bases = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "pyarrow",
+    "pyarrow.*",
+    "scipy.*",
+    "statsmodels.*",
+    "sklearn.*",
+    "tsdownsample.*",
+    "fastexcel.*",
+    "xlsxwriter.*",
+]
+ignore_missing_imports = true

@@ -1,0 +1,155 @@
+"""Shared contracts: the single source of truth for specs exchanged with the frontend.
+
+Owned by the lead. Changes must be additive (new optional field, new enum member) unless
+they come with a schemaVersion bump and an upgrader in migrations.py. After any change run
+`npm --prefix frontend run gen:api` and commit the regenerated types.
+"""
+
+from pydantic import BaseModel
+
+from viz.contracts.base import AggFn, Contract, Scalar, SourceRef, new_id
+from viz.contracts.chart import (
+    PLOT_FAMILY,
+    Annotation,
+    AxisStyle,
+    ChartSpec,
+    ChartStyle,
+    Encoding,
+    Interactions,
+    LegendStyle,
+    PlotFamily,
+    PlotInfo,
+    PlotType,
+    RefLine,
+    TimeUnit,
+)
+from viz.contracts.chartdata import (
+    ARROW_META_KEY,
+    ARROW_STREAM_MEDIA_TYPE,
+    ChartDataMeta,
+    ChartDataRequest,
+    Reduction,
+    RowsPageMeta,
+    Viewport,
+)
+from viz.contracts.dashboard import (
+    ChartWidget,
+    Dashboard,
+    DashboardFilter,
+    DashboardTab,
+    FilterWidget,
+    ImageWidget,
+    KpiWidget,
+    LayoutItem,
+    LinkGroup,
+    TextWidget,
+    Widget,
+)
+from viz.contracts.dataset import (
+    Column,
+    ColumnSemantic,
+    Dataset,
+    DatasetSource,
+    DatasetVersion,
+    ImportFromPathRequest,
+    ImportOptions,
+    SourceKind,
+)
+from viz.contracts.pipeline import Pipeline, Step
+from viz.contracts.predicate import (
+    EqPredicate,
+    InPredicate,
+    IsNullPredicate,
+    Predicate,
+    RangePredicate,
+)
+from viz.contracts.project import (
+    ChartTemplate,
+    Folder,
+    ItemRef,
+    Project,
+    ProjectCreate,
+    ProjectSummary,
+    ProjectVersion,
+    Theme,
+)
+from viz.contracts.stats import StatResult
+
+# Models always published in the OpenAPI schema (and so in the generated TypeScript types),
+# even before an endpoint uses them.
+EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
+    ChartDataMeta,
+    ChartDataRequest,
+    ChartSpec,
+    Dashboard,
+    Dataset,
+    Pipeline,
+    PlotInfo,
+    Project,
+    RowsPageMeta,
+    StatResult,
+)
+
+__all__ = [
+    "ARROW_META_KEY",
+    "ARROW_STREAM_MEDIA_TYPE",
+    "EXPORTED_MODELS",
+    "PLOT_FAMILY",
+    "AggFn",
+    "Annotation",
+    "AxisStyle",
+    "ChartDataMeta",
+    "ChartDataRequest",
+    "ChartSpec",
+    "ChartStyle",
+    "ChartTemplate",
+    "ChartWidget",
+    "Column",
+    "ColumnSemantic",
+    "Contract",
+    "Dashboard",
+    "DashboardFilter",
+    "DashboardTab",
+    "Dataset",
+    "DatasetSource",
+    "DatasetVersion",
+    "Encoding",
+    "EqPredicate",
+    "FilterWidget",
+    "Folder",
+    "ImageWidget",
+    "ImportFromPathRequest",
+    "ImportOptions",
+    "InPredicate",
+    "Interactions",
+    "IsNullPredicate",
+    "ItemRef",
+    "KpiWidget",
+    "LayoutItem",
+    "LegendStyle",
+    "LinkGroup",
+    "Pipeline",
+    "PlotFamily",
+    "PlotInfo",
+    "PlotType",
+    "Predicate",
+    "Project",
+    "ProjectCreate",
+    "ProjectSummary",
+    "ProjectVersion",
+    "RangePredicate",
+    "Reduction",
+    "RefLine",
+    "RowsPageMeta",
+    "Scalar",
+    "SourceKind",
+    "SourceRef",
+    "StatResult",
+    "Step",
+    "TextWidget",
+    "Theme",
+    "TimeUnit",
+    "Viewport",
+    "Widget",
+    "new_id",
+]

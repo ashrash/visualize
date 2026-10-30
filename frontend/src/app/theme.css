@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Components and the ECharts theme read these variables; never hard-code colors.
+ * Light is the default; dark follows the OS unless data-theme on <html> forces a mode.
+ * Categorical palette: Okabe-Ito (color-blind safe).
+ */
+:root {
+  color-scheme: light;
+  --viz-bg: #ffffff;
+  --viz-surface: #f6f7f9;
+  --viz-surface-2: #eceef2;
+  --viz-border: #dde1e7;
+  --viz-text: #16181d;
+  --viz-text-muted: #5b6270;
+  --viz-accent: #2f6fde;
+  --viz-accent-text: #ffffff;
+  --viz-danger: #c62828;
+  --viz-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --viz-font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  --viz-cat-1: #0072b2;
+  --viz-cat-2: #e69f00;
+  --viz-cat-3: #009e73;
+  --viz-cat-4: #cc79a7;
+  --viz-cat-5: #56b4e9;
+  --viz-cat-6: #d55e00;
+  --viz-cat-7: #f0e442;
+  --viz-cat-8: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --viz-bg: #121418;
+    --viz-surface: #1a1d23;
+    --viz-surface-2: #23272f;
+    --viz-border: #2e333c;
+    --viz-text: #e8eaee;
+    --viz-text-muted: #9aa1ad;
+    --viz-accent: #6ea0ff;
+    --viz-accent-text: #0b0d10;
+    --viz-danger: #ff6b6b;
+    --viz-cat-8: #bbbbbb;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --viz-bg: #121418;
+  --viz-surface: #1a1d23;
+  --viz-surface-2: #23272f;
+  --viz-border: #2e333c;
+  --viz-text: #e8eaee;
+  --viz-text-muted: #9aa1ad;
+  --viz-accent: #6ea0ff;
+  --viz-accent-text: #0b0d10;
+  --viz-danger: #ff6b6b;
+  --viz-cat-8: #bbbbbb;
+}
+
+@theme inline {
+  --color-bg: var(--viz-bg);
+  --color-surface: var(--viz-surface);
+  --color-surface-2: var(--viz-surface-2);
+  --color-line: var(--viz-border);
+  --color-fg: var(--viz-text);
+  --color-muted: var(--viz-text-muted);
+  --color-accent: var(--viz-accent);
+  --color-accent-fg: var(--viz-accent-text);
+  --color-danger: var(--viz-danger);
+  --font-sans: var(--viz-font-sans);
+  --font-mono: var(--viz-font-mono);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--viz-bg);
+  color: var(--viz-text);
+  font-family: var(--viz-font-sans);
+}
