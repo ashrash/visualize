@@ -1,5 +1,6 @@
 import "./echarts";
 import type { Column } from "../../../api/types";
+import { echarts } from "../../core/echarts";
 import type { Obj } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import { type ChannelSchema, type ChartData, definePlot, type ParamSchema } from "../../core/types";
@@ -112,8 +113,27 @@ export const alluvial = definePlot({
   render(spec, data: ChartData, theme, ctx) {
     const nodes = graphNodes(data.stat?.values);
     const links = graphLinks(data.stat?.values);
+    const labelOf = new Map(nodes.map((n) => [n.name, n.label ?? n.name]));
+    const safe = echarts.format.encodeHTML;
     const option: Obj = {
-      tooltip: { trigger: "item" },
+      tooltip: {
+        trigger: "item",
+        // The default tooltip template would show the internal stage-prefixed node name; this
+        // swaps in the clean label. Unlike the built-in template, a custom formatter's returned
+        // string is not auto-escaped, so every interpolated value goes through encodeHTML.
+        formatter: (p: {
+          dataType?: string;
+          name?: string;
+          data: { source?: string; target?: string; value?: number };
+        }) => {
+          if (p.dataType === "edge") {
+            const s = safe(labelOf.get(p.data.source ?? "") ?? p.data.source ?? "");
+            const t = safe(labelOf.get(p.data.target ?? "") ?? p.data.target ?? "");
+            return `${s} &rarr; ${t}: ${p.data.value ?? ""}`;
+          }
+          return safe(labelOf.get(p.name ?? "") ?? p.name ?? "");
+        },
+      },
       series: [
         {
           type: "sankey",

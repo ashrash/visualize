@@ -178,10 +178,11 @@ export const raincloud = definePlot({
     };
 
     const rnd = rng(1234567);
+    const jitter = typeof spec.params?.jitter === "number" ? spec.params.jitter : 0.15;
     const points: [number, number][] = [];
     groups.forEach((g, i) => {
       const base = (n - 1 - i) * step - band * 0.7;
-      for (const v of g.points) points.push([v, base - rnd() * band * 0.5]);
+      for (const v of g.points) points.push([v, base - rnd() * band * jitter]);
     });
     const pointsSeries: Obj = {
       type: "scatter",

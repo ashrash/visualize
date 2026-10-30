@@ -17,7 +17,7 @@ plus (raincloud) exact quartiles in SQL and a jittered sample of raw points.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Literal
 
 import numpy as np
@@ -29,7 +29,7 @@ from sqlglot import exp
 
 from viz.chartdata.basic import measure_label
 from viz.chartdata.reduce import aggregate_query, over_groups
-from viz.chartdata.sql import alias, cast, col, default_agg, fn, lit, measure_sql, ordered
+from viz.chartdata.sql import alias, cast, col, default_agg, fn, lit, measure_sql, ordered, subquery
 from viz.contracts import AggFn, Encoding, PlotType, Reduction, StatResult
 from viz.errors import InvalidSpecError
 from viz.plots.base import (
@@ -98,8 +98,19 @@ def _edges(
     return req.relation.arrow(over_groups(grouped))
 
 
-def _cap_graph(edges: pa.Table, max_nodes: int) -> tuple[pa.Table, int]:
-    """Keep the `max_nodes` highest-total nodes; the rest collapse into "(Other)"."""
+_DEFAULT_OTHER_NAMES: Callable[[Any, Any], tuple[Any, Any]] = lambda _s, _t: ("(Other)", "(Other)")  # noqa: E731
+
+
+def _cap_graph(
+    edges: pa.Table,
+    max_nodes: int,
+    *,
+    other_names: Callable[[Any, Any], tuple[Any, Any]] = _DEFAULT_OTHER_NAMES,
+) -> tuple[pa.Table, int]:
+    """Keep the `max_nodes` highest-total nodes; the rest collapse into one or more "(Other)"
+    buckets, named by `other_names(source, target)` per edge (a source and a target bucket, so
+    capping alone can't fuse unrelated dropped nodes into a single node that then looks cyclic:
+    sankey buckets its sources and targets separately, alluvial buckets per stage)."""
     totals: dict[Any, float] = {}
     for row in edges.to_pylist():
         totals[row["source"]] = totals.get(row["source"], 0.0) + (row["value"] or 0.0)
@@ -109,44 +120,91 @@ def _cap_graph(edges: pa.Table, max_nodes: int) -> tuple[pa.Table, int]:
     keep = {k for k, _ in sorted(totals.items(), key=lambda kv: -kv[1])[:max_nodes]}
     merged: dict[tuple[Any, Any], float] = {}
     for row in edges.to_pylist():
-        s = row["source"] if row["source"] in keep else "(Other)"
-        t = row["target"] if row["target"] in keep else "(Other)"
+        s_other, t_other = other_names(row["source"], row["target"])
+        s = row["source"] if row["source"] in keep else s_other
+        t = row["target"] if row["target"] in keep else t_other
         if s == t:
-            continue  # an (Other)->(Other) self-loop carries no information
+            continue  # a bucket -> itself self-loop carries no information
         merged[(s, t)] = merged.get((s, t), 0.0) + (row["value"] or 0.0)
     rows = [{"source": s, "target": t, "value": v} for (s, t), v in merged.items()]
     return pa.Table.from_pylist(rows) if rows else edges.slice(0, 0), len(totals) - max_nodes
 
 
 def _drop_cycles(edges: list[tuple[str, str, float]]) -> tuple[list[tuple[str, str, float]], int]:
-    """Kahn's algorithm: repeatedly remove nodes with no incoming edge. Edges still present when
-    no more nodes can be removed close a cycle and are dropped (smallest value first)."""
-    remaining = list(edges)
-    kept: list[tuple[str, str, float]] = []
-    nodes = {n for s, t, _ in remaining for n in (s, t)}
-    while remaining:
-        incoming = {t for _, t, _ in remaining}
-        ready = [n for n in nodes if n not in incoming]
-        if not ready:
-            break
-        ready_set = set(ready)
-        still: list[tuple[str, str, float]] = []
-        for edge in remaining:
-            if edge[0] in ready_set:
-                kept.append(edge)
-            else:
-                still.append(edge)
-        nodes -= ready_set
-        remaining = still
-    dropped = len(remaining)
-    # Cyclic leftovers are dropped (smallest value first) rather than kept, so the graph stays
-    # a DAG; they are rare (a genuine cycle in user-chosen source/target fields).
-    remaining.sort(key=lambda e: e[2])
-    return kept, dropped
+    """Remove only the edges that close a cycle (DFS back-edges), not everything downstream of
+    one: Kahn's algorithm (repeatedly removing nodes with no incoming edge) throws away every
+    edge reachable from a cycle, which is almost the whole graph once rollup's "(Other)" bucket
+    creates even one cross-link.
+
+    Each node's outgoing edges are visited heaviest first, so when a back edge is found it is
+    more likely to be one of the lighter ones (the Kahn version's stated intent, preserved as a
+    heuristic: minimum feedback edge set is NP-hard in general).
+    """
+    adjacency: dict[str, list[tuple[str, float, int]]] = {}
+    nodes: list[str] = []
+    seen_nodes: set[str] = set()
+    for i, (s, t, v) in enumerate(edges):
+        adjacency.setdefault(s, []).append((t, v, i))
+        for n in (s, t):
+            if n not in seen_nodes:
+                seen_nodes.add(n)
+                nodes.append(n)
+    for out in adjacency.values():
+        out.sort(key=lambda e: -e[1])
+
+    dropped: set[int] = set()
+    UNVISITED, IN_STACK, DONE = 0, 1, 2
+    state: dict[str, int] = {}
+
+    def visit(start: str) -> None:
+        stack: list[tuple[str, int]] = [(start, 0)]
+        state[start] = IN_STACK
+        while stack:
+            node, i = stack[-1]
+            out = adjacency.get(node, [])
+            if i >= len(out):
+                state[node] = DONE
+                stack.pop()
+                continue
+            stack[-1] = (node, i + 1)
+            target, _value, edge_index = out[i]
+            if edge_index in dropped:
+                continue
+            target_state = state.get(target, UNVISITED)
+            if target_state == IN_STACK:
+                dropped.add(edge_index)
+            elif target_state == UNVISITED:
+                state[target] = IN_STACK
+                stack.append((target, 0))
+
+    for node in nodes:
+        if state.get(node, UNVISITED) == UNVISITED:
+            visit(node)
+
+    kept = [e for i, e in enumerate(edges) if i not in dropped]
+    return kept, len(dropped)
+
+
+def _stage_of(name: Any) -> str:
+    prefix, sep, _ = str(name).partition("⁣")
+    return prefix if sep else "?"
+
+
+def _sankey_other_names(_s: Any, _t: Any) -> tuple[str, str]:
+    # Separate buckets for dropped sources and dropped targets: one shared "(Other)" would let
+    # capping alone wire up a source-side drop to a target-side drop and look like a cycle.
+    return "(Other: from)", "(Other: to)"
+
+
+def _alluvial_other_names(s: Any, t: Any) -> tuple[str, str]:
+    # One "(Other)" per stage: nodes are already stage-prefixed, so without this a rollup would
+    # fuse dropped nodes from *different* stages into a single node, breaking the stage-by-stage
+    # DAG the alluvial's links are otherwise guaranteed to form.
+    return f"{_stage_of(s)}⁣(Other)", f"{_stage_of(t)}⁣(Other)"
 
 
 def _graph_result(
-    edges: pa.Table, *, directed: bool
+    edges: pa.Table, *, directed: bool, mark_cap: int
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
     rows = edges.to_pylist()
     warnings: list[str] = []
@@ -158,6 +216,11 @@ def _graph_result(
                 f"{dropped} flow{'s' if dropped != 1 else ''} would make a loop and were left out."
             )
         rows = [{"source": s, "target": t, "value": v} for s, t, v in kept]
+    cap = max(1, mark_cap)
+    if len(rows) > cap:
+        rows.sort(key=lambda r: -(r["value"] or 0.0))
+        rows = rows[:cap]
+        warnings.append(f"Showing the {cap:,} largest flows; narrow the data with a filter.")
     totals: dict[Any, float] = {}
     for row in rows:
         totals[row["source"]] = totals.get(row["source"], 0.0) + row["value"]
@@ -186,8 +249,8 @@ def sankey(req: PlotRequest) -> StatResult:
     if source_field is None or target_field is None:
         raise InvalidSpecError("Choose fields for 'source' and 'target'.")
     edges = _edges(req, source_field, target_field, _first_encoding(req, "size"))
-    edges, rolled = _cap_graph(edges, params.max_nodes)
-    nodes, links, warnings = _graph_result(edges, directed=True)
+    edges, rolled = _cap_graph(edges, params.max_nodes, other_names=_sankey_other_names)
+    nodes, links, warnings = _graph_result(edges, directed=True, mark_cap=req.mark_cap)
     if rolled:
         warnings.append(f"The {rolled} smallest nodes are grouped into '(Other)'.")
     return stat_result(
@@ -241,11 +304,9 @@ def alluvial(req: PlotRequest) -> StatResult:
         if link_rows
         else pa.table({"source": [], "target": [], "value": []})
     )
-    edges, rolled = _cap_graph(edges, params.max_nodes)
-    nodes, links, warnings = _graph_result(edges, directed=True)
+    edges, rolled = _cap_graph(edges, params.max_nodes, other_names=_alluvial_other_names)
+    nodes, links, warnings = _graph_result(edges, directed=True, mark_cap=req.mark_cap)
     for node in nodes:
-        if node["name"] == "(Other)":
-            continue
         stage_str, _, label = node["name"].partition("⁣")
         node["label"] = label
         node["depth"] = int(stage_str) if stage_str.isdigit() else 0
@@ -279,7 +340,7 @@ def network(req: PlotRequest) -> StatResult:
         raise InvalidSpecError("Choose fields for 'source' and 'target'.")
     edges = _edges(req, source_field, target_field, _first_encoding(req, "size"))
     edges, rolled = _cap_graph(edges, params.max_nodes)
-    nodes, links, warnings = _graph_result(edges, directed=False)
+    nodes, links, warnings = _graph_result(edges, directed=False, mark_cap=req.mark_cap)
     if rolled:
         warnings.append(f"The {rolled} smallest nodes are grouped into '(Other)'.")
     return stat_result(
@@ -370,7 +431,17 @@ def pareto(req: PlotRequest) -> TableOutput:
     y0 = _first_encoding(req, "y") or Encoding(agg=AggFn.COUNT)
     if y0.field is None and default_agg(y0) != AggFn.COUNT:
         raise InvalidSpecError(f"{default_agg(y0).value} needs a field")
-    grouped = aggregate_query(req.relation, [("x", col(x_field))], [("y0", measure_sql(y0))])
+    dims = [("x", col(x_field))]
+    measures = [("y0", measure_sql(y0))]
+    # A separate, fresh query for the grand total: cumPercent must read 100% at the last bar
+    # actually drawn only when nothing was cut off, not whenever the cap truncates the table.
+    total_query = aggregate_query(req.relation, dims, measures)
+    total_row = req.relation.arrow(
+        exp.select(alias(fn("sum", col("y0")), "total")).from_(subquery(total_query, "__viz_t"))
+    ).to_pylist()[0]
+    grand_total = float(total_row["total"] or 0.0) or 1.0
+
+    grouped = aggregate_query(req.relation, dims, measures)
     cap = max(1, req.mark_cap)
     table = req.relation.arrow(
         over_groups(grouped).order_by(ordered(col("y0"), desc=True)).limit(cap + 1)
@@ -382,8 +453,7 @@ def pareto(req: PlotRequest) -> TableOutput:
         params_out["truncatedGroups"] = True
         warnings.append(_truncation_warning(cap))
     values = pc.cast(table.column("y0"), pa.float64()).to_numpy(zero_copy_only=False)
-    total = float(np.nansum(values)) or 1.0
-    cum_percent = np.cumsum(np.where(np.isfinite(values), values, 0.0)) / total * 100.0
+    cum_percent = np.cumsum(np.where(np.isfinite(values), values, 0.0)) / grand_total * 100.0
     table = table.append_column("cumPercent", pa.array(cum_percent, pa.float64()))
     fields = {"x": x_enc.label or x_field, "y0": measure_label(y0), "cumPercent": "Cumulative %"}
     return TableOutput(
@@ -445,7 +515,14 @@ def error_bar(req: PlotRequest) -> TableOutput:
             ("__viz_n", exp.Count(this=exp.Case(ifs=[exp.If(this=value.copy(), true=lit(1))]))),
         ],
     )
-    table = req.relation.arrow(over_groups(grouped).order_by(ordered(col("x"))))
+    cap = max(1, req.mark_cap)
+    table = req.relation.arrow(over_groups(grouped).order_by(ordered(col("x"))).limit(cap + 1))
+    warnings: list[str] = []
+    params_out: dict[str, Any] = {"errorKind": params.kind}
+    if table.num_rows > cap:
+        table = table.slice(0, cap)
+        params_out["truncatedGroups"] = True
+        warnings.append(_truncation_warning(cap))
     sd = pc.cast(table.column("__viz_sd"), pa.float64()).to_numpy(zero_copy_only=False)
     n = pc.cast(table.column("__viz_n"), pa.float64()).to_numpy(zero_copy_only=False)
     center = pc.cast(table.column("y0"), pa.float64()).to_numpy(zero_copy_only=False)
@@ -473,8 +550,8 @@ def error_bar(req: PlotRequest) -> TableOutput:
         reduction=Reduction.AGGREGATED,
         method="mean+error",
         fields=fields,
-        params={"errorKind": params.kind},
-        warnings=[],
+        params=params_out,
+        warnings=warnings,
     )
 
 
@@ -548,7 +625,9 @@ def dumbbell(req: PlotRequest) -> TableOutput:
     measures = [(f"y{i}", measure_sql(y)) for i, y in enumerate(ys)]
     grouped = aggregate_query(req.relation, [("x", col(x_field))], measures)
     cap = max(1, req.mark_cap // 2)
-    table = req.relation.arrow(over_groups(grouped).limit(cap + 1))
+    # Ordered (not an arbitrary LIMIT): an unordered cap doesn't just pick an arbitrary subset,
+    # it can pick a *different* arbitrary subset on every request.
+    table = req.relation.arrow(over_groups(grouped).order_by(ordered(col("x"))).limit(cap + 1))
     warnings: list[str] = []
     params_out: dict[str, Any] = {}
     if table.num_rows > cap:
@@ -698,10 +777,16 @@ def raincloud(req: PlotRequest) -> StatResult:
         kde_result = kde_by_group(
             values, groups, bw=params.bandwidth, adjust=params.adjust, grid_size=params.grid_size
         )
+        # The strip's points count toward the mark cap too (StatResult outputs otherwise have no
+        # generic cap guard): spread it evenly over the groups actually drawn.
+        n_groups = max(1, len(kde_result.curves))
+        point_cap = max(1, min(params.point_sample, req.mark_cap // n_groups))
+        if point_cap < params.point_sample:
+            warnings.append(f"Showing at most {point_cap:,} sampled points per group.")
         for curve in kde_result.curves:
             key = curve.key
             idx = np.where(groups == key)[0]
-            sample_idx = rng.choice(idx, size=min(len(idx), params.point_sample), replace=False)
+            sample_idx = rng.choice(idx, size=min(len(idx), point_cap), replace=False)
             box = boxes.get(key, {})
             out_groups.append(
                 {
@@ -718,9 +803,10 @@ def raincloud(req: PlotRequest) -> StatResult:
         single = kde_single(
             finite, bw=params.bandwidth, adjust=params.adjust, grid_size=params.grid_size
         )
-        sample_idx = rng.choice(
-            len(finite), size=min(len(finite), params.point_sample), replace=False
-        )
+        point_cap = max(1, min(params.point_sample, req.mark_cap))
+        if point_cap < params.point_sample:
+            warnings.append(f"Showing at most {point_cap:,} sampled points.")
+        sample_idx = rng.choice(len(finite), size=min(len(finite), point_cap), replace=False)
         out_groups.append(
             {
                 "key": None,

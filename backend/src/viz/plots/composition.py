@@ -20,12 +20,11 @@ from collections.abc import Sequence
 from typing import Any
 
 import pyarrow as pa
-import pyarrow.compute as pc
 from pydantic import Field
 from sqlglot import exp
 
 from viz.chartdata.basic import measure_label
-from viz.chartdata.reduce import aggregate_query, minmaxlttb, over_groups
+from viz.chartdata.reduce import aggregate_query, m4_query, minmaxlttb, numeric_x, over_groups
 from viz.chartdata.sql import (
     alias,
     cast,
@@ -36,6 +35,7 @@ from viz.chartdata.sql import (
     lit,
     measure_sql,
     ordered,
+    row_number,
     subquery,
     window,
 )
@@ -87,33 +87,59 @@ def _truncation_warning(limit: int) -> str:
     return f"Showing the first {limit:,} groups; narrow the data with a filter."
 
 
-def _top_colors(
-    req: PlotRequest, color_dim: exp.Expr, y0: Encoding, limit: int
+def _top_values(
+    req: PlotRequest, dim_expr: exp.Expr, y0: Encoding, limit: int, *, dim_name: str = "color"
 ) -> tuple[list[Any], bool]:
+    """The `limit` values of `dim_expr` with the largest total |y0|, and whether more exist."""
     grouped = aggregate_query(
-        req.relation, [("color", color_dim)], [("__viz_size", fn("abs", measure_sql(y0)))]
+        req.relation, [(dim_name, dim_expr)], [("__viz_size", fn("abs", measure_sql(y0)))]
     )
     query = (
         over_groups(grouped)
-        .order_by(ordered(col("__viz_size"), desc=True), ordered(col("color")))
+        .order_by(ordered(col("__viz_size"), desc=True), ordered(col(dim_name)))
         .limit(limit + 1)
     )
-    values = req.relation.arrow(query).column("color").to_pylist()
+    values = req.relation.arrow(query).column(dim_name).to_pylist()
     return values[:limit], len(values) > limit
 
 
-def _color_condition(color_dim: exp.Expr, keep: Sequence[Any]) -> exp.Expr:
+def _top_colors(
+    req: PlotRequest, color_dim: exp.Expr, y0: Encoding, limit: int
+) -> tuple[list[Any], bool]:
+    return _top_values(req, color_dim, y0, limit, dim_name="color")
+
+
+def _dim_condition(dim_expr: exp.Expr, keep: Sequence[Any]) -> exp.Expr:
     present = [lit(v) for v in keep if v is not None]
     parts: list[exp.Expr] = []
     if present:
-        parts.append(exp.In(this=color_dim.copy(), expressions=present))
+        parts.append(exp.In(this=dim_expr.copy(), expressions=present))
     if any(v is None for v in keep):
-        parts.append(exp.Is(this=color_dim.copy(), expression=exp.Null()))
+        parts.append(exp.Is(this=dim_expr.copy(), expression=exp.Null()))
     return exp.or_(*parts) if parts else exp.false()
 
 
 def _drop_helpers(table: pa.Table) -> pa.Table:
     return table.drop_columns([n for n in table.column_names if n.startswith("__viz_")])
+
+
+def _truncate_whole_groups(table: pa.Table, group_col: str, cap: int) -> tuple[pa.Table, bool]:
+    """`table` (already sorted by `group_col`) cut at a `group_col` boundary at or below `cap`
+    rows, never slicing through the middle of a group (which would ship a bar that doesn't sum
+    to what the rest of the chart implies, e.g. a 100% stack whose shares no longer add to 100).
+    The first group is always kept in full even if it alone exceeds `cap`."""
+    if table.num_rows <= cap:
+        return table, False
+    keys = table.column(group_col).to_pylist()
+    cut = 0
+    start = 0
+    for i in range(1, len(keys) + 1):
+        if i == len(keys) or keys[i] != keys[start]:
+            if cut > 0 and i > cap:
+                break
+            cut = i
+            start = i
+    return table.slice(0, cut), cut < len(keys)
 
 
 def _size_measure(size_enc: Encoding | None) -> exp.Expr:
@@ -143,8 +169,14 @@ class StackedAreaParams(PlotParams):
     params=StackedAreaParams,
 )
 def stacked_area(req: PlotRequest) -> TableOutput:
-    """GROUP BY x[, color], SUM(y): the same shape as `area`, downsampled with MinMaxLTTB when
-    an ordered x has more points than the cap per series."""
+    """GROUP BY x[, color], SUM(y): the same shape as `area`.
+
+    An ordered x is reduced the same way the basic family's own line/area charts are: SQL-side
+    M4 (per pixel-column extremes, sized to the viewport, never pulling the full series into
+    Python) followed by MinMaxLTTB. A categorical x over the cap keeps the largest x categories
+    by total |y0| (not an arbitrary row prefix, which could split a stack's bars across
+    categories unevenly).
+    """
     params = req.params
     assert isinstance(params, StackedAreaParams)
     x_field, x_enc, x_semantic = _x_info(req)
@@ -160,14 +192,16 @@ def stacked_area(req: PlotRequest) -> TableOutput:
     params_out: dict[str, Any] = {}
     fields = {"x": x_enc.label or x_field}
     dims: list[tuple[str, exp.Expr]] = [("x", x_dim)]
+    n_series = 1
     color = _color_info(req)
     if color is not None:
         color_field, color_enc = color
         color_dim = dimension_sql(color_enc)
         fields["color"] = color_enc.label or color_field
         keep, more = _top_colors(req, color_dim, ys[0], params.max_series)
+        n_series = max(1, len(keep))
         if more:
-            relation = relation.narrow(_color_condition(color_dim, keep))
+            relation = relation.narrow(_dim_condition(color_dim, keep))
             params_out["truncatedSeries"] = True
             warnings.append(
                 f"Showing the {params.max_series} largest of the {fields['color']} series; "
@@ -180,26 +214,46 @@ def stacked_area(req: PlotRequest) -> TableOutput:
         fields[f"y{i}"] = measure_label(y)
     grouped = aggregate_query(relation, dims, measures)
     order = [ordered(col("x"))] + ([ordered(col("color"))] if color is not None else [])
-    table = relation.arrow(over_groups(grouped).order_by(*order))
 
     per_measure_cap = max(1, req.mark_cap // len(ys))
-    n_series = max(1, len({v for v in table.column("color").to_pylist()}) if color else 1)
     y_names = [f"y{i}" for i in range(len(ys))]
     reduction, method = Reduction.AGGREGATED, "group_by"
-    if ordered_x and table.num_rows > per_measure_cap:
-        n_out = max(3, per_measure_cap // n_series)
-        table, reduced = minmaxlttb(
-            table, x="x", ys=y_names, series="color" if color else None, n_out=n_out
+    if ordered_x:
+        n_out = max(3, min(2 * max(1, req.viewport.width_px), per_measure_cap // n_series))
+        buckets = max(1, min(req.viewport.width_px, n_out))
+        m4 = m4_query(
+            grouped,
+            x="x",
+            x_position=numeric_x(col("x"), x_semantic),
+            ys=y_names,
+            series="color" if color is not None else None,
+            buckets=buckets,
         )
-        if reduced:
-            reduction, method = Reduction.DOWNSAMPLED, "minmaxlttb"
-            params_out["nOut"] = n_out
-    elif table.num_rows > per_measure_cap:
-        order_col = pc.sort_indices(table, sort_keys=[(y_names[0], "descending")])[:per_measure_cap]
-        table = table.take(order_col)
-        table = table.take(pc.sort_indices(table, sort_keys=[("x", "ascending")]))
-        params_out["truncatedGroups"] = True
-        warnings.append(_truncation_warning(per_measure_cap))
+        m4_table = relation.arrow(m4)
+        groups = int(m4_table.column("__viz_groups")[0].as_py() or 0) if m4_table.num_rows else 0
+        if groups <= per_measure_cap:
+            # Small enough after all: fetch the exact (ungrouped-by-pixel) values instead.
+            table = relation.arrow(over_groups(grouped).order_by(*order))
+        else:
+            table, reduced = minmaxlttb(
+                m4_table,
+                x="x",
+                ys=y_names,
+                series="color" if color is not None else None,
+                n_out=n_out,
+            )
+            if reduced:
+                reduction, method = Reduction.DOWNSAMPLED, "m4+minmaxlttb"
+                params_out["nOut"] = n_out
+    else:
+        cap = per_measure_cap
+        keep_x, more_x = _top_values(req, x_dim, ys[0], cap, dim_name="x")
+        if more_x:
+            relation = relation.narrow(_dim_condition(x_dim, keep_x))
+            grouped = aggregate_query(relation, dims, measures)
+            params_out["truncatedGroups"] = True
+            warnings.append(_truncation_warning(cap))
+        table = relation.arrow(over_groups(grouped).order_by(*order))
     return TableOutput(
         table=table,
         reduction=reduction,
@@ -248,7 +302,7 @@ def percent_stacked_bar(req: PlotRequest) -> TableOutput:
     params_out: dict[str, Any] = {}
     keep, more = _top_colors(req, color_dim, y0, params.max_series)
     if more:
-        relation = relation.narrow(_color_condition(color_dim, keep))
+        relation = relation.narrow(_dim_condition(color_dim, keep))
         params_out["truncatedSeries"] = True
         warnings.append(
             f"Showing the {params.max_series} largest "
@@ -281,8 +335,10 @@ def percent_stacked_bar(req: PlotRequest) -> TableOutput:
     )
     table = relation.arrow(final)
     cap = max(1, req.mark_cap)
-    if table.num_rows > cap:
-        table = table.slice(0, cap)
+    # Cut at a whole x boundary: a row-count slice could split one x's colors across the cut,
+    # shipping a partial bar whose shares no longer sum to 100.
+    table, truncated = _truncate_whole_groups(table, "x", cap)
+    if truncated:
         params_out["truncatedGroups"] = True
         warnings.append(_truncation_warning(cap))
     fields = {
@@ -302,8 +358,14 @@ def percent_stacked_bar(req: PlotRequest) -> TableOutput:
 
 class WaterfallParams(PlotParams):
     # When no 'kind' encoding is bound, treat the first/last category as a running total.
+    # last_is_total defaults to False: a trailing bar reset to its own value (rather than
+    # continuing the running sum) misrepresents a plain delta sequence as already totalling to
+    # its last value. Use `append_total` for a genuinely computed grand-total bar instead.
     first_is_total: bool = True
-    last_is_total: bool = True
+    last_is_total: bool = False
+    # Add one more bar after the data: the true running total (not a reset), independent of
+    # last_is_total/kind.
+    append_total: bool = False
 
 
 @register_plot(
@@ -336,12 +398,26 @@ def waterfall(req: PlotRequest) -> TableOutput:
         measures.append(("__viz_kind", fn("min", col(kind_field))))
     grouped = aggregate_query(req.relation, dims, measures)
     order_expr = ordered(col("__viz_order")) if order_field is not None else ordered(col("x"))
-    table = req.relation.arrow(over_groups(grouped).order_by(order_expr))
+    cap = max(1, req.mark_cap)
+    table = req.relation.arrow(over_groups(grouped).order_by(order_expr).limit(cap + 1))
     if table.num_rows == 0:
         raise InvalidSpecError("No rows to draw a waterfall from.")
+    warnings: list[str] = []
+    params_out: dict[str, Any] = {}
+    if table.num_rows > cap:
+        table = table.slice(0, cap)
+        params_out["truncatedGroups"] = True
+        warnings.append(_truncation_warning(cap))
 
     xs = table.column("x").to_pylist()
-    ys = pc.cast(table.column("__viz_y"), pa.float64()).to_pylist()
+    raw_ys = table.column("__viz_y").to_pylist()
+    n_null = sum(1 for y in raw_ys if y is None)
+    if n_null:
+        warnings.append(
+            f"{n_null:,} categor{'y has' if n_null == 1 else 'ies have'} no value; "
+            "treated as a change of 0."
+        )
+    ys = [0.0 if y is None else float(y) for y in raw_ys]
     kinds = table.column("__viz_kind").to_pylist() if kind_field is not None else [None] * len(xs)
     is_total = [False] * len(xs)
     for i, k in enumerate(kinds):
@@ -365,6 +441,11 @@ def waterfall(req: PlotRequest) -> TableOutput:
             starts.append(running)
             ends.append(running + y)
             running += y
+    if params.append_total:
+        xs.append("Total")
+        starts.append(0.0)
+        ends.append(running)
+        is_total.append(True)
     bases = [min(s, e) for s, e in zip(starts, ends, strict=True)]
     heights = [abs(e - s) for s, e in zip(starts, ends, strict=True)]
     directions = [
@@ -390,8 +471,8 @@ def waterfall(req: PlotRequest) -> TableOutput:
         reduction=Reduction.AGGREGATED,
         method="running_sum",
         fields=fields,
-        params={},
-        warnings=[],
+        params=params_out,
+        warnings=warnings,
     )
 
 
@@ -444,45 +525,76 @@ class HierarchyParams(PlotParams):
 
 
 def _hierarchy_stat(req: PlotRequest, max_leaves: int) -> TableOutput:
+    """GROUP BY every hierarchy level, then rank and roll up the smallest leaves into "(Other)"
+    entirely in SQL: a window `row_number()` over the leaf totals, a `CASE` that relabels the
+    last level past the cap, and a re-aggregate. Capping in SQL (rather than pulling every leaf
+    into Python first) keeps this interruptible and bounded by `max_leaves`, not by the number
+    of distinct leaf paths, which can be far larger. The last level is always cast to VARCHAR,
+    so a boolean or numeric last level never collides with the literal "(Other)" string even
+    when nothing is rolled up.
+    """
     levels = req.fields("label")
     if not levels:
         raise InvalidSpecError("Choose at least one field for 'label'.")
     size_enc = _first_encoding(req, "size")
-    measure = _size_measure(size_enc)
+    raw_measure = _size_measure(size_enc)
+    label_cols = [f"label{i}" for i in range(len(levels))]
+    last = label_cols[-1]
 
-    dims = [(f"label{i}", col(field)) for i, field in enumerate(levels)]
-    grouped = aggregate_query(req.relation, dims, [("size", measure)])
-    table = req.relation.arrow(over_groups(grouped))
+    dims = [(name, col(field)) for name, field in zip(label_cols, levels, strict=True)]
+    leaves = aggregate_query(req.relation, dims, [("size", raw_measure)])
+    stats_row = req.relation.arrow(
+        exp.select(
+            alias(exp.Count(this=exp.Star()), "n"),
+            alias(
+                exp.Count(
+                    this=exp.Case(
+                        ifs=[
+                            exp.If(this=exp.LT(this=col("size"), expression=lit(0.0)), true=lit(1))
+                        ]
+                    )
+                ),
+                "neg",
+            ),
+        ).from_(subquery(leaves, "__viz_leaves"))
+    ).to_pylist()[0]
+    leaf_count = int(stats_row["n"] or 0)
+    neg_count = int(stats_row["neg"] or 0)
+
+    rank = row_number(order_by=[ordered(col("size"), desc=True)])
+    ranked = exp.select(exp.Star(), alias(rank, "__viz_rank")).from_(
+        subquery(leaves, "__viz_leaves")
+    )
+    relabeled_last = exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.LTE(this=col("__viz_rank"), expression=lit(max_leaves)),
+                true=cast(col(last), "VARCHAR"),
+            )
+        ],
+        default=lit("(Other)"),
+    )
+    relabel_select = [
+        alias(relabeled_last, last) if name == last else col(name) for name in label_cols
+    ] + [alias(fn("greatest", col("size"), lit(0.0)), "size")]
+    relabeled = exp.select(*relabel_select).from_(subquery(ranked, "__viz_ranked"))
+    final = (
+        exp.select(*[col(n) for n in label_cols], alias(fn("sum", col("size")), "size"))
+        .from_(subquery(relabeled, "__viz_relabeled"))
+        .group_by(*[col(n) for n in label_cols])
+    )
+    table = req.relation.arrow(final)
+
     warnings: list[str] = []
     params_out: dict[str, Any] = {}
-    last = f"label{len(levels) - 1}"
-    if table.num_rows > max_leaves:
-        order = pc.sort_indices(table, sort_keys=[("size", "descending")])
-        keep = order[:max_leaves]
-        rest = order[max_leaves:]
-        kept = table.take(keep)
-        if len(rest):
-            dropped = table.take(rest)
-            other_last = pa.array(["(Other)"] * dropped.num_rows, pa.string())
-            dropped = dropped.set_column(dropped.schema.get_field_index(last), last, other_last)
-            merged = pa.concat_tables([kept, dropped])
-            group_cols = [f"label{i}" for i in range(len(levels))]
-            # Re-aggregate: rows that now share the same path (after renaming) must merge.
-            df_groups: dict[tuple[Any, ...], float] = {}
-            for row in merged.to_pylist():
-                key = tuple(row[c] for c in group_cols)
-                df_groups[key] = df_groups.get(key, 0.0) + (row["size"] or 0.0)
-            cols: dict[str, list[Any]] = {c: [] for c in group_cols}
-            cols["size"] = []
-            for key, value in df_groups.items():
-                for c, v in zip(group_cols, key, strict=True):
-                    cols[c].append(v)
-                cols["size"].append(value)
-            table = pa.table(cols)
-            params_out["rolledUpLeaves"] = len(rest)
-            warnings.append(f"The {len(rest)} smallest leaves are grouped into '(Other)'.")
-        else:
-            table = kept
+    if leaf_count > max_leaves:
+        rolled = leaf_count - max_leaves
+        params_out["rolledUpLeaves"] = rolled
+        warnings.append(f"The {rolled} smallest leaves are grouped into '(Other)'.")
+    if neg_count:
+        warnings.append(
+            f"{neg_count:,} negative value{'s' if neg_count != 1 else ''} clamped to 0."
+        )
     fields = {f"label{i}": field for i, field in enumerate(levels)}
     fields["size"] = _size_label(size_enc)
     return TableOutput(
@@ -528,7 +640,21 @@ class CrosstabParams(PlotParams):
     max_color: int = Field(default=DEFAULT_MAX_CROSSTAB, ge=1, le=200)
 
 
+def _crosstab_cells(
+    req: PlotRequest, x_field: str, color_field: str, measure: exp.Expr
+) -> exp.Select:
+    return aggregate_query(
+        req.relation, [("x", col(x_field)), ("color", col(color_field))], [("value", measure)]
+    )
+
+
 def _crosstab_stat(req: PlotRequest) -> TableOutput:
+    """A GROUP BY x, color crosstab with row/column shares, entirely in SQL: `dense_rank()`
+    window functions (over each side's own total, so no join is needed) relabel the smallest x
+    categories and color segments past their caps to "(Other)" (VARCHAR, so a non-text column
+    never collides with it), then the shares are themselves window functions over the
+    re-aggregated cells. As with the hierarchy rollup, this keeps the cap bounded by
+    `max_x`/`max_color` rather than by the number of distinct (x, color) pairs."""
     params = req.params
     assert isinstance(params, CrosstabParams)
     x_field, x_enc, _ = _x_info(req)
@@ -538,64 +664,91 @@ def _crosstab_stat(req: PlotRequest) -> TableOutput:
     size_enc = _first_encoding(req, "size")
     measure = _size_measure(size_enc)
 
-    grouped = aggregate_query(
-        req.relation, [("x", col(x_field)), ("color", col(color_field))], [("value", measure)]
+    stats_row = req.relation.arrow(
+        exp.select(
+            alias(fn("count", exp.Distinct(expressions=[col("x")])), "nx"),
+            alias(fn("count", exp.Distinct(expressions=[col("color")])), "nc"),
+        ).from_(subquery(_crosstab_cells(req, x_field, color_field, measure), "__viz_cells"))
+    ).to_pylist()[0]
+    n_x, n_color = int(stats_row["nx"] or 0), int(stats_row["nc"] or 0)
+
+    cells = _crosstab_cells(req, x_field, color_field, measure)
+    scored = exp.select(
+        exp.Star(),
+        alias(window(fn("sum", col("value")), partition_by=[col("x")]), "__viz_xt"),
+        alias(window(fn("sum", col("value")), partition_by=[col("color")]), "__viz_ct"),
+    ).from_(subquery(cells, "__viz_cells"))
+    ranked = exp.select(
+        exp.Star(),
+        alias(window(fn("dense_rank"), order_by=[ordered(col("__viz_xt"), desc=True)]), "__viz_xr"),
+        alias(window(fn("dense_rank"), order_by=[ordered(col("__viz_ct"), desc=True)]), "__viz_cr"),
+    ).from_(subquery(scored, "__viz_scored"))
+    x_relabel = exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.LTE(this=col("__viz_xr"), expression=lit(params.max_x)),
+                true=cast(col("x"), "VARCHAR"),
+            )
+        ],
+        default=lit("(Other)"),
     )
-    table = req.relation.arrow(over_groups(grouped))
+    color_relabel = exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.LTE(this=col("__viz_cr"), expression=lit(params.max_color)),
+                true=cast(col("color"), "VARCHAR"),
+            )
+        ],
+        default=lit("(Other)"),
+    )
+    relabeled = exp.select(
+        alias(x_relabel, "x"), alias(color_relabel, "color"), col("value")
+    ).from_(subquery(ranked, "__viz_ranked"))
+    final = (
+        exp.select(col("x"), col("color"), alias(fn("sum", col("value")), "size"))
+        .from_(subquery(relabeled, "__viz_relabeled"))
+        .group_by(col("x"), col("color"))
+    )
+    with_shares = (
+        exp.select(
+            col("x"),
+            col("color"),
+            col("size"),
+            alias(
+                exp.Div(
+                    this=window(fn("sum", col("size")), partition_by=[col("x")]),
+                    expression=exp.Nullif(this=window(fn("sum", col("size"))), expression=lit(0.0)),
+                ),
+                "xShare",
+            ),
+            alias(
+                exp.Div(
+                    this=col("size"),
+                    expression=exp.Nullif(
+                        this=window(fn("sum", col("size")), partition_by=[col("x")]),
+                        expression=lit(0.0),
+                    ),
+                ),
+                "share",
+            ),
+        )
+        .from_(subquery(final, "__viz_final"))
+        .order_by(ordered(col("x")), ordered(col("color")))
+    )
+    table = req.relation.arrow(with_shares)
+
     warnings: list[str] = []
     params_out: dict[str, Any] = {}
-
-    def _cap_dim(tbl: pa.Table, dim: str, limit: int) -> tuple[pa.Table, bool]:
-        totals: dict[Any, float] = {}
-        for row in tbl.to_pylist():
-            totals[row[dim]] = totals.get(row[dim], 0.0) + (row["value"] or 0.0)
-        if len(totals) <= limit:
-            return tbl, False
-        keep = {k for k, _ in sorted(totals.items(), key=lambda kv: -kv[1])[:limit]}
-        rows = []
-        merged: dict[tuple[Any, Any], float] = {}
-        for row in tbl.to_pylist():
-            key_val = row[dim] if row[dim] in keep else "(Other)"
-            other = "x" if dim == "color" else "color"
-            merge_key = (row[other], key_val) if dim == "color" else (key_val, row[other])
-            merged[merge_key] = merged.get(merge_key, 0.0) + (row["value"] or 0.0)
-        for (xv, cv), value in merged.items():
-            rows.append({"x": xv, "color": cv, "value": value})
-        return pa.Table.from_pylist(rows), True
-
-    table, cx = _cap_dim(table, "x", params.max_x)
-    table, cc = _cap_dim(table, "color", params.max_color)
-    if cx or cc:
+    if n_x > params.max_x or n_color > params.max_color:
         params_out["rolledUp"] = True
         warnings.append("Small categories are grouped into '(Other)'.")
-
-    rows = table.to_pylist()
-    x_totals: dict[Any, float] = {}
-    for row in rows:
-        x_totals[row["x"]] = x_totals.get(row["x"], 0.0) + (row["value"] or 0.0)
-    grand_total = sum(x_totals.values()) or 1.0
-    x_shares = []
-    shares = []
-    for row in rows:
-        xt = x_totals[row["x"]] or 1.0
-        x_shares.append(xt / grand_total)
-        shares.append((row["value"] or 0.0) / xt)
-    out = pa.table(
-        {
-            "x": [r["x"] for r in rows],
-            "color": [r["color"] for r in rows],
-            "size": [r["value"] for r in rows],
-            "xShare": pa.array(x_shares, pa.float64()),
-            "share": pa.array(shares, pa.float64()),
-        }
-    )
     fields = {
         "x": x_enc.label or x_field,
         "color": color_enc.label or color_field,
         "size": _size_label(size_enc),
     }
     return TableOutput(
-        table=out,
+        table=table,
         reduction=Reduction.AGGREGATED,
         method="crosstab",
         fields=fields,

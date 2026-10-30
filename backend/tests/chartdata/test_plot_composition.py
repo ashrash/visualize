@@ -106,5 +106,8 @@ def test_waterfall_over_http(upload: Any, chart: Any, make_spec: Any) -> None:
     table, meta = chart(body)
     rows = table.to_pylist()
     assert rows[0]["direction"] == "total"
-    assert rows[-1]["direction"] == "total"
+    # last_is_total defaults to False: the real running total (100 + 20 + 120 = 240) must not be
+    # overwritten by resetting the last bar to its own value (120).
+    assert rows[-1]["direction"] == "increase"
+    assert rows[-1]["end"] == 240.0
     assert meta["method"] == "running_sum"

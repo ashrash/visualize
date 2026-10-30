@@ -9,6 +9,7 @@ import pytest
 from viz.contracts import ChartSpec, Encoding, PlotType, SourceRef, Viewport
 from viz.plots.base import PlotParams, PlotRequest
 from viz.plots.specialized import (
+    AlluvialParams,
     DensityParams,
     DumbbellParams,
     ErrorBarParams,
@@ -16,6 +17,7 @@ from viz.plots.specialized import (
     GraphParams,
     RaincloudParams,
     SortableBarParams,
+    alluvial,
     dumbbell,
     error_bar,
     gantt,
@@ -110,12 +112,23 @@ def test_sankey_caps_nodes_into_other(table_relation: MakeRelation) -> None:
     )
     out = sankey(req)
     names = {node["name"] for node in out.values["nodes"]}
-    assert "(Other)" in names
+    # Dropped sources and dropped targets get separate buckets, so capping alone can never wire
+    # up a source-side drop to a target-side drop and look like a cycle.
+    assert "(Other: from)" in names
     assert "A" in names and "X" in names
 
 
-def test_sankey_drops_edges_that_would_cycle(table_relation: MakeRelation) -> None:
-    rel = table_relation({"source": ["A", "B"], "target": ["B", "A"], "value": [1.0, 1.0]})
+def test_sankey_drops_only_the_cycle_not_the_rest_of_the_graph(
+    table_relation: MakeRelation,
+) -> None:
+    # A -> B -> A is a cycle; B -> C -> D is not, and must survive untouched.
+    rel = table_relation(
+        {
+            "source": ["A", "B", "B", "C"],
+            "target": ["B", "A", "C", "D"],
+            "value": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
     req = _request(
         rel,
         PlotType.SANKEY,
@@ -123,9 +136,28 @@ def test_sankey_drops_edges_that_would_cycle(table_relation: MakeRelation) -> No
         GraphParams,
     )
     out = sankey(req)
-    # A cyclic 2-node graph can keep at most one of the two edges as a DAG.
-    assert len(out.values["links"]) <= 1
+    links = {(link["source"], link["target"]) for link in out.values["links"]}
+    assert ("B", "C") in links
+    assert ("C", "D") in links
+    # Exactly one of the two cycle edges is dropped, not both.
+    assert len({("A", "B"), ("B", "A")} & links) == 1
+    assert len(links) == 3
     assert any("loop" in w for w in out.warnings)
+
+
+def test_sankey_self_loop_only_drops_itself(table_relation: MakeRelation) -> None:
+    rel = table_relation(
+        {"source": ["A", "A"], "target": ["A", "B"], "value": [1.0, 1.0]},
+    )
+    req = _request(
+        rel,
+        PlotType.SANKEY,
+        {"source": [Encoding(field="source")], "target": [Encoding(field="target")]},
+        GraphParams,
+    )
+    out = sankey(req)
+    links = {(link["source"], link["target"]) for link in out.values["links"]}
+    assert links == {("A", "B")}
 
 
 def test_network_is_undirected_and_keeps_cycles(table_relation: MakeRelation) -> None:
@@ -138,6 +170,64 @@ def test_network_is_undirected_and_keeps_cycles(table_relation: MakeRelation) ->
     )
     out = network(req)
     assert len(out.values["links"]) == 2
+
+
+def test_alluvial_is_acyclic_by_construction(table_relation: MakeRelation) -> None:
+    rel = table_relation(
+        {
+            "entry": ["Ads", "Ads", "Search"],
+            "page": ["Home", "Pricing", "Home"],
+            "outcome": ["Signup", "Bounce", "Signup"],
+            "users": [10.0, 5.0, 20.0],
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.ALLUVIAL,
+        {
+            "label": [Encoding(field="entry"), Encoding(field="page"), Encoding(field="outcome")],
+            "size": [Encoding(field="users")],
+        },
+        AlluvialParams,
+    )
+    out = alluvial(req)
+    # 5 distinct stage-to-stage links (Home -> Signup merges the two rows that share it), none
+    # dropped as a "loop": a layered, stage-by-stage graph can never contain a cycle.
+    assert len(out.values["links"]) == 5
+    assert not any("loop" in w for w in out.warnings)
+
+
+def test_alluvial_rollup_keeps_each_stage_in_its_own_other_bucket(
+    table_relation: MakeRelation,
+) -> None:
+    # 3 stages, each with several distinct values: without a per-stage "(Other)" bucket, the
+    # smallest nodes at every stage would collapse into one shared node and create artificial
+    # cross-stage cycles (and the loop-detector would then drop almost everything).
+    n = 6
+    rel = table_relation(
+        {
+            "a": [f"a{i}" for i in range(n)],
+            "b": [f"b{i}" for i in range(n)],
+            "c": [f"c{i}" for i in range(n)],
+            "users": [float(n - i) for i in range(n)],
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.ALLUVIAL,
+        {
+            "label": [Encoding(field="a"), Encoding(field="b"), Encoding(field="c")],
+            "size": [Encoding(field="users")],
+        },
+        AlluvialParams,
+        params={"maxNodes": 3},
+    )
+    out = alluvial(req)
+    assert not any("loop" in w for w in out.warnings)
+    others = [n for n in out.values["nodes"] if "(Other)" in n["name"]]
+    # A separate Other bucket per stage (0, 1, 2), not one shared across all of them.
+    assert len(others) == 3
+    assert len({o["depth"] for o in others}) == 3
 
 
 def test_gantt_returns_rows_sorted_by_start(table_relation: MakeRelation) -> None:
@@ -178,6 +268,29 @@ def test_pareto_sorts_descending_with_cumulative_percent(table_relation: MakeRel
     assert rows[1]["cumPercent"] == pytest.approx(90.0)
 
 
+def test_pareto_cum_percent_reflects_the_true_total_when_truncated(
+    table_relation: MakeRelation,
+) -> None:
+    # cumPercent must be computed against the grand total of every category, not just the
+    # ones that survive the mark cap -- otherwise a truncated chart misleadingly reads 100%
+    # at its last visible bar.
+    rel = table_relation(
+        {"defect": ["A", "B", "C", "D"], "count": [40.0, 30.0, 20.0, 10.0]},
+    )
+    req = _request(
+        rel,
+        PlotType.PARETO,
+        {"x": [Encoding(field="defect")], "y": [Encoding(field="count")]},
+        mark_cap=2,
+    )
+    out = pareto(req)
+    rows = out.table.to_pylist()
+    assert len(rows) == 2
+    # Against the true total of 100 (not 70, the sum of just the two shown bars).
+    assert rows[0]["cumPercent"] == pytest.approx(40.0)
+    assert rows[1]["cumPercent"] == pytest.approx(70.0)
+
+
 def test_error_bar_sd_around_the_mean(table_relation: MakeRelation) -> None:
     rel = table_relation({"species": ["A", "A", "A", "B"], "mass": [10.0, 20.0, 30.0, 5.0]})
     req = _request(
@@ -194,6 +307,22 @@ def test_error_bar_sd_around_the_mean(table_relation: MakeRelation) -> None:
     assert rows["A"]["y0_lo"] == pytest.approx(10.0)
     assert rows["A"]["y0_hi"] == pytest.approx(30.0)
     assert rows["B"]["y0_lo"] is None  # n=1: stddev is undefined
+
+
+def test_error_bar_is_capped_by_mark_cap(table_relation: MakeRelation) -> None:
+    rel = table_relation(
+        {"species": ["A", "B", "C"], "mass": [10.0, 20.0, 30.0]},
+    )
+    req = _request(
+        rel,
+        PlotType.ERROR_BAR,
+        {"x": [Encoding(field="species")], "y": [Encoding(field="mass")]},
+        ErrorBarParams,
+        mark_cap=2,
+    )
+    out = error_bar(req)
+    assert out.table.num_rows == 2
+    assert out.params.get("truncatedGroups") is True
 
 
 def test_lollipop_sorts_by_value_by_default(table_relation: MakeRelation) -> None:
@@ -283,3 +412,27 @@ def test_raincloud_without_a_group_gives_one_group(table_relation: MakeRelation)
     assert len(out.values["groups"]) == 1
     assert out.values["groups"][0]["key"] is None
     assert out.values["groups"][0]["box"]["median"] == pytest.approx(30.0)
+
+
+def test_raincloud_points_are_capped_by_mark_cap(table_relation: MakeRelation) -> None:
+    # A StatResult has no generic cap guard (unlike a table response), so raincloud must cap its
+    # own point sample by the mark cap itself, split evenly across the groups drawn.
+    rel = table_relation(
+        {
+            "mass": [float(i) for i in range(40)],
+            "species": (["A"] * 20) + (["B"] * 20),
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.RAINCLOUD,
+        {"value": [Encoding(field="mass")], "group": [Encoding(field="species")]},
+        RaincloudParams,
+        params={"pointSample": 20},
+        mark_cap=10,
+    )
+    out = raincloud(req)
+    groups = out.values["groups"]
+    total_points = sum(len(g["points"]) for g in groups)
+    assert total_points <= 10
+    assert any("Showing at most" in w for w in out.warnings)

@@ -1,3 +1,5 @@
+import { echarts } from "../../core/echarts";
+import { makeFormatter } from "../../core/format";
 import { categoryLabel, type Obj } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import {
@@ -115,7 +117,10 @@ export const gantt = definePlot({
     const series: Obj = {
       type: "custom",
       name: "tasks",
-      data: items.map((_item, i) => i),
+      // [categoryIndex, startMs, endMs]: real dimensions, so ECharts computes the time axis's
+      // extent from the data (plain row indices here left the x axis with no real range, and
+      // every bar landed off-canvas near 1970-01-01).
+      data: items.map((item, i) => [i, item.start, item.end]),
       encode: { x: [1, 2], y: 0 },
       renderItem(params: { dataIndex: number }, api: RenderApi) {
         const item = items[params.dataIndex];
@@ -149,17 +154,26 @@ export const gantt = definePlot({
       },
     };
 
+    const times = items.flatMap((item) => [item.start, item.end]).filter(Number.isFinite);
+    const minTime = times.length ? Math.min(...times) : undefined;
+    const maxTime = times.length ? Math.max(...times) : undefined;
+    const fmtDate = makeFormatter("date", ctx?.locale);
+    const safe = echarts.format.encodeHTML;
+
     const option: Obj = {
-      xAxis: { type: "time" },
+      // min/max are set explicitly (not left to auto-scale from the custom series): a custom
+      // series with no "real" axis-range data item would otherwise leave the time axis at its
+      // default [0, 1] ms extent, pushing every bar off-canvas.
+      xAxis: { type: "time", min: minTime, max: maxTime },
       yAxis: { type: "category", data: categories },
       tooltip: {
         formatter: (p: { dataIndex: number }) => {
           const item = items[p.dataIndex];
           if (!item) return "";
-          const range = `${new Date(item.start).toLocaleDateString()} to ${new Date(item.end).toLocaleDateString()}`;
-          const colorPart = item.colorLabel ? `<br/>${item.colorLabel}` : "";
+          const range = `${fmtDate(item.start)} to ${fmtDate(item.end)}`;
+          const colorPart = item.colorLabel ? `<br/>${safe(item.colorLabel)}` : "";
           const progressPart = item.progress !== null ? `<br/>${item.progress}% complete` : "";
-          return `${item.task}<br/>${range}${colorPart}${progressPart}`;
+          return `${safe(item.task)}<br/>${range}${colorPart}${progressPart}`;
         },
       },
       series: [series],

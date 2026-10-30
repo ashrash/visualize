@@ -106,9 +106,46 @@ describe("gantt", () => {
     );
     const o = render("gantt", data);
     expect(o.xAxis.type).toBe("time");
+    // A real time extent from the data (not the [0, 1] ms default a custom series with no
+    // "real" dimensions in its data would otherwise leave every bar near 1970-01-01, off-canvas).
+    expect(o.xAxis.min).toBe(Date.parse("2024-01-01"));
+    expect(o.xAxis.max).toBe(Date.parse("2024-01-20"));
     expect(o.yAxis.data).toEqual(["Design", "Build"]);
     expect(o.series[0].type).toBe("custom");
     expect(o.series[0].data).toHaveLength(2);
+    // Each data item carries real [categoryIndex, startMs, endMs] dimensions for ECharts'
+    // own axis-extent inference, matching `encode: {x: [1, 2], y: 0}`.
+    expect(o.series[0].data[0]).toEqual([0, Date.parse("2024-01-01"), Date.parse("2024-01-09")]);
+    expect(o.series[0].encode).toEqual({ x: [1, 2], y: 0 });
+  });
+
+  it("renders real bars through ECharts SSR, not off-canvas at the epoch", async () => {
+    const { echarts } = await import("../../core/echarts");
+    const data = makeData(
+      {
+        label: ["Design", "Build"],
+        start: ["2024-01-01", "2024-01-10"],
+        end: ["2024-01-09", "2024-01-20"],
+      },
+      { label: "task" },
+    );
+    const o = render("gantt", data);
+    const chart = echarts.init(null, undefined, {
+      renderer: "svg",
+      ssr: true,
+      width: 400,
+      height: 200,
+    });
+    try {
+      chart.setOption({ animation: false, ...o });
+      const svg = chart.renderToSVGString();
+      // The SSR'd SVG should contain visible rects, not ones placed far off the 400x200 canvas.
+      const xs = [...svg.matchAll(/<rect[^>]*\sx="(-?[\d.e+]+)"/g)].map((m) => Number(m[1]));
+      expect(xs.length).toBeGreaterThan(0);
+      for (const x of xs) expect(Math.abs(x)).toBeLessThan(10_000);
+    } finally {
+      chart.dispose();
+    }
   });
 });
 
@@ -215,5 +252,114 @@ describe("raincloud", () => {
     expect(types).toContain("scatter"); // the jittered points
     const points = o.series.find((s: Opt) => s.name === "points");
     expect(points.data).toHaveLength(5);
+  });
+});
+
+/** Renders `option` through real ECharts (SSR, no DOM) and returns the SVG string. Layout bugs
+ * (an axis with no real extent, a custom series whose coordinates land far off-canvas) show up
+ * here in a way plain option-shape assertions can't catch. */
+async function ssr(option: Opt): Promise<string> {
+  const { echarts } = await import("../../core/echarts");
+  const chart = echarts.init(null, undefined, {
+    renderer: "svg",
+    ssr: true,
+    width: 500,
+    height: 350,
+  });
+  try {
+    chart.setOption({ animation: false, ...option });
+    return chart.renderToSVGString();
+  } finally {
+    chart.dispose();
+  }
+}
+
+describe("visual sanity through real ECharts SSR", () => {
+  it("sankey with a node rollup keeps most of the graph on-canvas", async () => {
+    // channel_to_page / page_to_outcome style data, like flows.csv. The backend's own
+    // cycle-detection (viz.plots.specialized._drop_cycles, covered by its own known-answer
+    // tests) guarantees the renderer never actually receives a cyclic graph; ECharts' sankey
+    // layout throws outright if it does, which is exactly why that guarantee matters.
+    const nodes = [
+      ...Array.from({ length: 6 }, (_, i) => ({ name: `Channel${i}`, value: 10 })),
+      { name: "Page", value: 60 },
+      { name: "Outcome", value: 50 },
+    ];
+    const links = [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        source: `Channel${i}`,
+        target: "Page",
+        value: 10,
+      })),
+      { source: "Page", target: "Outcome", value: 50 },
+    ];
+    const data = withStat({
+      values: { nodes, links },
+      method: "source_target_aggregate",
+      n: links.length,
+      sampled: false,
+      warnings: [],
+      nMissing: 0,
+    });
+    const o = render("sankey", data, { maxNodes: 5 });
+    const svg = await ssr(o);
+    expect(svg).toContain("<svg");
+    expect(svg).not.toMatch(/NaN/);
+    // Several node rects/paths should have been drawn, not collapsed to nothing.
+    expect((svg.match(/<path/g) ?? []).length).toBeGreaterThan(3);
+  });
+
+  it("a 3-stage alluvial with a rollup renders without losing its stage structure", async () => {
+    const stageValue = (stage: number, i: number) => `${stage}⁣v${i}`;
+    const nodes = [0, 1, 2].flatMap((stage) =>
+      Array.from({ length: 6 }, (_, i) => ({
+        name: stageValue(stage, i),
+        label: `v${i}`,
+        depth: stage,
+        value: 6 - i,
+      })),
+    );
+    const links = [0, 1].flatMap((stage) =>
+      Array.from({ length: 6 }, (_, i) => ({
+        source: stageValue(stage, i),
+        target: stageValue(stage + 1, i),
+        value: 6 - i,
+      })),
+    );
+    const data = withStat({
+      values: { nodes, links, stages: 3 },
+      method: "stage_aggregate",
+      n: links.length,
+      sampled: false,
+      warnings: [],
+      nMissing: 0,
+    });
+    const o = render("alluvial", data, { maxNodes: 3 });
+    const svg = await ssr(o);
+    expect(svg).toContain("<svg");
+    expect(svg).not.toMatch(/NaN/);
+    expect((svg.match(/<path/g) ?? []).length).toBeGreaterThan(3);
+  });
+
+  it("a network with 40+ nodes places force-laid-out nodes on-canvas", async () => {
+    const n = 45;
+    const nodes = Array.from({ length: n }, (_, i) => ({ name: `n${i}`, value: (i % 5) + 1 }));
+    const links = Array.from({ length: n - 1 }, (_, i) => ({
+      source: `n${i}`,
+      target: `n${i + 1}`,
+      value: 1,
+    }));
+    const data = withStat({
+      values: { nodes, links },
+      method: "edge_aggregate",
+      n: links.length,
+      sampled: false,
+      warnings: [],
+      nMissing: 0,
+    });
+    const o = render("network", data, { maxNodes: 50 });
+    const svg = await ssr(o);
+    expect(svg).toContain("<svg");
+    expect(svg).not.toMatch(/NaN/);
   });
 });

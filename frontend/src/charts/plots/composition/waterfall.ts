@@ -1,3 +1,4 @@
+import { echarts } from "../../core/echarts";
 import { categoryLabel, type Obj } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import {
@@ -78,7 +79,8 @@ function render(
         }[];
         const real = items.find((p) => p.seriesName !== "base" && typeof p.value === "number");
         if (!real) return "";
-        return `${real.axisValueLabel}<br/>${real.seriesName}: ${real.value}`;
+        const safe = echarts.format.encodeHTML;
+        return `${safe(real.axisValueLabel)}<br/>${safe(real.seriesName)}: ${real.value}`;
       },
     },
   };
@@ -140,12 +142,21 @@ export const waterfall = definePlot({
       label: "Last category is a total",
       affectsData: true,
       type: "boolean",
-      default: true,
+      default: false,
       showIf: { param: "kind", equals: false },
+      help: 'Off by default: resetting the last bar to its own value would misrepresent a plain delta sequence as already totalling to it. Use "Add a total bar" for a genuine grand total instead.',
+    },
+    {
+      name: "appendTotal",
+      label: "Add a total bar",
+      affectsData: true,
+      type: "boolean",
+      default: false,
+      help: "Appends one more bar: the true running total after every category.",
     },
   ],
   styleSections: SECTIONS,
-  defaults: { params: { firstIsTotal: true, lastIsTotal: true } },
+  defaults: { params: { firstIsTotal: true, lastIsTotal: false, appendTotal: false } },
   render: (spec, data, theme, ctx) => render(data, theme, spec, ctx),
   recommend(columns) {
     const hasCategory = columns.some((c) => c.semantic === "nominal" || c.semantic === "ordinal");

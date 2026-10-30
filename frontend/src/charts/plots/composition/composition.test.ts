@@ -36,6 +36,38 @@ describe("stacked_area", () => {
     expect(o.series.every((s: Opt) => s.stack === "total")).toBe(true);
     expect(o.series.map((s: Opt) => s.type)).toEqual(["line", "line"]);
   });
+
+  it("renders multiple downsampled color series through real ECharts SSR", async () => {
+    const n = 300;
+    const colors = ["A", "B", "C"];
+    const data = makeData(
+      {
+        x: Array.from({ length: n * 3 }, (_, i) => Math.floor(i / 3)),
+        color: Array.from({ length: n * 3 }, (_, i) => colors[i % 3]),
+        y0: Array.from({ length: n * 3 }, (_, i) => Math.sin(i / 10) * 10 + 20),
+      },
+      { x: "day", y0: "value" },
+    );
+    const o = render("stacked_area", data);
+    expect(o.series).toHaveLength(3);
+    const { echarts } = await import("../../core/echarts");
+    const chart = echarts.init(null, undefined, {
+      renderer: "svg",
+      ssr: true,
+      width: 500,
+      height: 350,
+    });
+    try {
+      chart.setOption({ animation: false, ...o });
+      const svg = chart.renderToSVGString();
+      expect(svg).toContain("<svg");
+      expect(svg).not.toMatch(/NaN/);
+      // 3 filled area bands should be visible, not collapsed onto one another or off-canvas.
+      expect((svg.match(/<path/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    } finally {
+      chart.dispose();
+    }
+  });
 });
 
 describe("percent_stacked_bar", () => {
@@ -115,6 +147,36 @@ describe("treemap / sunburst", () => {
     expect(o.series[0].type).toBe("sunburst");
     expect(o.series[0].data).toHaveLength(2);
   });
+
+  it("renders a 2-level hierarchy with an (Other) rollup through real ECharts SSR", async () => {
+    const regions = ["N", "S"];
+    const rolled = makeData(
+      {
+        label0: Array.from({ length: 60 }, (_, i) => regions[i % 2]),
+        label1: Array.from({ length: 60 }, (_, i) => `product${i}`),
+        size: Array.from({ length: 60 }, (_, i) => 60 - i),
+      },
+      { label0: "region", label1: "product", size: "revenue" },
+    );
+    const { echarts } = await import("../../core/echarts");
+    for (const key of ["treemap", "sunburst"] as const) {
+      const o = render(key, rolled);
+      const chart = echarts.init(null, undefined, {
+        renderer: "svg",
+        ssr: true,
+        width: 500,
+        height: 350,
+      });
+      try {
+        chart.setOption({ animation: false, ...o });
+        const svg = chart.renderToSVGString();
+        expect(svg).toContain("<svg");
+        expect(svg).not.toMatch(/NaN/);
+      } finally {
+        chart.dispose();
+      }
+    }
+  });
 });
 
 describe("mosaic / marimekko", () => {
@@ -142,4 +204,32 @@ describe("mosaic / marimekko", () => {
     expect(o.series[0].type).toBe("custom");
     expect(o.series[0].data).toHaveLength(3);
   });
+
+  it("orders columns and segments by total, not by server row order", () => {
+    // The server's GROUP BY order isn't guaranteed; rows are deliberately NOT sorted by size
+    // here, to check that the renderer itself sorts columns/segments stably.
+    const shuffled = makeData(
+      {
+        x: ["South", "North", "North"],
+        color: ["Store", "Online", "Store"],
+        size: [10, 60, 40],
+        xShare: [10 / 110, 100 / 110, 100 / 110],
+        share: [1, 0.6, 0.4],
+      },
+      { x: "region", color: "channel", size: "sales" },
+    );
+    const o = render("mosaic", shuffled);
+    const columnLabels = o.series[1].data.map(
+      (i: number) => renderItemColumnLabel(o.series[1], i).text,
+    );
+    expect(columnLabels).toEqual(["North", "South"]); // North (100) before South (10)
+  });
 });
+
+/** Calls a "columns" custom series' renderItem with a minimal fake `api`, returning the text
+ * style of the resulting text graphic (used to read back a column's label in render order). */
+function renderItemColumnLabel(series: Opt, dataIndex: number): { text: string } {
+  const api = { coord: ([x, y]: [number, number]) => [x, y] };
+  const result = series.renderItem({ dataIndex }, api) as { style: { text: string } };
+  return result.style;
+}

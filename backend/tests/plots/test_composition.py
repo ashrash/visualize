@@ -82,6 +82,48 @@ def test_stacked_area_sums_by_x_and_color(table_relation: MakeRelation) -> None:
     assert out.reduction == Reduction.AGGREGATED
 
 
+def test_stacked_area_categorical_x_keeps_top_x_values_not_top_rows(
+    table_relation: MakeRelation,
+) -> None:
+    # A categorical x over the cap must keep whichever x categories have the largest total,
+    # not just the first rows DuckDB happens to return (which could split a category's bars
+    # unevenly, or drop the biggest one entirely).
+    rel = table_relation(
+        {"product": ["Small", "Big", "Medium"], "sales": [1.0, 100.0, 10.0]},
+    )
+    req = _request(
+        rel,
+        PlotType.STACKED_AREA,
+        {"x": [Encoding(field="product")], "y": [Encoding(field="sales")]},
+        StackedAreaParams,
+        mark_cap=1,
+    )
+    out = stacked_area(req)
+    rows = out.table.to_pylist()
+    assert [r["x"] for r in rows] == ["Big"]
+    assert out.params.get("truncatedGroups") is True
+
+
+def test_stacked_area_ordered_x_downsamples_with_m4(table_relation: MakeRelation) -> None:
+    n = 500
+    rel = table_relation({"t": list(range(n)), "v": [float(i % 7) for i in range(n)]})
+    req = _request(
+        rel,
+        PlotType.STACKED_AREA,
+        {"x": [Encoding(field="t")], "y": [Encoding(field="v")]},
+        StackedAreaParams,
+        mark_cap=50,
+    )
+    out = stacked_area(req)
+    assert out.table.num_rows <= 50
+    assert out.reduction == Reduction.DOWNSAMPLED
+    assert out.method == "m4+minmaxlttb"
+    # The series' endpoints must survive downsampling.
+    xs = out.table.column("x").to_pylist()
+    assert min(xs) == 0
+    assert max(xs) == n - 1
+
+
 def test_percent_stacked_bar_shares_sum_to_100(table_relation: MakeRelation) -> None:
     rel = table_relation(
         {
@@ -110,6 +152,36 @@ def test_percent_stacked_bar_shares_sum_to_100(table_relation: MakeRelation) -> 
     assert by_color["C"] == pytest.approx(20.0)
     q2 = [r["y0"] for r in rows if r["x"] == "Q2"]
     assert q2 == [pytest.approx(100.0)]
+
+
+def test_percent_stacked_bar_truncates_whole_x_groups_not_mid_bar(
+    table_relation: MakeRelation,
+) -> None:
+    # A plain row-count slice could cut a quarter's colors in half, leaving a bar whose shares
+    # no longer sum to 100. The cap must fall on a quarter boundary instead.
+    rel = table_relation(
+        {
+            "quarter": ["Q1", "Q1", "Q1", "Q2", "Q2"],
+            "product": ["A", "B", "C", "A", "B"],
+            "units": [10.0, 30.0, 10.0, 5.0, 5.0],
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.PERCENT_STACKED_BAR,
+        {
+            "x": [Encoding(field="quarter")],
+            "y": [Encoding(field="units")],
+            "color": [Encoding(field="product")],
+        },
+        PercentStackedBarParams,
+        mark_cap=4,
+    )
+    out = percent_stacked_bar(req)
+    rows = out.table.to_pylist()
+    assert {r["x"] for r in rows} == {"Q1"}
+    assert sum(r["y0"] for r in rows) == pytest.approx(100.0)
+    assert out.params.get("truncatedGroups") is True
 
 
 def test_waterfall_running_sum_with_kind(table_relation: MakeRelation) -> None:
@@ -143,7 +215,11 @@ def test_waterfall_running_sum_with_kind(table_relation: MakeRelation) -> None:
     assert rows[3]["direction"] == "total"
 
 
-def test_waterfall_defaults_first_and_last_to_total(table_relation: MakeRelation) -> None:
+def test_waterfall_default_forces_only_the_first_category_to_total(
+    table_relation: MakeRelation,
+) -> None:
+    # last_is_total defaults to False: a plain delta sequence's running total (12) must not be
+    # misrepresented by resetting the last bar to its own value (6).
     rel = table_relation({"item": ["A", "B", "C"], "amount": [10.0, -4.0, 6.0]})
     req = _request(
         rel,
@@ -153,10 +229,59 @@ def test_waterfall_defaults_first_and_last_to_total(table_relation: MakeRelation
     )
     out = waterfall(req)
     rows = out.table.to_pylist()
-    # A and C are forced totals (first/last); B is a running delta off A.
     assert rows[0]["start"] == 0.0 and rows[0]["end"] == 10.0
     assert rows[1]["start"] == 10.0 and rows[1]["end"] == 6.0
+    assert rows[2]["start"] == 6.0 and rows[2]["end"] == 12.0
+    assert [r["direction"] for r in rows] == ["total", "decrease", "increase"]
+
+
+def test_waterfall_last_is_total_can_be_turned_back_on(table_relation: MakeRelation) -> None:
+    rel = table_relation({"item": ["A", "B", "C"], "amount": [10.0, -4.0, 6.0]})
+    req = _request(
+        rel,
+        PlotType.WATERFALL,
+        {"x": [Encoding(field="item")], "y": [Encoding(field="amount")]},
+        WaterfallParams,
+        params={"lastIsTotal": True},
+    )
+    out = waterfall(req)
+    rows = out.table.to_pylist()
     assert rows[2]["start"] == 0.0 and rows[2]["end"] == 6.0
+    assert rows[2]["direction"] == "total"
+
+
+def test_waterfall_append_total_adds_a_genuine_grand_total_bar(
+    table_relation: MakeRelation,
+) -> None:
+    rel = table_relation({"item": ["A", "B", "C"], "amount": [10.0, -4.0, 6.0]})
+    req = _request(
+        rel,
+        PlotType.WATERFALL,
+        {"x": [Encoding(field="item")], "y": [Encoding(field="amount")]},
+        WaterfallParams,
+        params={"appendTotal": True},
+    )
+    out = waterfall(req)
+    rows = out.table.to_pylist()
+    assert len(rows) == 4
+    assert rows[-1]["x"] == "Total"
+    assert rows[-1]["direction"] == "total"
+    # The true running total (10 - 4 + 6 = 12), not a reset to the last category's own value.
+    assert rows[-1]["start"] == 0.0 and rows[-1]["end"] == 12.0
+
+
+def test_waterfall_null_change_is_treated_as_zero(table_relation: MakeRelation) -> None:
+    rel = table_relation({"item": ["A", "B", "C"], "amount": [10.0, None, 6.0]})
+    req = _request(
+        rel,
+        PlotType.WATERFALL,
+        {"x": [Encoding(field="item")], "y": [Encoding(field="amount")]},
+        WaterfallParams,
+    )
+    out = waterfall(req)
+    rows = out.table.to_pylist()
+    assert rows[1]["start"] == 10.0 and rows[1]["end"] == 10.0
+    assert any("no value" in w for w in out.warnings)
 
 
 def test_funnel_sorts_by_explicit_order(table_relation: MakeRelation) -> None:
@@ -225,6 +350,53 @@ def test_treemap_rolls_small_leaves_into_other(table_relation: MakeRelation) -> 
     assert any("Other" in w for w in out.warnings)
 
 
+def test_treemap_handles_a_boolean_last_level_above_the_cap(table_relation: MakeRelation) -> None:
+    # A regression for a real crash: mixing a BOOLEAN last level with the literal "(Other)"
+    # string (when rolling up) raised an Arrow type error. The last level is always cast to
+    # VARCHAR now, rollup or not.
+    n = 60
+    rel = table_relation(
+        {
+            "region": ["N"] * n,
+            "flag": [i % 2 == 0 for i in range(n)],
+            "revenue": [float(n - i) for i in range(n)],
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.TREEMAP,
+        {
+            "label": [Encoding(field="region"), Encoding(field="flag")],
+            "size": [Encoding(field="revenue")],
+        },
+        HierarchyParams,
+        params={"maxLeaves": 1},
+    )
+    out = treemap(req)
+    rows = out.table.to_pylist()
+    assert any(r["label1"] == "(Other)" for r in rows)
+    assert all(isinstance(r["label1"], str) for r in rows)
+
+
+def test_treemap_clamps_negative_sizes_and_warns(table_relation: MakeRelation) -> None:
+    rel = table_relation(
+        {"region": ["N", "N", "S"], "product": ["A", "B", "A"], "growth": [-5.0, 10.0, 2.0]}
+    )
+    req = _request(
+        rel,
+        PlotType.TREEMAP,
+        {
+            "label": [Encoding(field="region"), Encoding(field="product")],
+            "size": [Encoding(field="growth")],
+        },
+        HierarchyParams,
+    )
+    out = treemap(req)
+    rows = {(r["label0"], r["label1"]): r["size"] for r in out.table.to_pylist()}
+    assert rows[("N", "A")] == 0.0
+    assert any("clamped" in w for w in out.warnings)
+
+
 def test_sunburst_uses_count_without_a_size_field(table_relation: MakeRelation) -> None:
     rel = table_relation({"region": ["N", "N", "S"], "product": ["A", "B", "A"]})
     req = _request(
@@ -283,3 +455,32 @@ def test_marimekko_is_the_same_crosstab_as_mosaic(table_relation: MakeRelation) 
     )
     out = marimekko(req)
     assert out.table.num_rows == 2
+
+
+def test_mosaic_rolls_up_both_dimensions_with_a_numeric_x(table_relation: MakeRelation) -> None:
+    # A regression for the same crash class as treemap: a numeric x rolled up past the cap used
+    # to mix with the literal "(Other)" string and raise an Arrow type error.
+    n = 5
+    rel = table_relation(
+        {
+            "region": list(range(n)),
+            "channel": ["Online"] * n,
+            "sales": [float(n - i) for i in range(n)],
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.MOSAIC,
+        {
+            "x": [Encoding(field="region")],
+            "color": [Encoding(field="channel")],
+            "size": [Encoding(field="sales")],
+        },
+        CrosstabParams,
+        params={"maxX": 2},
+    )
+    out = mosaic(req)
+    rows = out.table.to_pylist()
+    assert any(r["x"] == "(Other)" for r in rows)
+    assert all(isinstance(r["x"], str) for r in rows)
+    assert out.params.get("rolledUp") is True

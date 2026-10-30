@@ -8,6 +8,7 @@ import {
   type ChartTheme,
   definePlot,
   type ParamSchema,
+  type RenderContext,
   type StyleSection,
 } from "../../core/types";
 
@@ -70,6 +71,7 @@ function buildOption(
   spec: ChartSpec,
   data: ChartData,
   theme: ChartTheme,
+  ctx?: RenderContext,
 ): Record<string, unknown> {
   const levels = levelFields(data);
   const tree = hierarchyToTree({ rows: rows(data), levels, value: "size" });
@@ -104,7 +106,7 @@ function buildOption(
           },
         ];
   const option = { tooltip: { trigger: "item" }, series };
-  return applyStyle(option, spec, theme, undefined, { defaultTrigger: "item" });
+  return applyStyle(option, spec, theme, ctx, { defaultTrigger: "item" });
 }
 
 function recommend(columns: Column[]): number {
@@ -122,7 +124,7 @@ export const treemap = definePlot({
   paramsSchema,
   styleSections: SECTIONS,
   defaults: { params: { maxLeaves: 50 } },
-  render: (spec, data, theme) => buildOption("treemap", spec, data, theme),
+  render: (spec, data, theme, ctx) => buildOption("treemap", spec, data, theme, ctx),
   recommend,
 });
 
@@ -135,6 +137,6 @@ export const sunburst = definePlot({
   paramsSchema,
   styleSections: SECTIONS,
   defaults: { params: { maxLeaves: 50 } },
-  render: (spec, data, theme) => buildOption("sunburst", spec, data, theme),
+  render: (spec, data, theme, ctx) => buildOption("sunburst", spec, data, theme, ctx),
   recommend,
 });
