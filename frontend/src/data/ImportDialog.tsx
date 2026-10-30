@@ -1,112 +1,17 @@
 import { useState } from "react";
+import { featureOn } from "../api/features";
 import type { Dataset, ImportOptions } from "../api/types";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent } from "../components/ui/dialog";
-import { Field, Input, Select } from "../components/ui/input";
+import { Field, Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "../components/ui/toast";
 import { useImportFromPath, useUploadDataset } from "./hooks";
+import { ImportOptionsForm } from "./ImportOptionsForm";
+import { ImportWizardDialog } from "./ImportWizard";
 import { describeImportError, hasOptions } from "./requests";
 
-const DELIMITERS = [
-  { value: "", label: "Auto-detect" },
-  { value: ",", label: "Comma (,)" },
-  { value: "\t", label: "Tab" },
-  { value: ";", label: "Semicolon (;)" },
-  { value: "|", label: "Pipe (|)" },
-];
-const ENCODINGS = [
-  { value: "", label: "Auto-detect" },
-  { value: "utf-8", label: "UTF-8" },
-  { value: "utf-16", label: "UTF-16" },
-  { value: "latin-1", label: "Latin-1" },
-  { value: "cp1252", label: "Windows-1252" },
-];
-const HEADERS = [
-  { value: "", label: "Auto-detect" },
-  { value: "yes", label: "First row is a header" },
-  { value: "no", label: "No header row" },
-];
-
-function OptionsForm({
-  options,
-  onChange,
-}: {
-  options: ImportOptions;
-  onChange: (next: ImportOptions) => void;
-}) {
-  return (
-    <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-line p-3 sm:grid-cols-2">
-      <legend className="px-1 text-xs font-medium text-muted">Options (optional)</legend>
-      <Field label="Delimiter">
-        {(p) => (
-          <Select
-            {...p}
-            options={DELIMITERS}
-            value={options.delimiter ?? ""}
-            onChange={(e) => onChange({ ...options, delimiter: e.target.value || null })}
-          />
-        )}
-      </Field>
-      <Field label="Encoding">
-        {(p) => (
-          <Select
-            {...p}
-            options={ENCODINGS}
-            value={options.encoding ?? ""}
-            onChange={(e) => onChange({ ...options, encoding: e.target.value || null })}
-          />
-        )}
-      </Field>
-      <Field label="Header">
-        {(p) => (
-          <Select
-            {...p}
-            options={HEADERS}
-            value={options.header === true ? "yes" : options.header === false ? "no" : ""}
-            onChange={(e) =>
-              onChange({
-                ...options,
-                header: e.target.value === "" ? null : e.target.value === "yes",
-              })
-            }
-          />
-        )}
-      </Field>
-      <Field label="Header row number" hint="1 = first line of the file">
-        {(p) => (
-          <Input
-            {...p}
-            type="number"
-            min={1}
-            value={options.headerRow ?? ""}
-            onChange={(e) =>
-              onChange({
-                ...options,
-                headerRow: e.target.value === "" ? null : Number(e.target.value),
-              })
-            }
-          />
-        )}
-      </Field>
-      <Field
-        label="Excel sheet"
-        hint="Excel files only; leave empty for the first sheet"
-        className="sm:col-span-2"
-      >
-        {(p) => (
-          <Input
-            {...p}
-            value={options.sheet ?? ""}
-            onChange={(e) => onChange({ ...options, sheet: e.target.value || null })}
-          />
-        )}
-      </Field>
-    </fieldset>
-  );
-}
-
-export function ImportDialog({
+function LegacyImportDialog({
   open,
   onOpenChange,
   onImported,
@@ -197,7 +102,7 @@ export function ImportDialog({
           <Field label="Dataset name (optional)">
             {(p) => <Input {...p} value={name} onChange={(e) => setName(e.target.value)} />}
           </Field>
-          <OptionsForm options={options} onChange={setOptions} />
+          <ImportOptionsForm options={options} onChange={setOptions} />
           {error ? (
             <p role="alert" className="text-sm text-danger">
               {describeImportError(error)}
@@ -214,5 +119,23 @@ export function ImportDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface ImportDialogProps {
+  open: boolean;
+
+  onOpenChange: (open: boolean) => void;
+
+  onImported: (dataset: Dataset) => void;
+}
+
+/** The staged wizard (preview, jobs) when data-core is merged; the one-shot form until then. */
+
+export function ImportDialog(props: ImportDialogProps) {
+  return featureOn("stagedImport") ? (
+    <ImportWizardDialog {...props} />
+  ) : (
+    <LegacyImportDialog {...props} />
   );
 }

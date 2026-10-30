@@ -12,7 +12,7 @@ export function useDatasets() {
 }
 
 /** Record a freshly imported dataset in the open project (this is one undoable edit). */
-function attachToProject(dataset: Dataset): void {
+export function attachToProject(dataset: Dataset): void {
   useProjectStore.getState().update((p) => ({
     ...p,
     datasetIds: [...new Set([...(p.datasetIds ?? []), dataset.id])],

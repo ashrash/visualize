@@ -77,6 +77,8 @@ export interface GridViewProps {
   valuesLoader?: (field: string) => LoadValues;
   /** When false, sort and filter buttons are shown but disabled with a tooltip. */
   controlsEnabled: boolean;
+  /** Tooltip for disabled sort/filter buttons. */
+  controlsTip?: string;
   toolbar?: ReactNode;
 }
 
@@ -95,6 +97,7 @@ export function GridView({
   onFilterChange,
   valuesLoader,
   controlsEnabled,
+  controlsTip = SORT_TIP,
   toolbar,
 }: GridViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -197,6 +200,7 @@ export function GridView({
                       </span>
                     </span>
                     <HeaderButton
+                      tip={controlsTip}
                       enabled={controlsEnabled && onSortChange !== undefined}
                       label={`Sort by ${header.column.id}`}
                       onClick={() => toggleSort(header.column.id)}
@@ -212,6 +216,7 @@ export function GridView({
                       />
                     ) : (
                       <HeaderButton
+                        tip={controlsTip}
                         enabled={false}
                         label={`Filter ${header.column.id}`}
                         onClick={() => undefined}
@@ -291,11 +296,13 @@ export function GridView({
 
 /** Header button: focusable and announced as disabled (with a tooltip) when not available. */
 function HeaderButton({
+  tip,
   label,
   enabled,
   onClick,
   children,
 }: {
+  tip: string;
   label: string;
   enabled: boolean;
   onClick: () => void;
@@ -312,5 +319,5 @@ function HeaderButton({
       {children}
     </button>
   );
-  return enabled ? button : <Tooltip content={SORT_TIP}>{button}</Tooltip>;
+  return enabled ? button : <Tooltip content={tip}>{button}</Tooltip>;
 }
