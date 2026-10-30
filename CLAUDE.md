@@ -354,6 +354,7 @@ Backend paths are relative to `backend/src/viz/`, with tests mirrored under `bac
 - A cursor refuses a new query while a result is still open. Get a fresh cursor per query via `engine.cursor()`, and consume the result inside the `with` block.
 - `cur.sql(query, params=[...]).to_arrow_table()` is the efficient path. Arrow output from `cur.execute(...)` makes an extra copy.
 - `USING SAMPLE` is applied **before** `WHERE`. To sample filtered rows, sample a filtered subquery.
+- **Internal error that poisons the whole database (2.0.0):** a filter over a window ordered by the *virtual* `file_row_number` column, e.g. `QUALIFY row_number() OVER (... ORDER BY file_row_number)`. This was seen on pyarrow-written files with 3+ columns. After it, every query in the process fails. Read the row number explicitly with `read_parquet(path, file_row_number = true)`, which is safe. The engine must also recreate its DuckDB instance after a `duckdb.FatalException`.
 - A single NaN makes `avg` return NaN. Treat NaN and ±inf as missing (`CASE WHEN isfinite(x) THEN x END`). On degenerate input (std with n<2, skewness with n<3, kurtosis with n<4, a constant column), DuckDB returns NULL rather than NaN.
 - `skewness`/`kurtosis` match SciPy with `bias=False` (G1 and excess G2). `quantile_cont` is NumPy `linear` (R type 7); `quantile_disc` is NumPy `inverted_cdf`.
 - DuckDB finalizes each quantile aggregate on one thread, so many quantiles in one SELECT run serially. Unpivot to (field, value) and GROUP BY field to parallelize them.
