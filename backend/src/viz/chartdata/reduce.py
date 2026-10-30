@@ -26,7 +26,18 @@ from pydantic import JsonValue
 from sqlglot import exp
 from tsdownsample import MinMaxLTTBDownsampler, NaNMinMaxLTTBDownsampler
 
-from viz.chartdata.sql import agg_sql, alias, cast, col, fn, lit, subquery, table, with_ctes
+from viz.chartdata.sql import (
+    agg_sql,
+    alias,
+    cast,
+    col,
+    fn,
+    lit,
+    subquery,
+    table,
+    temporal_literal,
+    with_ctes,
+)
 from viz.contracts import ColumnSemantic, TimeUnit
 from viz.errors import InvalidSpecError
 from viz.stats.relation import Relation
@@ -35,29 +46,53 @@ __all__ = [
     "agg_sql",
     "aggregate_query",
     "bin2d",
+    "epoch_ms_values",
     "hexbin",
     "m4_query",
     "minmaxlttb",
     "numeric_x",
+    "over_groups",
+    "warm_up",
     "x_range_predicate",
 ]
 
 
 def numeric_x(expression: exp.Expr, semantic: ColumnSemantic) -> exp.Expr:
-    """A DOUBLE position for an x value: epoch milliseconds for temporal values."""
+    """A DOUBLE position for an x value: epoch milliseconds (UTC) for temporal values.
+
+    epoch_ms works on DATE, TIMESTAMP and TIMESTAMPTZ directly. Casting a TIMESTAMPTZ to
+    TIMESTAMP first would shift it by the session's UTC offset.
+    """
     if semantic == ColumnSemantic.TEMPORAL:
-        return cast(fn("epoch_ms", cast(expression, "TIMESTAMP")), "DOUBLE")
+        return cast(fn("epoch_ms", expression), "DOUBLE")
     return cast(expression, "DOUBLE")
 
 
-def _range_bound(value: float | str, semantic: ColumnSemantic) -> exp.Expr:
+def epoch_ms_values(column: pa.ChunkedArray) -> np.ndarray[Any, np.dtype[np.float64]]:
+    """An Arrow column as float64 positions: epoch milliseconds (UTC) for dates and
+    timestamps (timezone-aware or not), the values themselves for numbers; NaN for nulls."""
+    kind = column.type
+    if pa.types.is_timestamp(kind):
+        per_ms = {"s": 1e-3, "ms": 1.0, "us": 1e3, "ns": 1e6}[kind.unit]
+        ints = pc.cast(column, pa.int64())  # the stored UTC instant, whatever the zone
+        values = ints.to_numpy(zero_copy_only=False).astype(np.float64) / per_ms
+    elif pa.types.is_date32(kind):
+        days = pc.cast(column, pa.int32()).to_numpy(zero_copy_only=False).astype(np.float64)
+        values = days * 86_400_000.0
+    elif pa.types.is_date64(kind):
+        values = pc.cast(column, pa.int64()).to_numpy(zero_copy_only=False).astype(np.float64)
+    else:
+        values = pc.cast(column, pa.float64()).to_numpy(zero_copy_only=False)
+    valid = pc.is_valid(column).to_numpy(zero_copy_only=False)
+    return np.where(valid, np.asarray(values, dtype=np.float64), np.nan)
+
+
+def _range_bound(value: float | str, semantic: ColumnSemantic, duck_type: str | None) -> exp.Expr:
     if isinstance(value, int | float) and not math.isfinite(value):
         raise InvalidSpecError("the zoom range must be finite")
     if semantic == ColumnSemantic.TEMPORAL:
-        if isinstance(value, int | float):
-            # ECharts time axes report epoch milliseconds.
-            return fn("make_timestamp", lit(round(value * 1000)))
-        return cast(lit(value), "TIMESTAMP")
+        # Numbers are epoch milliseconds (what ECharts time axes report).
+        return temporal_literal(value, duck_type)
     return lit(float(value)) if isinstance(value, int | float) else lit(value)
 
 
@@ -66,19 +101,21 @@ def x_range_predicate(
     semantic: ColumnSemantic,
     x_range: tuple[float | str, float | str],
     time_unit: TimeUnit | None = None,
+    duck_type: str | None = None,
 ) -> exp.Expr:
     """`expression` within the visible range, inclusive.
 
+    `duck_type` is the x column's DuckDB type; TIMESTAMPTZ columns get absolute (UTC) bounds.
     With a time unit the expression is the truncated bucket, so the lower bound is truncated
     too: a bucket that starts before the visible range but overlaps it stays in.
     """
     lo, hi = x_range
     if type(lo) is type(hi) and lo > hi:  # type: ignore[operator]
         lo, hi = hi, lo
-    lower = _range_bound(lo, semantic)
+    lower = _range_bound(lo, semantic, duck_type)
     if time_unit is not None:
         lower = fn("date_trunc", lit(time_unit.value), lower)
-    upper = _range_bound(hi, semantic)
+    upper = _range_bound(hi, semantic, duck_type)
     return exp.Between(this=expression, low=lower, high=upper)
 
 
@@ -87,13 +124,24 @@ def aggregate_query(
     dimensions: Sequence[tuple[str, exp.Expr]],
     measures: Sequence[tuple[str, exp.Expr]],
 ) -> exp.Select:
-    """SELECT dims, measures FROM relation WHERE filters GROUP BY dims."""
+    """SELECT dims, measures FROM relation WHERE filters GROUP BY dims.
+
+    Groups by the dimension *expressions*, not their aliases: in DuckDB `GROUP BY "x"` binds
+    to a source column named x before the alias, so a source with columns called x or color
+    would be grouped by the wrong thing. Reference the output aliases only from an outer
+    query (see `over_groups`).
+    """
     query = relation.select(
         *(alias(e, n) for n, e in dimensions), *(alias(e, n) for n, e in measures)
     )
     if dimensions:
-        query = query.group_by(*(col(n) for n, _ in dimensions))
+        query = query.group_by(*(e.copy() for _, e in dimensions))
     return query
+
+
+def over_groups(grouped: exp.Select) -> exp.Select:
+    """SELECT * FROM (grouped): a scope where x, color, y0, ... mean the output columns."""
+    return exp.select(exp.Star()).from_(subquery(grouped, "__viz_g"))
 
 
 def m4_query(
@@ -137,8 +185,13 @@ def m4_query(
         alias(fn("max", col(x)), "__viz_p1"),
     ]
     for i, y in enumerate(ys):
-        picks.append(alias(fn("arg_min", col(x), col(y)), f"__viz_p{2 + 2 * i}"))
-        picks.append(alias(fn("arg_max", col(x), col(y)), f"__viz_p{3 + 2 * i}"))
+        # (y, x) breaks ties deterministically; the FILTER keeps NULL y out (a row value
+        # with a NULL sorts as the largest).
+        by = exp.Tuple(expressions=[col(y), col(x)])
+        has_y = exp.Where(this=exp.Not(this=exp.Is(this=col(y), expression=exp.Null())))
+        for j, name in enumerate(("arg_min", "arg_max")):
+            pick = exp.Filter(this=fn(name, col(x), by.copy()), expression=has_y.copy())
+            picks.append(alias(pick, f"__viz_p{2 + 2 * i + j}"))
     pick_query = (
         exp.select(*keys, *picks)
         .from_(table("__viz_b"))
@@ -172,15 +225,21 @@ def m4_query(
     )
 
 
-def _positions(column: pa.ChunkedArray) -> np.ndarray[Any, np.dtype[np.float64]]:
-    kind = column.type
-    if pa.types.is_timestamp(kind) or pa.types.is_date(kind):
-        if pa.types.is_date32(kind):
-            ints = pc.cast(column, pa.int32()).to_numpy(zero_copy_only=False).astype(np.int64)
-        else:
-            ints = pc.cast(column, pa.int64()).to_numpy(zero_copy_only=False)
-        return np.asarray(ints, dtype=np.float64)
-    return np.asarray(pc.cast(column, pa.float64()).to_numpy(zero_copy_only=False), np.float64)
+def warm_up() -> None:
+    """Run the downsampling path once at startup, so the first chart doesn't pay ~0.25 s of
+    one-time initialization (tsdownsample, and pyarrow's timestamp cast/compute kernels)."""
+    n = 4096
+    values = np.sin(np.arange(n) / 10.0)
+    values[7] = np.nan
+    start = np.datetime64("2020-01-01T00:00:00", "us")
+    for x in (
+        pa.array(start + np.arange(n).astype("timedelta64[s]"), pa.timestamp("us")),
+        pa.array(start + np.arange(n).astype("timedelta64[s]"), pa.timestamp("us", tz="UTC")),
+        pa.array(np.arange(n, dtype=np.float64)),
+    ):
+        table = pa.table({"x": x, "y0": values, "color": pa.array(["a", "b"] * (n // 2))})
+        minmaxlttb(table, x="x", ys=["y0"], series="color", n_out=256)
+        minmaxlttb(table.drop_columns(["color"]), x="x", ys=["y0"], series=None, n_out=256)
 
 
 def minmaxlttb(
@@ -197,7 +256,7 @@ def minmaxlttb(
     for i, key in enumerate(series_values):
         if x_valid[i]:
             groups.setdefault(key, []).append(i)
-    positions_all = _positions(data.column(x))
+    positions_all = epoch_ms_values(data.column(x))
     for indices in groups.values():
         idx = np.asarray(indices, dtype=np.int64)
         if len(idx) <= n_out:

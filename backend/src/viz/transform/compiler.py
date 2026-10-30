@@ -196,6 +196,8 @@ class Compiler:
         self._pipelines = {p.id: p for p in pipelines}
         self._compiled: dict[str, CompiledPipeline] = {}
         self._visiting: list[str] = []
+        # Parquet path -> version stamp, for materialization keys.
+        self._stamps: dict[str, str] = {}
 
     # --- sources -------------------------------------------------------------------------
 
@@ -229,6 +231,11 @@ class Compiler:
             ).from_(source)
         columns = tuple(
             SchemaField(name=c.name, type=c.type, semantic=c.semantic) for c in version.columns
+        )
+        # Materialization keys include these, so a re-imported file at the same path (same
+        # dataset id and version number) can never reuse a stale materialized prefix.
+        self._stamps[str(path)] = (
+            f"{dataset.id}:{version.n}:{version.imported_at.isoformat()}:{version.row_count}"
         )
         return SourceBody(
             body=body,
@@ -291,7 +298,7 @@ class Compiler:
                 out = self.describe_sql(sql)
                 state: MaterializedState = "none"
                 if step.materialize:
-                    key = sha(sql)[:40]
+                    key = self._materialization_key(sql)
                     path = runtime.derived_path(self.storage, key)
                     if path.is_file():
                         trial[-1] = (name, exp.select(exp.Star()).from_(parquet_source(path)))
@@ -319,6 +326,11 @@ class Compiler:
             ctes, current, columns = trial, name, out
             steps.append(CompiledStep(step.id, "ok", list(out), materialized=state, cte=name))
         return CompiledPipeline(pipeline, source, ctes, steps, pending)
+
+    def _materialization_key(self, sql: str) -> str:
+        """Hash of the prefix SQL plus the version stamps of the datasets it reads."""
+        stamps = sorted(stamp for path, stamp in self._stamps.items() if path in sql)
+        return sha("\n".join([sql, *stamps]))[:40]
 
     # --- engine helpers used by step builders --------------------------------------------
 
@@ -351,14 +363,15 @@ class Compiler:
 
     def distinct_values(self, query: exp.Expr) -> list[str | None]:
         sql = to_sql(query)
+        digest = runtime.sql_key(sql)
         with _value_lock:
-            hit = _value_cache.get(sql)
+            hit = _value_cache.get(digest)
         if hit is not None:
             return hit
         result: pa.Table = runtime.query_arrow(self.engine, sql)
         values = [None if v is None else str(v) for v in result.column(0).to_pylist()]
         with _value_lock:
-            _value_cache[sql] = values
+            _value_cache[digest] = values
         return values
 
     def check_strptime_format(self, fmt: str) -> None:

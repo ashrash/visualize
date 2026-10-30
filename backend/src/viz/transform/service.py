@@ -91,12 +91,12 @@ def preview(
 
     condition = None
     if request.filters:
-        condition = exp.and_(
-            *(
-                exp.Paren(this=predicate_sql(p, col(_resolve(columns, p.field))))
-                for p in request.filters
-            )
-        )
+        types = {c.name: c.type for c in columns}
+        parts = []
+        for p in request.filters:
+            name = _resolve(columns, p.field)
+            parts.append(exp.Paren(this=predicate_sql(p, col(name), duck_type=types[name])))
+        condition = exp.and_(*parts)
     keys = [
         ordered(col(_resolve(columns, k.field)), desc=k.descending, nulls_last=k.nulls_last)
         for k in request.sort
@@ -108,7 +108,8 @@ def preview(
         count = count.where(condition.copy())
     page = page.order_by(*keys, ordered(col(RN))).limit(limit).offset(request.offset)
 
-    key = f"preview:{request.pipeline.id}"
+    # One slot per pipeline step: previews of different steps must not cancel each other.
+    key = f"preview:{request.pipeline.id}:{request.step_id or ''}"
     data = runtime.query_arrow(engine, to_sql(compiled.query(cte, page)), key=key)
     total = runtime.query_arrow(engine, to_sql(compiled.query(cte, count)))
     warnings = _cast_warnings(engine, compiled, request.step_id)

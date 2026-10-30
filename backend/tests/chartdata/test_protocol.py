@@ -73,16 +73,66 @@ def test_slot_registry_supersedes_older_generations() -> None:
     second = slots.begin("chart:a")
     other = slots.begin("chart:b")
     with pytest.raises(QueryInterruptedError) as info:
-        slots.check("chart:a", first)
+        slots.check(first)
     assert info.value.status_code == 409
-    slots.check("chart:a", second)
-    slots.check("chart:b", other)
-    slots.supersede("chart:b")
+    slots.check(second)
+    slots.check(other)
+    assert slots.cancel(other) is True
     with pytest.raises(QueryInterruptedError):
-        slots.check("chart:b", other)
-    for key in ("chart:a", "chart:a", "chart:b"):
-        slots.end(key)
-    assert slots.begin("chart:a") == 1  # idle slots are forgotten
+        slots.check(other)
+    for ticket in (first, second, other):
+        slots.end(ticket)
+    # Generations come from one monotonic counter and never reset, even for idle slots.
+    again = slots.begin("chart:a")
+    assert again.generation > other.generation > second.generation > first.generation
+
+
+def test_aborted_older_request_never_cancels_the_newer_one() -> None:
+    """Review repro (slot_race.py): abort A, send B; A's watcher fires after B began."""
+    slots = SlotRegistry()
+    a = slots.begin("chart:c1")
+    b = slots.begin("chart:c1")
+    assert slots.cancel(a) is False  # A is no longer the newest: nothing to cancel
+    slots.check(b)  # B is still current
+    with pytest.raises(QueryInterruptedError):
+        slots.check(a)  # A stops at its next query anyway
+
+
+def test_disconnect_cancels_only_its_own_ticket() -> None:
+    import asyncio
+
+    from viz.api.charts import run_cancellable
+    from viz.chartdata.slots import slots_for
+
+    class Gone:
+        async def is_disconnected(self) -> bool:
+            return True
+
+    class FakeEngine:
+        pass
+
+    engine = FakeEngine()
+    slots = slots_for(engine)  # type: ignore[arg-type]
+    older = slots.begin("chart:z")
+    newer = slots.begin("chart:z")
+    release = threading.Event()
+
+    def work() -> str:
+        release.wait(2)
+        slots.check(newer)  # must not have been cancelled by the older request's disconnect
+        return "ok"
+
+    async def scenario() -> str:
+        task = asyncio.ensure_future(
+            run_cancellable(Gone(), engine, older, work)  # type: ignore[arg-type]
+        )
+        await asyncio.sleep(0.25)
+        release.set()
+        return await task
+
+    assert asyncio.run(scenario()) == "ok"
+    assert slots.is_current(newer)
+    assert slots.cancel(newer) is True  # the newest one can still be cancelled
 
 
 def test_newer_request_in_the_same_slot_wins(client: TestClient, upload: Any) -> None:

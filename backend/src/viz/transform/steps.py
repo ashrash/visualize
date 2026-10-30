@@ -191,8 +191,9 @@ def _stats_join(
 def filter_step(step: FilterStep, inp: StepInput) -> exp.Select:
     conditions: list[exp.Expr] = []
     for predicate in step.predicates:
-        target = col(inp.resolve(predicate.field))
-        conditions.append(exp.Paren(this=predicate_sql(predicate, target)))
+        field = inp.schema(predicate.field)
+        condition = predicate_sql(predicate, col(field.name), duck_type=field.type)
+        conditions.append(exp.Paren(this=condition))
     if step.expression and step.expression.strip():
         formula = _formula(inp, step.expression)
         probe = inp.query_sql(exp.select(alias(formula.copy(), "v")).from_(inp.source()))
@@ -329,7 +330,8 @@ def drop_missing_step(step: DropMissingStep, inp: StepInput) -> exp.Select:
 
 
 def dedupe_step(step: DedupeStep, inp: StepInput) -> exp.Select:
-    names = inp.names if step.fields is None else [inp.resolve(f) for f in step.fields]
+    # None and [] both mean "compare whole rows" ([] used to collapse every row into one).
+    names = [inp.resolve(f) for f in step.fields] if step.fields else inp.names
     _unique(names, "column")
     first = row_number([ordered(col(RN), desc=step.keep == "last")], [col(n) for n in names])
     query = exp.select(exp.Star()).from_(inp.source())
@@ -467,6 +469,30 @@ def union_step(step: UnionStep, inp: StepInput) -> exp.Select:
     )
 
 
+MAX_PIVOT_NAME = 128
+
+
+def pivot_column_name(value: str | None, used: set[str]) -> str:
+    """A unique output column name for a pivot value (data-driven, so it must terminate).
+
+    The base never has the reserved prefix (a leading "_" is prepended until it doesn't), is
+    at most MAX_PIVOT_NAME characters, and a numeric suffix makes it unique among `used`
+    (case-insensitively). At most len(used) + 1 suffixes are tried, so the loop is bounded.
+    """
+    base = "null" if value is None else (value if value.strip() else "(empty)")
+    if base.lower().startswith(RESERVED_PREFIX):
+        base = "_" + base  # "___viz_..." no longer has the reserved prefix
+    base = base[:MAX_PIVOT_NAME]
+    if base.lower() not in used:
+        return base
+    for n in range(2, len(used) + 3):
+        suffix = f"_{n}"
+        candidate = base[: MAX_PIVOT_NAME - len(suffix)] + suffix
+        if candidate.lower() not in used:
+            return candidate
+    raise AssertionError("unreachable: more candidates than used names")  # pragma: no cover
+
+
 def pivot_step(step: PivotStep, inp: StepInput) -> exp.Select:
     index = [inp.resolve(f) for f in step.index]
     pivot_col = inp.resolve(step.columns)
@@ -487,10 +513,7 @@ def pivot_step(step: PivotStep, inp: StepInput) -> exp.Select:
     used = {n.lower() for n in index}
     items: list[exp.Expr] = [col(n) for n in index]
     for value in found:
-        base = "null" if value is None else (value if value.strip() else "(empty)")
-        out, n = base, 2
-        while out.lower() in used or out.lower().startswith(RESERVED_PREFIX):
-            out, n = f"{base}_{n}", n + 1
+        out = pivot_column_name(value, used)
         used.add(out.lower())
         match = (
             exp.Is(this=col(key), expression=exp.Null())

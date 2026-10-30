@@ -164,10 +164,47 @@ ATTACKS = [
 ]
 
 
+def _nested_replace(depth: int) -> str:
+    text = "s"
+    for _ in range(depth):
+        text = f"replace({text}, 'a', 'aaaaaaaaaa')"
+    return text
+
+
+# Exponential string growth (review blocker 4): nine nested replaces of 'a' by ten 'a's in
+# 253 characters produced a 10^10-character string.
+ATTACKS += [
+    _nested_replace(9),
+    _nested_replace(2),
+    "replace(replace(s, 'a', 'bb'), 'b', 'cc')",
+    "regexp_replace(upper(replace(s, 'a', 'bb')), 'B', 'cc')",
+    "replace(s, s, s)",
+    "replace(s, 'a', s)",
+    "regexp_replace(s, '.*', s, 'g')",
+    "replace(s, 'a', '" + "b" * 65 + "')",
+    "regexp_replace(s, '" + "a" * 65 + "', 'b')",
+    " || ".join(["replace(s, 'a', 'b')"] * 9),
+]
+
+
 @pytest.mark.parametrize("text", ATTACKS)
 def test_attacks_are_rejected(text: str) -> None:
     with pytest.raises(FormulaError):
         validate_formula(text, COLUMNS)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "replace(s, 'a', 'b')",
+        "replace(s, '-', '')",
+        "regexp_replace(s, '[0-9]+', '#', 'g')",
+        "replace(s, 'a', 'b') || replace(s, 'c', 'd')",
+        "upper(replace(trim(s), ' ', '_'))",
+    ],
+)
+def test_bounded_replaces_are_allowed(con: duckdb.DuckDBPyConnection, text: str) -> None:
+    run(con, validate_formula(text, COLUMNS).expression)
 
 
 def test_comments_are_stripped() -> None:

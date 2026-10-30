@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterator
+from datetime import UTC, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -178,7 +179,35 @@ def test_x_range_rejects_non_finite_bounds() -> None:
     assert "CAST('x''); DROP' AS TIMESTAMP)" in sql
 
 
-def test_numeric_x_temporal_is_epoch_ms(engine: Engine) -> None:
-    query = exp.select(numeric_x(exp.Literal.string("1970-01-02"), ColumnSemantic.TEMPORAL))
-    with engine.cursor() as cur:
-        assert cur.sql(to_sql(query)).fetchall()[0][0] == 86_400_000.0
+@pytest.mark.parametrize(
+    "literal",
+    ["DATE '1970-01-02'", "TIMESTAMP '1970-01-02'", "TIMESTAMPTZ '1970-01-02 00:00:00+00'"],
+)
+def test_numeric_x_temporal_is_utc_epoch_ms(literal: str) -> None:
+    import duckdb
+    import sqlglot
+
+    con = duckdb.connect()
+    con.execute("SET TimeZone = 'Asia/Kolkata'")  # a non-UTC session must not shift values
+    value = sqlglot.parse_one(literal, read="duckdb")
+    query = exp.select(numeric_x(value, ColumnSemantic.TEMPORAL))
+    assert con.sql(to_sql(query)).fetchall()[0][0] == 86_400_000.0
+
+
+def test_epoch_ms_values_handles_zones_units_and_dates() -> None:
+    from datetime import date, datetime, timezone
+
+    from viz.chartdata.reduce import epoch_ms_values
+
+    day = 86_400_000.0
+    utc = datetime(1970, 1, 2, tzinfo=UTC)
+    ist = utc.astimezone(timezone(timedelta(hours=5, minutes=30)))
+    cases = [
+        pa.chunked_array([pa.array([utc, None], pa.timestamp("us", tz="UTC"))]),
+        pa.chunked_array([pa.array([ist, None], pa.timestamp("ms", tz="Asia/Kolkata"))]),
+        pa.chunked_array([pa.array([datetime(1970, 1, 2), None], pa.timestamp("ns"))]),
+        pa.chunked_array([pa.array([date(1970, 1, 2), None], pa.date32())]),
+    ]
+    for column in cases:
+        values = epoch_ms_values(column)
+        assert values[0] == day and math.isnan(values[1])

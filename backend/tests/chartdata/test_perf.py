@@ -67,7 +67,7 @@ def big(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[Engine, Loca
     engine.close()
 
 
-def _time(big: Any, body: dict[str, Any], runs: int = 7) -> float:
+def _time(big: Any, body: dict[str, Any], runs: int = 7, *, unfiltered: bool = False) -> float:
     engine, storage, dataset = big
     import viz.transform.source as source_module
 
@@ -76,10 +76,16 @@ def _time(big: Any, body: dict[str, Any], runs: int = 7) -> float:
     try:
         samples = []
         for i in range(runs):
-            # A new filter value each run defeats the response cache.
-            request = ChartDataRequest.model_validate(
-                {**body, "filters": [{"op": "range", "field": "price", "min": -1 - i}]}
-            )
+            # Defeat the response cache: a new filter value each run, or (to keep the query
+            # unfiltered and identical) a fresh cache.
+            if unfiltered:
+                from viz.chartdata import cache as cache_module
+
+                cache_module._caches.pop(engine, None)
+                varied = body
+            else:
+                varied = {**body, "filters": [{"op": "range", "field": "price", "min": -1 - i}]}
+            request = ChartDataRequest.model_validate(varied)
             started = time.perf_counter()
             chart_data(engine, storage, None, request, mark_cap=50_000)  # type: ignore[arg-type]
             samples.append((time.perf_counter() - started) * 1000)
@@ -119,12 +125,16 @@ def test_monthly_line_p50_within_budget(big: Any) -> None:
     assert _time(big, body) <= 300
 
 
-def test_raw_timestamp_line_m4(big: Any) -> None:
-    # 10M distinct x values: group_by, then M4 in SQL, then MinMaxLTTB.
+def test_raw_timestamp_line_m4_within_budget(big: Any) -> None:
+    # 10M distinct x values, unfiltered: the import profile says x alone is over the cap, so
+    # the probe is skipped; GROUP BY + M4 in SQL, then MinMaxLTTB in Python.
+    from viz.chartdata.reduce import warm_up
+
+    warm_up()  # the app does this at startup
     body = _spec(
         "line", {"x": [{"field": "ts"}], "y": [{"field": "price"}]}, viewport={"widthPx": 1200}
     )
-    _time(big, body, runs=3)
+    assert _time(big, body, runs=7, unfiltered=True) <= 300
 
 
 def test_pipeline_source_aggregated(big: Any) -> None:

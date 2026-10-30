@@ -24,7 +24,15 @@ from scipy import stats as sps
 from sqlglot import exp
 
 from viz.chartdata.context import ChartContext, ChartOutput
-from viz.chartdata.reduce import aggregate_query, m4_query, minmaxlttb, numeric_x, x_range_predicate
+from viz.chartdata.reduce import (
+    aggregate_query,
+    epoch_ms_values,
+    m4_query,
+    minmaxlttb,
+    numeric_x,
+    over_groups,
+    x_range_predicate,
+)
 from viz.chartdata.sql import (
     alias,
     cast,
@@ -93,15 +101,15 @@ def _int_param(ctx: ChartContext, name: str, default: int, lo: int, hi: int) -> 
 
 def epoch_ms_domain(column: pa.ChunkedArray) -> tuple[float, float] | None:
     """(min, max) of an x column as plain numbers (epoch milliseconds for temporal x)."""
-    values = column
-    if pa.types.is_timestamp(values.type) or pa.types.is_date(values.type):
-        values = pc.cast(pc.cast(values, pa.timestamp("ms")), pa.int64())
-    elif not (pa.types.is_integer(values.type) or pa.types.is_floating(values.type)):
+    kind = column.type
+    temporal = pa.types.is_timestamp(kind) or pa.types.is_date(kind)
+    if not (temporal or pa.types.is_integer(kind) or pa.types.is_floating(kind)):
         return None
-    lo_hi = pc.min_max(values).as_py()
-    if lo_hi["min"] is None:
+    values = epoch_ms_values(column)
+    values = values[np.isfinite(values)]
+    if not len(values):
         return None
-    return float(lo_hi["min"]), float(lo_hi["max"])
+    return float(values.min()), float(values.max())
 
 
 def _domain_query(relation: Relation, x_dim: exp.Expr, semantic: ColumnSemantic) -> exp.Select:
@@ -113,16 +121,18 @@ def _domain_query(relation: Relation, x_dim: exp.Expr, semantic: ColumnSemantic)
 
 def _top_series(
     ctx: ChartContext, relation: Relation, color_dim: exp.Expr, y0: Encoding, limit: int
-) -> list[Any] | None:
-    """The `limit` colors with the largest |y0|, or None when there are no more than that."""
+) -> tuple[list[Any], bool]:
+    """The colors (at most `limit`, largest |y0| first) and whether there were more."""
+    grouped = aggregate_query(
+        relation, [("color", color_dim)], [("__viz_size", fn("abs", measure_sql(y0)))]
+    )
     query = (
-        relation.select(alias(color_dim, "color"))
-        .group_by(col("color"))
-        .order_by(ordered(fn("abs", measure_sql(y0)), desc=True), ordered(col("color")))
+        over_groups(grouped)
+        .order_by(ordered(col("__viz_size"), desc=True), ordered(col("color")))
         .limit(limit + 1)
     )
     values = ctx.query(query).column("color").to_pylist()
-    return None if len(values) <= limit else values[:limit]
+    return values[:limit], len(values) > limit
 
 
 def _series_condition(color_dim: exp.Expr, keep: list[Any]) -> exp.Expr:
@@ -184,6 +194,15 @@ def _apply_error_bars(
     return table, warnings
 
 
+def _truncation_warning(limit: int, x: Encoding, semantic: ColumnSemantic) -> str:
+    text = f"Showing the first {limit:,} groups; narrow the data with a filter"
+    if semantic == ColumnSemantic.TEMPORAL and x.time_unit is None:
+        return text + ", or set a time unit on the x axis."
+    if semantic == ColumnSemantic.QUANTITATIVE:
+        return text + ", or use a histogram for a numeric x."
+    return text + "."
+
+
 def _drop_helpers(table: pa.Table) -> pa.Table:
     return table.drop_columns([n for n in table.column_names if n.startswith("__viz_")])
 
@@ -222,17 +241,21 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
         if domain["lo"] is not None:
             x_domain = (float(domain["lo"]), float(domain["hi"]))
         relation = relation.narrow(
-            x_range_predicate(x_dim, x_column.semantic, ctx.viewport.x_range, x.time_unit)
+            x_range_predicate(
+                x_dim, x_column.semantic, ctx.viewport.x_range, x.time_unit, x_column.type
+            )
         )
 
     dimensions: list[tuple[str, exp.Expr]] = [("x", x_dim)]
+    n_series = 1
     if color is not None:
         assert color.field is not None
         color_dim = dimension_sql(color)
         fields["color"] = color.label or color.field
         max_series = _int_param(ctx, "maxSeries", DEFAULT_MAX_SERIES, 1, 500)
-        keep = _top_series(ctx, relation, color_dim, ys[0], max_series)
-        if keep is not None:
+        keep, more = _top_series(ctx, relation, color_dim, ys[0], max_series)
+        n_series = max(1, len(keep))
+        if more:
             relation = relation.narrow(_series_condition(color_dim, keep))
             params["truncatedSeries"] = True
             warnings.append(
@@ -248,6 +271,11 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
     bars = spec.style.error_bars
     if bars is not None:
         measures.extend(_error_bar_measures(ys, bars))
+        if bars.kind != "fixed" and any(default_agg(y) != AggFn.MEAN for y in ys):
+            warnings.append(
+                f"{bars.kind.upper()} error bars describe the spread around a mean; "
+                "they're drawn around the chart's other aggregates as they are."
+            )
     # Rows per group; summed for meta.rowsMatched (a window here costs ~0.3 s at 10M groups).
     measures.append(("__viz_n", exp.Count(this=exp.Star())))
     # A continuous series is ordered by x; that sort happens in Arrow after a cheap unordered
@@ -272,9 +300,23 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
     order += [ordered(col("x")), *([ordered(col("color"))] if color is not None else [])]
 
     per_measure_cap = max(1, ctx.mark_cap // len(ys))
-    probe = grouped if sort_in_arrow else grouped.order_by(*order)
-    table = ctx.query(probe.limit(per_measure_cap + 1))
-    truncated = table.num_rows > per_measure_cap
+    continuous = series_plot and ordered_x
+    # The probe (LIMIT cap+1 over the groups) is skipped when the import profile already
+    # says x alone has more distinct values than the cap and nothing can shrink the groups:
+    # no filters, no zoom, no time unit. That saves a full aggregation on the M4 path.
+    over_by_profile = (
+        continuous
+        and x.time_unit is None
+        and relation.where is None
+        and x_column.approx_distinct > per_measure_cap * 1.2
+    )
+    if over_by_profile:
+        truncated = True
+        table = pa.table({})
+    else:
+        probe = grouped if sort_in_arrow else over_groups(grouped).order_by(*order)
+        table = ctx.query(probe.limit(per_measure_cap + 1))
+        truncated = table.num_rows > per_measure_cap
     if truncated:
         count = relation.select(alias(exp.Count(this=exp.Star()), "n"))
         rows_matched = int(ctx.query(count).column("n")[0].as_py())
@@ -285,31 +327,39 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
             keys += [("color", "ascending", "at_end")] if color is not None else []
             table = table.take(pc.sort_indices(table, sort_keys=keys))
     reduction, method = Reduction.AGGREGATED, "group_by"
-    n_out = 2 * max(1, ctx.viewport.width_px)
+    # Points per series: 2 x the viewport width, but all series together stay within the cap.
+    n_out = max(3, min(2 * max(1, ctx.viewport.width_px), per_measure_cap // n_series))
     series_col = "color" if color is not None else None
     y_names = [f"y{i}" for i in range(len(ys))]
 
     if truncated:
-        if series_plot and ordered_x:
+        if continuous:
+            # rowsMatched comes from the count query here, so M4 skips the per-group count
+            # (~10% of the M4 query at 10M groups).
+            lean = [(n, e) for n, e in measures if n not in ("__viz_n", "__viz_rank")]
             reduced = m4_query(
-                grouped,
+                aggregate_query(relation, dimensions, lean),
                 x="x",
                 x_position=numeric_x(col("x"), x_column.semantic),
                 ys=y_names,
                 series=series_col,
-                buckets=max(1, ctx.viewport.width_px),
+                buckets=max(1, min(ctx.viewport.width_px, n_out)),
             )
             table = ctx.query(reduced)
             table, _ = minmaxlttb(table, x="x", ys=y_names, series=series_col, n_out=n_out)
             reduction, method = Reduction.DOWNSAMPLED, "m4+minmaxlttb"
             params["nOut"] = n_out
         if table.num_rows > per_measure_cap:
+            before = set(table.column("color").to_pylist()) if series_col else set()
             table = table.slice(0, per_measure_cap)
             params["truncatedGroups"] = True
-            warnings.append(
-                f"Showing the first {per_measure_cap:,} groups; narrow the data with a filter."
-            )
-    elif series_plot and ordered_x:
+            warnings.append(_truncation_warning(per_measure_cap, x, x_column.semantic))
+            if series_col:
+                dropped = before - set(table.column("color").to_pylist())
+                if dropped:
+                    names = ", ".join(sorted(str(d) for d in dropped)[:10])
+                    warnings.append(f"Series not shown: {names}.")
+    elif continuous:
         table, was_reduced = minmaxlttb(table, x="x", ys=y_names, series=series_col, n_out=n_out)
         if was_reduced:
             reduction, method = Reduction.DOWNSAMPLED, "group_by+minmaxlttb"

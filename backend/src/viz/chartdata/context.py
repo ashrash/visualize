@@ -8,7 +8,7 @@ import pyarrow as pa
 from pydantic import JsonValue
 from sqlglot import exp
 
-from viz.chartdata.slots import SlotRegistry
+from viz.chartdata.slots import SlotRegistry, Ticket
 from viz.chartdata.sql import to_sql
 from viz.contracts import ChartSpec, Column, Encoding, Reduction, Viewport
 from viz.errors import InvalidSpecError
@@ -23,17 +23,21 @@ class ChartContext:
     relation: Relation
     viewport: Viewport
     mark_cap: int
-    key: str
-    generation: int
+    ticket: Ticket
     slots: SlotRegistry
 
     def check_current(self) -> None:
-        self.slots.check(self.key, self.generation)
+        self.slots.check(self.ticket)
 
     def query(self, query: exp.Expr) -> pa.Table:
         """Run `query` in this request's cancellation slot (stale requests stop here)."""
         self.check_current()
-        return runtime.query_arrow(self.relation.engine, to_sql(query), key=self.key)
+        return runtime.query_arrow(
+            self.relation.engine,
+            to_sql(query),
+            key=self.ticket.key,
+            generation=self.ticket.generation,
+        )
 
     def column(self, name: str) -> Column:
         return self.relation.columns[resolve_field(self.relation.columns, name)]

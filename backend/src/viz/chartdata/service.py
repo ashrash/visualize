@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import cast
 
 import pyarrow as pa
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ from viz.chartdata.basic import AGGREGATE_PLOTS, ORDERED, aggregate_chart, epoch
 from viz.chartdata.cache import CachedChart, cache_for, chart_key
 from viz.chartdata.context import ChartContext, ChartOutput
 from viz.chartdata.reduce import numeric_x, x_range_predicate
-from viz.chartdata.slots import slots_for
+from viz.chartdata.slots import Ticket, TicketEngine, slots_for
 from viz.chartdata.sql import alias, col, fn
 from viz.contracts import (
     ChartDataMeta,
@@ -76,22 +77,29 @@ def chart_data(
     request: ChartDataRequest,
     *,
     mark_cap: int,
+    ticket: Ticket | None = None,
 ) -> ChartResult:
+    """Chart data for `request`. The endpoint passes the `ticket` it took before any work
+    started (so a disconnect can cancel exactly this request); direct callers can omit it."""
     started = time.perf_counter()
-    key = slot_key(request)
     slots = slots_for(engine)
-    generation = slots.begin(key)
+    own_ticket = ticket is None
+    if ticket is None:
+        ticket = slots.begin(slot_key(request))
     try:
         spec = request.spec
+        # Every query this request runs, including plot modules' own queries through the
+        # Relation, first checks that the ticket is still the newest in its slot.
+        guarded = cast(Engine, TicketEngine(engine, slots, ticket))
         relation = resolve_source(
-            engine,
+            guarded,
             db,
             storage,
             spec.source,
             request.pipelines,
             [*spec.filters, *request.filters],
-            # TODO(data-core): pass generation= once Engine.cursor accepts it.
-            query_key=key,
+            query_key=ticket.key,
+            generation=ticket.generation,
         )
         # TODO(data-core): enqueue pending materializations of a pipeline source as jobs.
         cache = cache_for(engine)
@@ -109,8 +117,7 @@ def chart_data(
             relation=relation,
             viewport=request.viewport,
             mark_cap=mark_cap,
-            key=key,
-            generation=generation,
+            ticket=ticket,
             slots=slots,
         )
         definition = get_plot(spec.plot_type)
@@ -125,7 +132,8 @@ def chart_data(
         cache.put(cache_key, CachedChart(result.table, result.stat, result.meta))
         return result
     finally:
-        slots.end(key)
+        if own_ticket:
+            slots.end(ticket)
 
 
 def _run_plot_module(ctx: ChartContext, started: float) -> ChartResult:
@@ -145,7 +153,12 @@ def _run_plot_module(ctx: ChartContext, started: float) -> ChartResult:
             if domain["lo"] is not None:
                 x_domain = (float(domain["lo"]), float(domain["hi"]))
             relation = relation.narrow(
-                x_range_predicate(col(column.name), column.semantic, ctx.viewport.x_range)
+                x_range_predicate(
+                    col(column.name),
+                    column.semantic,
+                    ctx.viewport.x_range,
+                    duck_type=column.type,
+                )
             )
     ctx.check_current()
     try:

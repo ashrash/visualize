@@ -518,3 +518,70 @@ def test_timestamps_survive(world: Any) -> None:
     world.dataset("t", "SELECT TIMESTAMP '2024-01-01 10:00:00' AS ts")
     _, rows = world.run([{"op": "calc", "name": "d", "expression": "date_trunc('day', ts)"}])
     assert rows[0]["ts"] == datetime(2024, 1, 1, 10)
+
+
+# --- review fixes ----------------------------------------------------------------------------
+
+
+def test_pivot_value_with_reserved_prefix_terminates(world: Any) -> None:
+    """Review blocker 1: a data value starting with __viz_ looped forever."""
+    world.dataset(
+        "t",
+        "SELECT * FROM (VALUES ('__viz_a', 1), ('__VIZ_A', 2), ('___viz_a', 3), ('b', 4))"
+        " AS v(k, v)",
+    )
+    compiled, rows = world.run(
+        [{"op": "pivot", "index": [], "columns": "k", "values": "v", "fn": "sum"}]
+    )
+    names = [c.name for c in compiled.steps[0].columns]
+    assert not any(n.lower().startswith("__viz_") for n in names)
+    assert len({n.lower() for n in names}) == 4
+    assert sorted(rows[0].values()) == [1, 2, 3, 4]
+
+
+def test_pivot_column_name_rules() -> None:
+    from viz.transform.steps import MAX_PIVOT_NAME, pivot_column_name
+
+    assert pivot_column_name("__viz_rn", set()) == "___viz_rn"
+    assert pivot_column_name(None, set()) == "null"
+    assert pivot_column_name("  ", set()) == "(empty)"
+    assert pivot_column_name("a", {"a", "a_2"}) == "a_3"
+    long = "z" * 5000
+    first = pivot_column_name(long, set())
+    second = pivot_column_name(long, {first.lower()})
+    assert len(first) == MAX_PIVOT_NAME and len(second) == MAX_PIVOT_NAME
+    assert second.endswith("_2")
+    # Bounded even when every candidate is taken: n names need at most n + 1 tries.
+    used = {"x"} | {f"x_{n}" for n in range(2, 500)}
+    assert pivot_column_name("x", used) == "x_500"
+
+
+def test_dedupe_with_empty_fields_compares_whole_rows(world: Any) -> None:
+    """Review should-fix 8: fields=[] collapsed everything into one row."""
+    world.dataset("t", "SELECT * FROM (VALUES (1, 2), (3, 4), (1, 2)) AS v(a, b)")
+    for fields in (None, []):
+        _, rows = world.run([{"op": "dedupe", "fields": fields}])
+        assert [(r["a"], r["b"]) for r in rows] == [(1, 2), (3, 4)]
+
+
+def test_in_filter_with_numbers_on_a_text_column(world: Any) -> None:
+    world.dataset("t", "SELECT * FROM (VALUES ('1', 'a'), ('2', 'b'), ('x', 'c')) AS v(code, n)")
+    _, rows = world.run(
+        [{"op": "filter", "predicates": [{"op": "in", "field": "code", "values": [1, 2.0]}]}]
+    )
+    assert [r["n"] for r in rows] == ["a", "b"]
+
+
+def test_materialization_key_changes_with_the_import(world: Any, pipe: Any) -> None:
+    """Re-importing a file at the same path (same id and version) must not reuse a stale
+    materialized prefix: the key includes the version's import time and row count."""
+    from datetime import timedelta
+
+    world.dataset("t", "SELECT 1 AS a")
+    pipeline = pipe([{"op": "select", "fields": ["a"], "materialize": True}])
+    first = world.compile(pipeline).pending[0].key
+    assert world.compile(pipeline).pending[0].key == first  # deterministic
+    version = world.datasets["t"].current()
+    later = version.model_copy(update={"imported_at": version.imported_at + timedelta(seconds=1)})
+    world.datasets["t"] = world.datasets["t"].model_copy(update={"versions": [later]})
+    assert world.compile(pipeline).pending[0].key != first

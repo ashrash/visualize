@@ -17,6 +17,7 @@ from viz.errors import InvalidSpecError
 from viz.ingest.catalog import get_dataset
 from viz.stats.relation import Relation
 from viz.storage import LocalStorage
+from viz.transform import runtime
 from viz.transform.compiler import CompiledPipeline, Compiler, sha
 
 
@@ -83,7 +84,8 @@ def relation_for(
         row_count=row_count,
         version_key=version_key,
         query_key=query_key,
-        generation=generation,
+        # stats' Relation passes generation= to engine.cursor; only engines that take it get it.
+        generation=generation if runtime.engine_takes_generation(compiler.engine) else None,
     )
     return with_filters(relation, filters)
 
@@ -126,9 +128,12 @@ def filter_condition(
 ) -> exp.Expr | None:
     if not filters:
         return None
-    return exp.and_(
-        *(exp.Paren(this=predicate_sql(p, col(resolve_field(columns, p.field)))) for p in filters)
-    )
+    parts: list[exp.Expr] = []
+    for predicate in filters:
+        column = columns[resolve_field(columns, predicate.field)]
+        condition = predicate_sql(predicate, col(column.name), duck_type=column.type)
+        parts.append(exp.Paren(this=condition))
+    return exp.and_(*parts)
 
 
 def with_filters(relation: Relation, filters: Sequence[Predicate]) -> Relation:

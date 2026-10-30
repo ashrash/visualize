@@ -1,5 +1,19 @@
 # transform plan: pipeline compiler + chart-data protocol (Wave 1)
 
+## As built (where the code differs from the plan below)
+- **Names:** the compiler output is `CompiledPipeline`, and a resolved source with the hidden row number is `SourceBody`. `resolve_source(engine, db, storage, ref, pipelines=(), filters=(), *, query_key=None, generation=None, ordered=False)` returns stats' `viz.stats.relation.Relation`.
+- **Hidden row number:** it is `__viz_rn`, read with `read_parquet(path, file_row_number = true)`. The virtual `file_row_number` column hits a DuckDB 2.0.0 internal error under QUALIFY.
+- **unpivot:** a zipped `unnest([...])` of names, values and positions rather than `UNPIVOT`. This keeps NULL values (melt semantics) and the row order. Mixed value types become DOUBLE (all numeric) or VARCHAR.
+- **Plot seam:** stats' design: `viz.plots.get_plot` / `run_plot_stat` taking `PlotRequest`. chartdata's `ChartContext` is internal, and there is no `fallback` field.
+- **Kernels:** stats owns `histogram`/`bin_edges`/`reservoir_sample`. chartdata keeps `aggregate_query`/`over_groups`, `m4_query`, `minmaxlttb`, `bin2d`, `hexbin`, `numeric_x`, `epoch_ms_values` and `x_range_predicate`.
+- **Grouping and ordering:** GROUP BY uses the dimension expressions, never their aliases, because a source column called `x` would win. Ordering happens over a subquery that exposes only the aliases.
+- **M4:** ties are broken by `(y, x)` with `FILTER (y IS NOT NULL)`, so output is deterministic. With no filters, zoom or time unit, the cap+1 probe is skipped when the import profile's `approx_distinct(x)` exceeds the cap.
+- **Series:** `n_out` per series is `min(2·widthPx, cap / series)`.
+- **Cancellation:** tickets come from one monotonic counter. The endpoint takes the ticket before work starts; a disconnect cancels only that ticket, and only while it is the newest in its slot. `TicketEngine` checks the ticket before every cursor, including plot modules' own queries.
+- **Time:** TIMESTAMPTZ positions use `epoch_ms(x)` directly (no cast). Bounds are absolute instants. Offsets in text are applied to naive TIMESTAMP columns, not dropped.
+- **Formulas:** `replace`/`regexp_replace` take only quoted text of 64 characters or fewer, can't be nested inside each other, and at most 8 may appear per formula.
+- **Overlays:** fits use numpy until stats' `ols_curve`/`lowess_curve` land. The raw-point reservoir sample uses `REPEATABLE (42)` on the filtered subquery. LOESS above 5,000 points uses a seeded (42) numpy subsample.
+
 ## 1. Pipeline compiler (`transform/compiler.py`)
 - **Relation, not CREATE VIEW.** `compile(pipeline, ctx) -> Relation{sql: exp.Select, columns: list[SchemaField], key: str, steps: list[StepSchema], pending: list[Materialization]}`. The "view" is an inlined SQLGlot subquery, so there is no catalog state in the shared DuckDB, no view lifecycle and no global state (CLAUDE §11). `key` = sha256 of the generated SQL. It embeds `datasets/<id>/v<n>.parquet`, so it covers "dataset version + SQL hash" and a refresh changes it.
 - **CTE chain:** `WITH "s0" AS (source), "s1" AS (...) ... SELECT * EXCLUDE ("__rn") FROM "sK"`. CTEs are named by enabled-step position, never by user ids. Every identifier is quoted via `chartdata.sql.col`.

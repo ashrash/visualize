@@ -105,8 +105,8 @@ FUNCTIONS: tuple[FunctionDoc, ...] = (
     _f(
         "replace",
         "string",
-        "replace(s, from, to)",
-        "Replace every occurrence",
+        "replace(s, 'from', 'to')",
+        "Replace every occurrence (quoted text up to 64 characters; not nested)",
         "replace(s, 'a', 'b')",
     ),
     _f(
@@ -158,8 +158,8 @@ FUNCTIONS: tuple[FunctionDoc, ...] = (
     _f(
         "regexp_replace",
         "string",
-        "regexp_replace(s, pattern, replacement)",
-        "Replace the first RE2 match",
+        "regexp_replace(s, 'pattern', 'replacement')",
+        "Replace the first RE2 match (quoted text up to 64 characters; not nested)",
         "regexp_replace(s, 'a', 'b')",
     ),
     _f(
@@ -505,6 +505,37 @@ def _check_shape(tree: exp.Expr) -> None:
         stack.extend((child, depth + 1) for child in node.iter_expressions())
 
 
+# String functions whose output can be much longer than their input. Nesting them compounds
+# the growth (nine nested replaces in a 253-character formula made a 10^10-character string),
+# so they take only short literal patterns/replacements, can't contain one another, and are
+# limited in number. Every other allowlisted string function's output is bounded by its
+# inputs plus the formula's own length.
+_GROWING: tuple[type[exp.Expr], ...] = (exp.Replace, exp.RegexpReplace)
+MAX_GROWING_CALLS = 8
+MAX_REPLACE_LITERAL = 64
+
+
+def _check_growth(tree: exp.Expr) -> None:
+    calls = [node for node in tree.walk() if isinstance(node, _GROWING)]
+    if len(calls) > MAX_GROWING_CALLS:
+        raise FormulaError(f"a formula can use replace at most {MAX_GROWING_CALLS} times")
+    for call in calls:
+        name = "regexp_replace" if isinstance(call, exp.RegexpReplace) else "replace"
+        inner = call.args.get("this")
+        if isinstance(inner, exp.Expr) and any(isinstance(node, _GROWING) for node in inner.walk()):
+            raise FormulaError(f"{name}() can't be nested inside another replace")
+        for arg_name, arg in call.args.items():
+            if arg_name == "this" or not isinstance(arg, exp.Expr):
+                continue
+            if not (isinstance(arg, exp.Literal) and arg.is_string):
+                raise FormulaError(f"{name}() needs a quoted text pattern and replacement")
+            if len(str(arg.this)) > MAX_REPLACE_LITERAL:
+                raise FormulaError(
+                    f"{name}() patterns and replacements are limited to "
+                    f"{MAX_REPLACE_LITERAL} characters"
+                )
+
+
 def validate_formula(text: str, columns: Sequence[str] | Mapping[str, object]) -> Formula:
     """Validate `text` against the input `columns`; return a safe, regenerated expression."""
     tree = _parse(text)
@@ -516,6 +547,7 @@ def validate_formula(text: str, columns: Sequence[str] | Mapping[str, object]) -
     for node in list(tree.walk()):
         _check_node(node)
         node.comments = None
+    _check_growth(tree)
     for column in list(tree.find_all(exp.Column)):
         written = column.name
         actual = by_lower.get(written.lower())
