@@ -121,6 +121,11 @@ export async function listActiveJobs(signal?: AbortSignal): Promise<Job[]> {
   return unwrap(await api.GET("/api/jobs", { params: { query: { active: true } }, signal }));
 }
 
+/** GET /api/jobs/{id} */
+export async function getJob(id: string, signal?: AbortSignal): Promise<Job> {
+  return unwrap(await api.GET("/api/jobs/{job_id}", { params: { path: { job_id: id } }, signal }));
+}
+
 /** POST /api/jobs/{id}/cancel */
 export async function cancelJob(id: string, signal?: AbortSignal): Promise<Job> {
   return unwrap(

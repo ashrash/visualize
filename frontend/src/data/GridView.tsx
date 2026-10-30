@@ -185,7 +185,7 @@ export function GridView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on identity changes only.
   useEffect(() => {
     anchorRef.current = null;
-    scrollRef.current?.scrollTo({ top: 0 });
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
     readScroll();
   }, [gridKey, totalRows, filterPredicates, sort]);
   const moveToRef = useRef(moveTo);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FollowHandlers } from "../api/jobs";
 import type { Job, Project } from "../api/types";
 
@@ -17,14 +17,23 @@ vi.mock("../api/jobs", async (original) => ({
 vi.mock("../api/datasets", () => ({
   getDataset: vi.fn(async (id: string) => ({ id, name: id })),
   deleteStaged: vi.fn(async () => undefined),
+  getJob: vi.fn(),
 }));
 vi.mock("../app/queryClient", () => ({
   queryClient: { invalidateQueries: vi.fn(async () => undefined) },
 }));
 
-import { deleteStaged, getDataset } from "../api/datasets";
+import { deleteStaged, getDataset, getJob } from "../api/datasets";
 import { queryClient } from "../app/queryClient";
-import { cleanupStagedAfter, markLocalJob, useJobsStore } from "./jobs";
+import {
+  addStagedJob,
+  beginStagedCleanup,
+  closeStagedWizard,
+  markLocalJob,
+  resetLocalJobs,
+  startLocalJob,
+  useJobsStore,
+} from "./jobs";
 import { useProjectStore } from "./projectStore";
 
 const project: Project = {
@@ -66,6 +75,8 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe("jobs store", () => {
   beforeEach(() => {
     followers.length = 0;
+    sessionStorage.clear();
+    resetLocalJobs();
     vi.mocked(queryClient.invalidateQueries).mockClear();
     vi.mocked(getDataset).mockClear();
     useProjectStore.getState().load(project);
@@ -136,26 +147,6 @@ describe("jobs store", () => {
     expect(useProjectStore.getState().project?.datasetIds).toEqual(["d1"]);
   });
 
-  it("a lost stream settles the job as failed instead of hanging", () => {
-    const j = job();
-    const onSettled = vi.fn();
-    useJobsStore.getState().track(j, onSettled);
-    followers[0]?.handlers.onError?.("Lost connection to the job");
-    expect(onSettled).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "failed", error: "Lost connection to the job" }),
-    );
-    expect(useJobsStore.getState().jobs[j.id]?.status).toBe("failed");
-  });
-
-  it("trackId reports a lost stream and returns a working stop function", () => {
-    const onSettled = vi.fn();
-    const stop = useJobsStore.getState().trackId("m1", onSettled);
-    followers[0]?.handlers.onError?.("Lost connection to the job");
-    expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ id: "m1", status: "failed" }));
-    stop();
-    expect(followers[0]?.stopped).toBe(true);
-  });
-
   it("does not let an older snapshot overwrite a newer one", () => {
     const j = job({ seq: 5, status: "running" });
     useJobsStore.getState().merge(j);
@@ -165,15 +156,18 @@ describe("jobs store", () => {
 
   describe("staged upload cleanup", () => {
     beforeEach(() => vi.mocked(deleteStaged).mockClear());
+    const started = (stagedId: string) => {
+      const j = job();
+      markLocalJob(j.id);
+      addStagedJob(stagedId, j);
+      useJobsStore.getState().track(j);
+      return j;
+    };
 
-    it("deletes the staged upload only after the last import from it settles", async () => {
-      const a = job();
-      const b = job();
-      markLocalJob(a.id);
-      markLocalJob(b.id);
-      cleanupStagedAfter("stg1", [a.id, b.id]); // registered before tracking, as the wizard does
-      useJobsStore.getState().track(a);
-      useJobsStore.getState().track(b);
+    it("deletes the staged upload only after the last import settles successfully", async () => {
+      beginStagedCleanup("stg1");
+      const a = started("stg1");
+      const b = started("stg1");
       followers[0]?.handlers.onJob(done(a.id, "d1"));
       await flush();
       expect(deleteStaged).not.toHaveBeenCalled(); // b is still reading the file
@@ -183,19 +177,143 @@ describe("jobs store", () => {
       expect(vi.mocked(deleteStaged).mock.calls[0]?.[0]).toBe("stg1");
     });
 
-    it("also cleans up after a failed or cancelled import, and ignores a failing delete", async () => {
-      vi.mocked(deleteStaged).mockRejectedValueOnce(new Error("409 busy"));
-      const a = job();
-      cleanupStagedAfter("stg2", [a.id]);
-      useJobsStore.getState().track(a);
+    it("keeps the upload after a failed or cancelled import while the wizard is open", async () => {
+      beginStagedCleanup("stg2");
+      const a = started("stg2");
       followers[0]?.handlers.onJob({ ...a, status: "cancelled", seq: 4 });
       await flush();
+      expect(deleteStaged).not.toHaveBeenCalled(); // "Back to options" must still find it
+      // A retry from the same upload that succeeds still leaves it for the wizard's close().
+      const retry = started("stg2");
+      followers[1]?.handlers.onJob(done(retry.id, "d1"));
+      await flush();
+      expect(deleteStaged).not.toHaveBeenCalled();
+      closeStagedWizard("stg2");
       expect(deleteStaged).toHaveBeenCalledWith("stg2");
     });
 
-    it("deletes immediately when no import was started", () => {
-      cleanupStagedAfter("stg3", []);
+    it("once the wizard is closed, any terminal status deletes it (after the last job)", async () => {
+      beginStagedCleanup("stg3");
+      const a = started("stg3");
+      const b = started("stg3");
+      closeStagedWizard("stg3"); // closed mid-import: the store owns the cleanup now
+      expect(deleteStaged).not.toHaveBeenCalled();
+      followers[0]?.handlers.onJob({ ...a, status: "failed", error: "x", seq: 4 });
+      await flush();
+      expect(deleteStaged).not.toHaveBeenCalled(); // b is still running
+      followers[1]?.handlers.onJob({ ...b, status: "cancelled", seq: 4 });
+      await flush();
       expect(deleteStaged).toHaveBeenCalledWith("stg3");
+    });
+
+    it("deletes at close when nothing was started, and ignores a failing delete", async () => {
+      vi.mocked(deleteStaged).mockRejectedValueOnce(new Error("409 busy"));
+      beginStagedCleanup("stg4");
+      expect(() => closeStagedWizard("stg4")).not.toThrow();
+      expect(deleteStaged).toHaveBeenCalledWith("stg4");
+      await flush();
+    });
+
+    it("counts a job that already settled when it is registered", async () => {
+      beginStagedCleanup("stg5");
+      const a = job();
+      markLocalJob(a.id);
+      useJobsStore.getState().track(a);
+      followers[0]?.handlers.onJob(done(a.id, "d1")); // settles before the POST handler registers it
+      await flush();
+      addStagedJob("stg5", done(a.id, "d1"));
+      expect(deleteStaged).toHaveBeenCalledWith("stg5"); // all succeeded: delete right away
+    });
+  });
+
+  describe("starting a job from this tab", () => {
+    it("an early sheet that settles before its POST response is processed still attaches", async () => {
+      let respond: (j: Job) => void = () => undefined;
+      const pending = new Promise<Job>((resolve) => {
+        respond = resolve;
+      });
+      const j = job();
+      const starting = startLocalJob(() => pending);
+      // Meanwhile the poll found the job and its stream already reports success.
+      useJobsStore.getState().track(j);
+      followers[0]?.handlers.onJob(done(j.id, "early-ds"));
+      await flush();
+      expect(useProjectStore.getState().project?.datasetIds).toEqual([]); // not decided yet
+      respond(j);
+      await starting;
+      await flush();
+      await flush();
+      expect(useProjectStore.getState().project?.datasetIds).toEqual(["early-ds"]);
+    });
+
+    it("remembers the project across a reload (sessionStorage) so the attach still happens", async () => {
+      const j = job();
+      markLocalJob(j.id);
+      expect(JSON.parse(sessionStorage.getItem("viz.localJobs") ?? "{}")).toEqual({ [j.id]: "p" });
+      // The page reloads: module state is gone, sessionStorage and the reopened project remain.
+      resetLocalJobs();
+      useProjectStore.getState().load(project);
+      useJobsStore.getState().track(j); // found again by the active-jobs poll
+      followers[0]?.handlers.onJob(done(j.id, "after-reload"));
+      await flush();
+      expect(useProjectStore.getState().project?.datasetIds).toEqual(["after-reload"]);
+    });
+
+    it("survives unreadable sessionStorage content", () => {
+      sessionStorage.setItem("viz.localJobs", "{not json");
+      resetLocalJobs();
+      expect(() => markLocalJob("x")).not.toThrow();
+    });
+  });
+
+  describe("a lost stream", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.mocked(getJob).mockReset();
+      vi.mocked(deleteStaged).mockClear();
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("falls back to polling the job and settles normally once it is terminal", async () => {
+      const j = job();
+      markLocalJob(j.id);
+      beginStagedCleanup("stg6");
+      addStagedJob("stg6", j);
+      closeStagedWizard("stg6");
+      const onSettled = vi.fn();
+      useJobsStore.getState().track(j, onSettled);
+      vi.mocked(getJob)
+        .mockResolvedValueOnce({ ...j, seq: 2 })
+        .mockResolvedValue(done(j.id, "polled-ds"));
+      followers[0]?.handlers.onError?.("Lost connection to the job");
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(onSettled).not.toHaveBeenCalled(); // still running
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ status: "succeeded" }));
+      expect(useProjectStore.getState().project?.datasetIds).toEqual(["polled-ds"]);
+      expect(deleteStaged).toHaveBeenCalledWith("stg6"); // cleanup ran too
+    });
+
+    it("gives up after repeated failures and settles the job as failed", async () => {
+      const j = job();
+      const onSettled = vi.fn();
+      useJobsStore.getState().track(j, onSettled);
+      vi.mocked(getJob).mockRejectedValue(new Error("404"));
+      followers[0]?.handlers.onError?.("Lost connection to the job");
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(onSettled).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "failed", error: "Lost connection to the job" }),
+      );
+    });
+
+    it("stops polling when the caller stops", async () => {
+      const j = job();
+      const stop = useJobsStore.getState().track(j);
+      followers[0]?.handlers.onError?.("Lost connection to the job");
+      stop();
+      vi.mocked(getJob).mockResolvedValue(done(j.id, "x"));
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(getJob).not.toHaveBeenCalled();
     });
   });
 });

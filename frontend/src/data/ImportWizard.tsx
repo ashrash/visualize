@@ -9,7 +9,13 @@ import { Dialog, DialogContent } from "../components/ui/dialog";
 import { Field, Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "../components/ui/toast";
-import { cleanupStagedAfter, deleteStagedQuietly, markLocalJob, useJobsStore } from "../state/jobs";
+import {
+  addStagedJob,
+  beginStagedCleanup,
+  closeStagedWizard,
+  startLocalJob,
+  useJobsStore,
+} from "../state/jobs";
 import { GridView } from "./GridView";
 import { ImportOptionsForm } from "./ImportOptionsForm";
 import {
@@ -253,10 +259,15 @@ export function ImportWizardDialog({
   const [state, dispatch] = useReducer(wizardReducer, initialState);
   const storeJobs = useJobsStore((s) => s.jobs);
   const stagedRef = useRef<string | null>(null);
-  /** True once the jobs store owns deleting the staged upload (an import was started). */
-  const cleanupOwned = useRef(false);
   const finished = useRef(false);
   const startCtl = useRef<AbortController | null>(null);
+  // However the wizard goes away (close button, Escape, parent unmount), release its upload.
+  useEffect(
+    () => () => {
+      if (stagedRef.current) closeStagedWizard(stagedRef.current);
+    },
+    [],
+  );
 
   // Upload to staging as soon as a file is chosen. The File itself is not serialisable state,
   // so it is parked in a ref and the machine only learns its name.
@@ -269,6 +280,7 @@ export function ImportWizardDialog({
     stageFile(file, controller.signal).then(
       (staged) => {
         stagedRef.current = staged.stagedId;
+        beginStagedCleanup(staged.stagedId);
         dispatch({ type: "staged", file: staged });
       },
       (error: unknown) => {
@@ -300,7 +312,12 @@ export function ImportWizardDialog({
       (dataset) => {
         toast(`Imported ${dataset.name}`, { variant: "success" });
         onImported(dataset);
-        if (state.warnings.length === 0) onOpenChange(false);
+        if (state.warnings.length === 0) {
+          // Auto-close goes through the same release as the close button.
+          if (stagedRef.current) closeStagedWizard(stagedRef.current);
+          stagedRef.current = null;
+          onOpenChange(false);
+        }
       },
       (error: unknown) =>
         toast("Imported, but couldn't load the dataset", {
@@ -313,11 +330,10 @@ export function ImportWizardDialog({
   const close = (next: boolean) => {
     if (!next) {
       startCtl.current?.abort(); // abandon import requests that have not returned a job yet
-      // Free the staged upload now unless imports are using it: then the jobs store deletes it
-      // after the last of them settles, even though this wizard is gone.
-      if (stagedRef.current && !cleanupOwned.current) deleteStagedQuietly(stagedRef.current);
+      // The jobs store deletes the staged upload once nothing is reading it any more: after
+      // the last import settles, or right now if none was started.
+      if (stagedRef.current) closeStagedWizard(stagedRef.current);
       stagedRef.current = null;
-      cleanupOwned.current = false;
       finished.current = false;
       dispatch({ type: "reset" });
     }
@@ -334,22 +350,18 @@ export function ImportWizardDialog({
       // One staged upload serves every sheet: the imports run in parallel from the same id.
       const results = await Promise.allSettled(
         buildImportRequests(state).map(async ({ sheet, request }) => {
-          const job = await startImport(request, signal);
-          markLocalJob(job.id); // before anything can settle it
+          // Recorded as ours, and registered with the staged upload, the moment the id is known.
+          const job = await startLocalJob(
+            () => startImport(request, signal),
+            (started) => {
+              if (stagedRef.current) addStagedJob(stagedRef.current, started);
+            },
+          );
           return { sheet, job };
         }),
       );
       const started = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
       const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
-      // The staged upload is deleted once every started import has settled (registered before
-      // tracking, because a tracked job can settle at once).
-      if (stagedRef.current && started.length > 0) {
-        cleanupStagedAfter(
-          stagedRef.current,
-          started.map((s) => s.job.id),
-        );
-        cleanupOwned.current = true;
-      }
       // Follow every job that did start, even if a sibling request failed.
       for (const { job } of started) useJobsStore.getState().track(job);
       if (started.length === 0) {
