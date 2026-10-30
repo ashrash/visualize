@@ -6,20 +6,8 @@ import { test } from "./fixtures";
  * (the intended flow is in the title). Owners follow CLAUDE.md section 9.
  */
 test.describe("planned flows", () => {
-  test.fixme("pipeline: add filter and group-aggregate steps, preview each, chart the pipeline output", {
-    annotation: {
-      type: "blocked",
-      description:
-        "the pipelineApi flag is off and transform's compiler/preview endpoints are not merged (ui-data, transform)",
-    },
-  }, async () => {});
-
-  test.fixme("pipeline: join two datasets and pivot, materialize, see the new dataset in the grid", {
-    annotation: {
-      type: "blocked",
-      description: "needs pipelineApi, join/pivot compiler and the materialize job (transform)",
-    },
-  }, async () => {});
+  // The two pipeline flows that used to be fixme'd here now live in pipeline.spec.ts: the
+  // pipelineApi flag is gone and transform's compiler/preview/materialize endpoints are merged.
 
   test.fixme("dashboard: add three charts, drag and resize them, save, reload", {
     annotation: { type: "blocked", description: "dashboards are Wave 3 (ui-dashboard)" },
