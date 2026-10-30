@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { defineConfig } from "@playwright/test";
-import { featureOverrides, REPO_ROOT } from "./helpers/env";
+import { REPO_ROOT } from "./helpers/env";
 import { freePort } from "./helpers/port";
 
 /**
@@ -13,7 +13,6 @@ import { freePort } from "./helpers/port";
  *   E2E_SKIP_BUILD   reuse backend/src/viz/static instead of rebuilding the frontend
  *   E2E_LARGE        also run the @large tests (needs scripts/gen_large_dataset.py output)
  *   E2E_LARGE_ROWS   row count of that fixture (default 10,000,000)
- *   E2E_FEATURES     JSON feature-flag overrides, e.g. {"stagedImport":true,"serverRows":true}
  *   E2E_CHANNEL      browser channel (default "chrome" locally, bundled chromium when CI is set)
  *   VIZ_E2E_UV       the uv executable (default "uv")
  *
@@ -71,7 +70,6 @@ export default defineConfig({
     screenshot: "only-on-failure",
     acceptDownloads: true,
   },
-  metadata: { features: featureOverrides() },
   webServer: external
     ? undefined
     : {

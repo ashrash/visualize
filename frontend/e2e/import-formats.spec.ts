@@ -67,13 +67,7 @@ for (const c of CASES) {
   });
 }
 
-test("import an Excel workbook through the dialog", {
-  annotation: {
-    type: "bug",
-    description:
-      "with the stagedImport flag on, importing two sheets of one upload fails the first sheet: 'the uploaded file has expired' (data-core / ui-data)",
-  },
-}, async ({ page, app, api }) => {
+test("import both sheets of an Excel workbook in one go", async ({ page, app, api }) => {
   const name = unique("xlsx");
   await app.open("data");
   await importDatasetViaUi(
@@ -81,13 +75,19 @@ test("import an Excel workbook through the dialog", {
     { file: sample("quarterly_report.xlsx") },
     { name, sheets: ["Revenue", "Headcount"] },
   );
-  // One dataset per imported sheet; the wizard names them "<name> - <sheet>", the one-shot form
-  // imports the first sheet under the given name. Either way the Revenue sheet (48 rows) is there.
-  await expect(page.getByRole("complementary", { name: "Datasets" })).toContainText(name);
-  await expect(page.getByRole("complementary", { name: "Datasets" })).toContainText("48 rows");
-  await api.deleteDatasetByName(name);
-  await api.deleteDatasetByName(`${name} - Revenue`);
-  await api.deleteDatasetByName(`${name} - Headcount`);
+  // One dataset per selected sheet: both must arrive, none may fail with "upload expired".
+  const list = page.getByRole("complementary", { name: "Datasets" });
+  await expect(list.getByRole("button", { name: new RegExp(`^${name} - Revenue`) })).toContainText(
+    "48 rows",
+  );
+  await expect(
+    list.getByRole("button", { name: new RegExp(`^${name} - Headcount`) }),
+  ).toContainText("8 rows");
+  const created = (await api.datasets()).filter((d) => d.name.startsWith(name));
+  expect(created.map((d) => d.versions?.at(-1)?.rowCount ?? 0).sort((a, b) => a - b)).toEqual([
+    8, 48,
+  ]);
+  for (const dataset of created) await api.deleteDataset(dataset.id).catch(() => undefined);
 });
 
 test("a path with spaces and non-ASCII characters imports in place", async ({
@@ -129,11 +129,7 @@ for (const bad of BAD_FILES) {
     await page.getByRole("button", { name: "Import data" }).click();
     const dialog = page.getByRole("dialog", { name: "Import data" });
     await dialog.getByLabel("File", { exact: true }).setInputFiles(file);
-    // One-shot form: press Import and get an alert. Wizard: staging or preview fails with an alert.
-    const importButton = dialog.getByRole("button", { name: /^Import$/ });
-    if ((await importButton.count()) > 0 && (await importButton.isEnabled())) {
-      await importButton.click();
-    }
+    // Staging or the preview rejects the file with an alert in the dialog.
     const alert = dialog.getByRole("alert");
     await expect(alert).toBeVisible({ timeout: 20_000 });
     await expect(alert).not.toBeEmpty();

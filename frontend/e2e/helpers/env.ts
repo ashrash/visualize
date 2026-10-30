@@ -18,14 +18,3 @@ export const LARGE_ROWS = Number(process.env.E2E_LARGE_ROWS ?? 10_000_000);
 export const largeCsv = (): string => path.join(PERF_DIR, `large_${LARGE_ROWS}.csv`);
 export const largeParquet = (): string => path.join(PERF_DIR, `large_${LARGE_ROWS}.parquet`);
 export const largeFixtureExists = (): boolean => existsSync(largeCsv());
-
-/** Feature-flag overrides for the app under test (the UI's `viz.features` localStorage key). */
-export function featureOverrides(): Record<string, boolean> {
-  const raw = process.env.E2E_FEATURES;
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Record<string, boolean>;
-  } catch {
-    throw new Error(`E2E_FEATURES must be JSON, e.g. {"stagedImport":true}; got: ${raw}`);
-  }
-}

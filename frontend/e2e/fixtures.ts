@@ -2,7 +2,6 @@ import { test as base, expect } from "@playwright/test";
 import type { Project } from "../src/api/types";
 import { Api } from "./helpers/api";
 import { App } from "./helpers/app";
-import { featureOverrides } from "./helpers/env";
 
 interface Fixtures {
   /** REST helper for test setup and for checking what the UI saved. */
@@ -21,21 +20,14 @@ export const test = base.extend<Fixtures>({
   project: async ({ api, context }, use, testInfo) => {
     const suffix = `${testInfo.workerIndex}-${Date.now().toString(36)}`;
     const project = await api.createProject(`e2e ${testInfo.title.slice(0, 40)} ${suffix}`);
-    const features = JSON.stringify(featureOverrides());
     // Only seed storage when it is empty, so a reload keeps whatever project the test switched to.
-    await context.addInitScript(
-      ({ id, flags }) => {
-        try {
-          if (!localStorage.getItem("viz.lastProject")) localStorage.setItem("viz.lastProject", id);
-          if (flags !== "{}" && !localStorage.getItem("viz.features")) {
-            localStorage.setItem("viz.features", flags);
-          }
-        } catch {
-          // Storage can be unavailable on about:blank; the app page always has it.
-        }
-      },
-      { id: project.id, flags: features },
-    );
+    await context.addInitScript((id: string) => {
+      try {
+        if (!localStorage.getItem("viz.lastProject")) localStorage.setItem("viz.lastProject", id);
+      } catch {
+        // Storage can be unavailable on about:blank; the app page always has it.
+      }
+    }, project.id);
     await use(project);
     await api.deleteProject(project.id).catch(() => undefined);
   },

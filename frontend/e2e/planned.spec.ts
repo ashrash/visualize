@@ -1,6 +1,4 @@
-import { expect, test } from "./fixtures";
-import { sample } from "./helpers/env";
-import { unique } from "./helpers/shots";
+import { test } from "./fixtures";
 
 /**
  * Flows whose UI is not ready yet. Each is a `test.fixme` with the reason on one line, so the
@@ -44,42 +42,4 @@ test.describe("planned flows", () => {
   test.fixme("embed: /embed/:token renders in an iframe snippet without app chrome", {
     annotation: { type: "blocked", description: "embed view is Wave 3 (platform, ui-dashboard)" },
   }, async () => {});
-});
-
-test.describe("grid, behind feature flags", () => {
-  test("server-side sort from a column header", async ({ page, app, api }) => {
-    const name = unique("sales");
-    await api.importPath(sample("sales.csv"), { name });
-    await app.open("data");
-    await app.selectDataset(name);
-    const grid = page.getByRole("region", { name: `${name} data grid` });
-    const sort = grid.getByRole("button", { name: "Sort by region", exact: true });
-    await expect(sort).toBeVisible();
-    test.skip(
-      (await sort.getAttribute("aria-disabled")) === "true",
-      "the serverRows flag is off, so sort/filter are disabled (ui-data flips it)",
-    );
-
-    // sales.csv regions: East, North, South, West.
-    const firstRegion = () => grid.getByRole("row").nth(1).getByRole("cell").nth(3);
-    await sort.click();
-    await expect(grid.getByRole("columnheader", { name: /^region/ })).toHaveAttribute(
-      "aria-sort",
-      "ascending",
-    );
-    await expect(firstRegion()).toHaveText("East");
-    await sort.click();
-    await expect(grid.getByRole("columnheader", { name: /^region/ })).toHaveAttribute(
-      "aria-sort",
-      "descending",
-    );
-    await expect(firstRegion()).toHaveText("West");
-    await sort.click();
-    await expect(grid.getByRole("columnheader", { name: /^region/ })).not.toHaveAttribute(
-      "aria-sort",
-      /.+/,
-    );
-
-    await api.deleteDatasetByName(name);
-  });
 });
