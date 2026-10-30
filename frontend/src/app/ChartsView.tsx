@@ -1,9 +1,16 @@
+import { Copy, PanelRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { ChartSpec, Column, Dataset } from "../api/types";
-import { ChartBuilder, ChartView } from "../charts";
+import { ChartConfigPanel, ChartView, createChartSpec, getPlot } from "../charts";
 import { Button } from "../components/ui/button";
+import { Dialog, DialogContent } from "../components/ui/dialog";
+import { Field, Input, Select } from "../components/ui/input";
+import { Tooltip } from "../components/ui/tooltip";
 import { useActiveDataset } from "../data/useActiveDataset";
 import { useProjectStore } from "../state/projectStore";
+import { useSelection } from "../state/selection";
 
+/** A first bar chart for a dataset: a low-cardinality category against a real measure. */
 function defaultBarChart(dataset: Dataset, columns: Column[]): ChartSpec {
   const category =
     columns.find((c) => c.semantic === "nominal" && c.approxDistinct <= 100) ?? columns[0];
@@ -12,25 +19,48 @@ function defaultBarChart(dataset: Dataset, columns: Column[]): ChartSpec {
   const measure = columns.find(
     (c) => c.semantic === "quantitative" && c.name !== category?.name && !looksLikeId(c.name),
   );
-  return {
+  const entry = getPlot("bar");
+  if (!entry) throw new Error("The bar plot is not registered");
+  return createChartSpec(entry, {
     id: crypto.randomUUID(),
     name: `${dataset.name} chart`,
-    plotType: "bar",
     source: { kind: "dataset", id: dataset.id },
     encodings: {
       x: [{ field: category?.name ?? null }],
       y: [measure ? { field: measure.name, agg: "sum" } : { agg: "count" }],
     },
-  };
+  });
 }
 
 export default function ChartsView() {
-  const { dataset, columns, loading } = useActiveDataset();
+  const { dataset, datasets, columns: datasetColumns, loading } = useActiveDataset();
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
-  const chart = dataset ? project?.charts?.find((c) => c.source.id === dataset.id) : undefined;
+  const selectedId = useSelection((s) => s.chartId);
+  const selectChart = useSelection((s) => s.selectChart);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
+  const [draftName, setDraftName] = useState("");
 
-  if (!dataset) {
+  const charts = project?.charts ?? [];
+  const pipelines = project?.pipelines ?? [];
+  const chart =
+    charts.find((c) => c.id === selectedId) ??
+    charts.find((c) => c.source.id === dataset?.id) ??
+    charts[0];
+
+  // Columns of the chart's own data: its dataset, or a pipeline's source dataset (the exact
+  // pipeline output columns come from the pipeline inspect endpoint, which the panel can't see).
+  const columns = useMemo(() => {
+    if (!chart) return datasetColumns;
+    const datasetId =
+      chart.source.kind === "dataset"
+        ? chart.source.id
+        : pipelines.find((p) => p.id === chart.source.id)?.source.id;
+    return datasets.find((d) => d.id === datasetId)?.versions?.at(-1)?.columns ?? datasetColumns;
+  }, [chart, datasets, datasetColumns, pipelines]);
+
+  if (!dataset && charts.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted">
         {loading ? "Loading…" : "Import a file to start charting."}
@@ -38,34 +68,182 @@ export default function ChartsView() {
     );
   }
 
-  const addChart = () =>
+  const edit = (change: (charts: ChartSpec[]) => ChartSpec[]) =>
+    update((p) => ({ ...p, charts: change(p.charts ?? []) }));
+
+  const create = () => {
+    if (!dataset) return;
+    const spec = defaultBarChart(dataset, datasetColumns);
     update((p) => ({
       ...p,
       datasetIds: [...new Set([...(p.datasetIds ?? []), dataset.id])],
-      charts: [...(p.charts ?? []), defaultBarChart(dataset, columns)],
+      charts: [...(p.charts ?? []), spec],
     }));
-  const changeChart = (spec: ChartSpec) =>
-    update((p) => ({ ...p, charts: (p.charts ?? []).map((c) => (c.id === spec.id ? spec : c)) }));
+    selectChart(spec.id);
+  };
+  const change = (spec: ChartSpec) => edit((all) => all.map((c) => (c.id === spec.id ? spec : c)));
+  const rename = (name: string) => chart && change({ ...chart, name });
+  const duplicate = () => {
+    if (!chart) return;
+    const copy: ChartSpec = {
+      ...structuredClone(chart),
+      id: crypto.randomUUID(),
+      name: `${chart.name} copy`,
+    };
+    edit((all) => {
+      const at = all.findIndex((c) => c.id === chart.id);
+      return [...all.slice(0, at + 1), copy, ...all.slice(at + 1)];
+    });
+    selectChart(copy.id);
+  };
+  const remove = () => {
+    if (!chart) return;
+    const at = charts.findIndex((c) => c.id === chart.id);
+    const next = charts[at + 1] ?? charts[at - 1];
+    edit((all) => all.filter((c) => c.id !== chart.id));
+    selectChart(next?.id ?? null);
+  };
 
   return (
-    <section
-      className="flex min-h-[260px] flex-1 flex-col gap-2 rounded-md border border-line p-3"
-      aria-label="Chart"
-    >
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex flex-wrap items-end gap-2">
+        {charts.length > 0 ? (
+          <Field label="Chart" className="w-56">
+            {(p) => (
+              <Select
+                {...p}
+                value={chart?.id ?? ""}
+                options={charts.map((c) => ({ value: c.id, label: c.name }))}
+                onChange={(e) => selectChart(e.target.value)}
+              />
+            )}
+          </Field>
+        ) : null}
+        <Button variant="primary" onClick={create} disabled={!project || !dataset}>
+          <Plus size={14} aria-hidden="true" />
+          New chart
+        </Button>
+        {chart ? (
+          <>
+            <Tooltip content="Rename chart">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Rename chart"
+                onClick={() => {
+                  setDraftName(chart.name);
+                  setDialog("rename");
+                }}
+              >
+                <Pencil size={14} aria-hidden="true" />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Duplicate chart">
+              <Button size="icon" variant="ghost" aria-label="Duplicate chart" onClick={duplicate}>
+                <Copy size={14} aria-hidden="true" />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Delete chart">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Delete chart"
+                onClick={() => setDialog("delete")}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+              </Button>
+            </Tooltip>
+            <Button
+              className="ml-auto lg:hidden"
+              aria-expanded={panelOpen}
+              aria-controls="chart-settings"
+              onClick={() => setPanelOpen((open) => !open)}
+            >
+              <PanelRight size={14} aria-hidden="true" />
+              Chart settings
+            </Button>
+          </>
+        ) : null}
+      </div>
+
       {chart ? (
-        <>
-          <ChartBuilder spec={chart} columns={columns} onChange={changeChart} />
-          <div className="min-h-0 flex-1">
-            <ChartView spec={chart} />
-          </div>
-        </>
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <section
+            className="flex min-h-[320px] min-w-0 flex-col rounded-md border border-line p-3"
+            aria-label="Chart"
+          >
+            <div className="min-h-0 flex-1">
+              <ChartView key={chart.id} spec={chart} pipelines={pipelines} />
+            </div>
+          </section>
+          <aside
+            id="chart-settings"
+            aria-label="Chart settings"
+            className={`min-h-0 overflow-y-auto rounded-md border border-line p-3 ${panelOpen ? "block" : "hidden lg:block"}`}
+          >
+            <ChartConfigPanel
+              spec={chart}
+              columns={columns}
+              onChange={change}
+              templates={project?.templates ?? []}
+              onSaveTemplate={(name, style) =>
+                update((p) => ({
+                  ...p,
+                  templates: [...(p.templates ?? []), { id: crypto.randomUUID(), name, style }],
+                }))
+              }
+            />
+          </aside>
+        </div>
       ) : (
-        <div className="flex flex-1 items-center justify-center">
-          <Button variant="primary" onClick={addChart} disabled={!project}>
-            Create a bar chart
-          </Button>
+        <div className="flex flex-1 items-center justify-center text-sm text-muted">
+          No charts yet. Create one to get started.
         </div>
       )}
-    </section>
+
+      <Dialog open={dialog === "rename"} onOpenChange={(open) => !open && setDialog(null)}>
+        <DialogContent title="Rename chart">
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (draftName.trim()) rename(draftName.trim());
+              setDialog(null);
+            }}
+          >
+            <Field label="Name">
+              {(p) => (
+                <Input {...p} value={draftName} onChange={(e) => setDraftName(e.target.value)} />
+              )}
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button onClick={() => setDialog(null)}>Cancel</Button>
+              <Button type="submit" variant="primary" disabled={!draftName.trim()}>
+                Rename
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={dialog === "delete"} onOpenChange={(open) => !open && setDialog(null)}>
+        <DialogContent
+          title={`Delete "${chart?.name ?? ""}"?`}
+          description="You can undo this with Ctrl+Z."
+        >
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setDialog(null)}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                remove();
+                setDialog(null);
+              }}
+            >
+              Delete chart
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
