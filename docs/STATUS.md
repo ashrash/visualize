@@ -64,6 +64,19 @@ items in their final report and the lead updates this file. Status values: `todo
   ~20 ms; chart queries p50 56-85 ms; 6-chart refresh p95 0.24 s during a 10M import; 12
   concurrent queries ok at 5% RAM; describe p50 2.99 s (at budget, no margin). Known (Wave 4):
   sorted cold first page 216 ms, cold deep pages 0.6 s filtered / 1.8 s sorted.
+- 2026-10-30: ui-data pipeline editor wired to the real transform API: `pipelineApi` flag removed;
+  inline step errors (validation + formula character ranges); materialize support; "new chart from"
+  a pipeline sources columns from the pipeline's own inspected output; group-by default fixed
+  (empty group, was first column). Also in this merge: the import-wizard close-while-starting race
+  (an in-flight import now finishes in the background instead of aborting, with a bounded retry on
+  a 409-while-queued delete), and accessibility fixes (Radix DropdownMenu `modal={false}`, a single
+  stable `SaveIndicator` region, ProjectHeader's visible name no longer overridden by `aria-label`).
+  **This closes Wave 1 exit criterion "pipelines with join and pivot work" on the UI side** (backend
+  already merged via transform). Reviewer: approve with nits (high) — live-verified the 64 KB
+  calc-guard path end to end for the first time (backend 422, clean UI message, survives reload);
+  found that `/api/pipelines/inspect`'s DESCRIBE-based static check can't see this data-dependent
+  guard, so the step list shows no error marker until the step is actually previewed (a
+  transform/ui-data follow-up, not a UI bug). vitest 340 passed/1 skipped, biome clean, build clean.
 - 2026-10-30: data-core round 3+4 follow-up merged: `.txt` auto-detected as CSV again; the `?kind=`
   chosen at staging is remembered in a `.kind` sidecar; a staged refresh falls back to the
   dataset's kind with a synchronous 415 on mismatch; uploads are marked in-use at submit and the
@@ -100,7 +113,7 @@ items in their final report and the lead updates this file. Status values: `todo
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| CSV / TSV import | data-core · ui-data | partial | Backend done: staged upload/path, preview, options, import job. UI: staged wizard with live preview and per-sheet jobs. Jobs indicator and per-tab ownership done. Remaining: close-while-starting race. |
+| CSV / TSV import | data-core · ui-data | done | Backend: staged upload/path, preview, options, import job. UI: staged wizard with live preview and per-sheet jobs, jobs indicator with per-tab ownership, close-while-starting race fixed (an in-flight import finishes in the background instead of aborting). |
 | Excel import | data-core · ui-data | partial | Backend done (fastexcel, sheets, header row, skip rows). UI: sheet selection, one staged upload, parallel per-sheet imports. |
 | JSON import | data-core · ui-data | partial | Backend done (array/NDJSON, nested-JSON hint). Not exercised in the UI yet. |
 | Data preview | data-core · ui-data | partial | Backend done: rows with sort/filter/search, values, materialized views for deep pages. UI: server sort/filter/search, filtered counts, columns menu. |
@@ -111,19 +124,19 @@ items in their final report and the lead updates this file. Status values: `todo
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Data filtering | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Sorting | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Grouping | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Aggregation | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Missing value handling | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Duplicate removal | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Data type conversion | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Column selection | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Calculated columns | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Custom formulas | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Join and merge datasets | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Pivot and unpivot | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
-| Data normalization | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Data filtering | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Sorting | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Grouping | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Aggregation | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Missing value handling | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Duplicate removal | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Data type conversion | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Column selection | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Calculated columns | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Custom formulas | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Join and merge datasets | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Pivot and unpivot | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
+| Data normalization | transform · ui-data | done | Backend: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. UI: pipeline editor wired to the real API (no flag), inline step errors, materialize, chart from pipeline output. |
 
 ### 3. Chart & Visualization Types
 
