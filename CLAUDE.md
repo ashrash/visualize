@@ -190,7 +190,7 @@ Most parallelism comes from the libraries. Our job is to **limit it and cancel s
   - Worker functions must be top-level and picklable.
   - Pass a Parquet path + SQL or a capped Arrow table, never a 10M-row DataFrame.
   - Use threadpoolctl to cap BLAS/OpenMP threads per call, so parallel fits don't oversubscribe the cores.
-- **Jobs vs interactive:** jobs (import, materialize, export) run on their own executor, at most 1–2 at once, and never use the request threadpool. Start with one DuckDB instance. If the bench shows dashboard refreshes missing budget during an import, give jobs a second in-memory DuckDB instance with fewer `threads` and its own share of `memory_limit`.
+- **Jobs vs interactive:** jobs (import, materialize, export) run on their own executor, at most 1–2 at once, and never use the request threadpool. **Decided after the Wave 1 bench:** jobs and grid-view builds run on a second in-memory DuckDB instance with ¼ of the cores (at least 2) and ⅓ of the memory budget (`VIZ_JOB_DUCKDB_THREADS`; 0 shares the main instance). This took grid pages during a 10M-row import from a 594 ms worst case down to 74 ms. The cost is that the import itself slowed from 3 s to 4.7 s.
 - **Processes:** run one Uvicorn worker locally (one DuckDB, one cache, one `memory_limit`). On AWS, scale by adding ECS tasks, not workers per task.
 - **Deliberately not used (for now):** free-threaded (no-GIL) Python builds, because wheel support across the scientific stack is uneven. Web Workers in the browser, because payload caps keep Arrow decoding small; add one only if profiling shows decode blocking the main thread for more than 50 ms.
 
@@ -360,6 +360,10 @@ Backend paths are relative to `backend/src/viz/`, with tests mirrored under `bac
 - DuckDB finalizes each quantile aggregate on one thread, so many quantiles in one SELECT run serially. Unpivot to (field, value) and GROUP BY field to parallelize them.
 - `quantile_disc` with a long list of probabilities is O(n·m). For ECDF/Q-Q grids, use a `row_number()` window instead.
 - `query_progress()` returns -1 from Python, so job progress is reported by stage, plus byte or batch counts.
+- `SET TimeZone` is session-scoped, so new cursors don't inherit it. Use `SET GLOBAL TimeZone='UTC'` on every instance. The engine runs in UTC so results don't depend on the server's zone.
+- The CSV sniffer rejects files with mixed CRLF/LF line endings unless `strict_mode=False`.
+- `ORDER BY <non-unique> LIMIT/OFFSET` is not stable between queries, so pages repeat and skip rows. Always add the row number, read as an explicit column, as the last sort key.
+- `cursor.interrupt()` on a closed cursor raises, and an interrupt that arrives between statements is lost. The engine handles both cases; never call `interrupt()` directly.
 - Python `read_csv` accepts only UTF-8. Non-UTF-8 files are transcoded into `sources/`, even above the copy threshold.
 - Fetching TIMESTAMPTZ with `fetchall()` needs pytz, which isn't installed. Use Arrow, or cast to VARCHAR.
 - DECIMAL reaches the browser as unscaled integers and TIME as microseconds. Cast them in chart-data output: DECIMAL and HUGEINT to DOUBLE, TIME to VARCHAR.
