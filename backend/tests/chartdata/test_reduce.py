@@ -167,6 +167,17 @@ def test_hexbin_counts_and_nearest_centres(engine: Engine, tmp_path: Path) -> No
     assert out.num_rows == expected_cells
 
 
+def test_x_range_rejects_non_finite_bounds() -> None:
+    from viz.chartdata.reduce import x_range_predicate
+    from viz.errors import InvalidSpecError
+
+    for bounds in ((math.nan, 1.0), (0.0, math.inf)):
+        with pytest.raises(InvalidSpecError):
+            x_range_predicate(col("t"), ColumnSemantic.TEMPORAL, bounds)
+    sql = to_sql(x_range_predicate(col("t"), ColumnSemantic.TEMPORAL, ("x'); DROP", "2024")))
+    assert "CAST('x''); DROP' AS TIMESTAMP)" in sql
+
+
 def test_numeric_x_temporal_is_epoch_ms(engine: Engine) -> None:
     query = exp.select(numeric_x(exp.Literal.string("1970-01-02"), ColumnSemantic.TEMPORAL))
     with engine.cursor() as cur:

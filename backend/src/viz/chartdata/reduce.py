@@ -28,6 +28,7 @@ from tsdownsample import MinMaxLTTBDownsampler, NaNMinMaxLTTBDownsampler
 
 from viz.chartdata.sql import agg_sql, alias, cast, col, fn, lit, subquery, table, with_ctes
 from viz.contracts import ColumnSemantic, TimeUnit
+from viz.errors import InvalidSpecError
 from viz.stats.relation import Relation
 
 __all__ = [
@@ -50,6 +51,8 @@ def numeric_x(expression: exp.Expr, semantic: ColumnSemantic) -> exp.Expr:
 
 
 def _range_bound(value: float | str, semantic: ColumnSemantic) -> exp.Expr:
+    if isinstance(value, int | float) and not math.isfinite(value):
+        raise InvalidSpecError("the zoom range must be finite")
     if semantic == ColumnSemantic.TEMPORAL:
         if isinstance(value, int | float):
             # ECharts time axes report epoch milliseconds.
