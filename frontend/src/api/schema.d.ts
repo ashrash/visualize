@@ -1373,6 +1373,43 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /** ProjectDuplicate */
+        ProjectDuplicate: {
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+        };
+        /**
+         * ProjectImportResult
+         * @description Server-produced only, so every field is required.
+         */
+        ProjectImportResult: {
+            project: components["schemas"]["Project"];
+            /** Datasetsimported */
+            datasetsImported: string[];
+            /** Datasetsremapped */
+            datasetsRemapped: {
+                [key: string]: string;
+            };
+            /** Datasetsmissing */
+            datasetsMissing: string[];
+            /** Warnings */
+            warnings: string[];
+        };
+        /** ProjectRename */
+        ProjectRename: {
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+        };
+        /** ProjectRestore */
+        ProjectRestore: {
+            /** Revision */
+            revision: number;
+        };
         /**
          * Reduction
          * @enum {string}

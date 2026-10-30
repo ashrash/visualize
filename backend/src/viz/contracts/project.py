@@ -78,3 +78,32 @@ class ProjectVersion(Contract):
     kind: Literal["save", "autosave"]
     label: str | None = None
     created_at: datetime
+
+
+class ProjectRename(Contract):
+    name: str
+    # The revision the rename is based on (optimistic concurrency).
+    revision: int
+
+
+class ProjectDuplicate(Contract):
+    # Defaults to "<name> copy".
+    name: str | None = None
+
+
+class ProjectRestore(Contract):
+    # The live revision the restore is based on.
+    revision: int
+
+
+class ProjectImportResult(Contract):
+    """Server-produced only, so every field is required."""
+
+    project: Project
+    # Dataset ids registered from the archive.
+    datasets_imported: list[str]
+    # Archived dataset id -> new id, when an id collided with different content.
+    datasets_remapped: dict[str, str]
+    # Referenced by the project but in neither the archive nor the catalog.
+    datasets_missing: list[str]
+    warnings: list[str]
