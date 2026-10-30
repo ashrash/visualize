@@ -934,7 +934,11 @@ export interface components {
             /** Jsonpath */
             jsonPath?: string | null;
         };
-        /** InPredicate */
+        /**
+         * InPredicate
+         * @description Membership. `None` in `values` matches NULL. `not_in` keeps NULL rows unless `None` is
+         *     in `values`, so excluding "North" never silently drops rows with a missing region.
+         */
         InPredicate: {
             /**
              * @description discriminator enum property added by openapi-typescript

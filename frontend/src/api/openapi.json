@@ -2979,7 +2979,8 @@
           "field",
           "values"
         ],
-        "title": "InPredicate"
+        "title": "InPredicate",
+        "description": "Membership. `None` in `values` matches NULL. `not_in` keeps NULL rows unless `None` is\nin `values`, so excluding \"North\" never silently drops rows with a missing region."
       },
       "Interactions": {
         "properties": {
