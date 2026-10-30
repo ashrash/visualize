@@ -524,6 +524,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats/describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Describe Fields
+         * @description Exact descriptive statistics; `values.summaries` is a list of FieldSummary.
+         */
+        post: operations["describe_fields_api_stats_describe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -939,6 +959,35 @@ export interface components {
              * @enum {string}
              */
             keep: "first" | "last";
+        };
+        /** DescribeRequest */
+        DescribeRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Fields */
+            fields: string[];
+            /** Groupby */
+            groupBy?: string[];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Percentiles */
+            percentiles?: number[];
+            /**
+             * Includeoverall
+             * @default true
+             */
+            includeOverall: boolean;
+            /**
+             * Includemode
+             * @default true
+             */
+            includeMode: boolean;
+            /**
+             * Maxgroups
+             * @default 50
+             */
+            maxGroups: number;
         };
         /** DropMissingStep */
         DropMissingStep: {
@@ -1915,6 +1964,31 @@ export interface components {
             /** Sheets */
             sheets: string[];
         };
+        /** StatResult */
+        StatResult: {
+            /** Values */
+            values: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Method */
+            method: string;
+            /** N */
+            n: number;
+            /**
+             * Sampled
+             * @default false
+             */
+            sampled: boolean;
+            /** Warnings */
+            warnings?: string[];
+            /** Ntotal */
+            nTotal?: number | null;
+            /**
+             * Nmissing
+             * @default 0
+             */
+            nMissing: number;
+        };
         /** TextWidget */
         TextWidget: {
             /**
@@ -2138,35 +2212,6 @@ export interface components {
         ChartStatResponse: {
             result: components["schemas"]["StatResult"];
             meta: components["schemas"]["ChartDataMeta"];
-        };
-        /** DescribeRequest */
-        DescribeRequest: {
-            source: components["schemas"]["SourceRef"];
-            /** Pipelines */
-            pipelines?: components["schemas"]["Pipeline"][];
-            /** Fields */
-            fields: string[];
-            /** Groupby */
-            groupBy?: string[];
-            /** Filters */
-            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
-            /** Percentiles */
-            percentiles?: number[];
-            /**
-             * Includeoverall
-             * @default true
-             */
-            includeOverall: boolean;
-            /**
-             * Includemode
-             * @default true
-             */
-            includeMode: boolean;
-            /**
-             * Maxgroups
-             * @default 50
-             */
-            maxGroups: number;
         };
         /**
          * FieldSummary
@@ -2437,34 +2482,6 @@ export interface components {
             /** Type */
             type: string;
             semantic: components["schemas"]["ColumnSemantic"];
-        };
-        /** StatResult */
-        StatResult: {
-            /** Values */
-            values: {
-                [key: string]: components["schemas"]["JsonValue"];
-            };
-            /** Method */
-            method: string;
-            /** N */
-            n: number;
-            /**
-             * Sampled
-             * @default false
-             */
-            sampled: boolean;
-            /** Warnings */
-            warnings?: string[];
-            /**
-             * Ntotal
-             * @default null
-             */
-            nTotal: number | null;
-            /**
-             * Nmissing
-             * @default 0
-             */
-            nMissing: number;
         };
         /** StepError */
         StepError: {
@@ -3596,6 +3613,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    describe_fields_api_stats_describe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
             };
             /** @description Validation Error */
             422: {
