@@ -642,6 +642,9 @@ export interface paths {
         /**
          * Describe Fields
          * @description Exact descriptive statistics; `values.summaries` is a list of FieldSummary.
+         *
+         *     The source may be a dataset or a pipeline (with `pipelines` holding every pipeline it
+         *     reaches, unsaved edits included).
          */
         post: operations["describe_fields_api_stats_describe_post"];
         delete?: never;

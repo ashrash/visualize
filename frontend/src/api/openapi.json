@@ -1829,7 +1829,7 @@
           "stats"
         ],
         "summary": "Describe Fields",
-        "description": "Exact descriptive statistics; `values.summaries` is a list of FieldSummary.",
+        "description": "Exact descriptive statistics; `values.summaries` is a list of FieldSummary.\n\nThe source may be a dataset or a pipeline (with `pipelines` holding every pipeline it\nreaches, unsaved edits included).",
         "operationId": "describe_fields_api_stats_describe_post",
         "requestBody": {
           "content": {
