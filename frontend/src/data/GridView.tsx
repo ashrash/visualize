@@ -83,6 +83,8 @@ export interface GridViewProps {
   controlsEnabled: boolean;
   /** Tooltip for disabled sort/filter buttons. */
   controlsTip?: string;
+  /** False for a read-only view: no sort/filter buttons and no resize handles in the tab order. */
+  interactive?: boolean;
   toolbar?: ReactNode;
 }
 
@@ -102,6 +104,7 @@ export function GridView({
   valuesLoader,
   controlsEnabled,
   controlsTip = SORT_TIP,
+  interactive = true,
   toolbar,
 }: GridViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -182,9 +185,9 @@ export function GridView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on identity changes only.
   useEffect(() => {
     anchorRef.current = null;
-    scrollRef.current?.scrollTo({ top: 0 });
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
     readScroll();
-  }, [gridKey, totalRows]);
+  }, [gridKey, totalRows, filterPredicates, sort]);
   const moveToRef = useRef(moveTo);
   moveToRef.current = moveTo;
 
@@ -363,31 +366,35 @@ export function GridView({
                         {column?.type.toLowerCase()}
                       </span>
                     </span>
-                    <HeaderButton
-                      tip={controlsTip}
-                      enabled={controlsEnabled && onSortChange !== undefined}
-                      label={`Sort by ${header.column.id}`}
-                      onClick={() => toggleSort(header.column.id)}
-                    >
-                      <SortIcon size={13} aria-hidden="true" />
-                    </HeaderButton>
-                    {controlsEnabled && column && onFilterChange && valuesLoader ? (
-                      <ColumnFilter
-                        column={column}
-                        predicate={filters[column.name]}
-                        loadValues={valuesLoader(column.name)}
-                        onApply={(p) => onFilterChange(column.name, p)}
-                      />
-                    ) : (
-                      <HeaderButton
-                        tip={controlsTip}
-                        enabled={false}
-                        label={`Filter ${header.column.id}`}
-                        onClick={() => undefined}
-                      >
-                        <Filter size={13} aria-hidden="true" />
-                      </HeaderButton>
-                    )}
+                    {interactive ? (
+                      <>
+                        <HeaderButton
+                          tip={controlsTip}
+                          enabled={controlsEnabled && onSortChange !== undefined}
+                          label={`Sort by ${header.column.id}`}
+                          onClick={() => toggleSort(header.column.id)}
+                        >
+                          <SortIcon size={13} aria-hidden="true" />
+                        </HeaderButton>
+                        {controlsEnabled && column && onFilterChange && valuesLoader ? (
+                          <ColumnFilter
+                            column={column}
+                            predicate={filters[column.name]}
+                            loadValues={valuesLoader(column.name)}
+                            onApply={(p) => onFilterChange(column.name, p)}
+                          />
+                        ) : (
+                          <HeaderButton
+                            tip={controlsTip}
+                            enabled={false}
+                            label={`Filter ${header.column.id}`}
+                            onClick={() => undefined}
+                          >
+                            <Filter size={13} aria-hidden="true" />
+                          </HeaderButton>
+                        )}
+                      </>
+                    ) : null}
                     <div
                       role="separator"
                       aria-orientation="vertical"
@@ -395,7 +402,7 @@ export function GridView({
                       aria-valuenow={header.getSize()}
                       aria-valuemin={60}
                       aria-valuemax={800}
-                      tabIndex={0}
+                      tabIndex={interactive ? 0 : -1}
                       onMouseDown={header.getResizeHandler()}
                       onTouchStart={header.getResizeHandler()}
                       onDoubleClick={() => header.column.resetSize()}

@@ -144,7 +144,7 @@ describe("import wizard state machine", () => {
     expect(buildPreviewRequest(s)).toEqual({
       stagedId: "s1",
       path: null,
-      kind: "excel",
+      kind: null,
       options: { headerRow: 2, sheet: "Q3" },
       limit: 1000,
     });
@@ -266,7 +266,11 @@ describe("import wizard state machine", () => {
       { type: "importStarted", jobs: [{ sheet: null, job: job("j1", "running", 1) }] },
       { type: "jobUpdated", job: job("j1", "cancelled", 2) },
     ]);
-    expect(s).toMatchObject({ phase: "failed", message: "cancelled" });
+    expect(s).toMatchObject({
+      phase: "failed",
+      message: "Import of a was cancelled",
+      cancelled: true,
+    });
   });
 
   it("failing to start an import returns to options with the message", () => {

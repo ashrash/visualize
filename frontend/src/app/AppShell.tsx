@@ -1,5 +1,5 @@
 import { Upload } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router";
 import { Button } from "../components/ui/button";
 import { Toaster } from "../components/ui/toast";
@@ -8,6 +8,7 @@ import { DatasetList } from "../data/DatasetList";
 import { ImportDialog } from "../data/ImportDialog";
 import { useActiveDataset } from "../data/useActiveDataset";
 import { useSelection } from "../state/selection";
+import { JobsIndicator } from "./JobsIndicator";
 import {
   ConflictDialog,
   DiscardDialog,
@@ -31,6 +32,7 @@ export function AppShell() {
   const { dataset, datasets } = useActiveDataset();
   const selectDataset = useSelection((s) => s.selectDataset);
   const [importOpen, setImportOpen] = useState(false);
+  const importButton = useRef<HTMLButtonElement>(null);
 
   return (
     <TooltipProvider>
@@ -58,6 +60,7 @@ export function AppShell() {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            <JobsIndicator />
             <SaveIndicator />
             <UndoRedo />
             <SaveButton />
@@ -75,7 +78,7 @@ export function AppShell() {
             aria-label="Datasets"
             className="flex flex-col gap-4 overflow-y-auto border-b border-line bg-surface p-4 md:border-r md:border-b-0"
           >
-            <Button variant="primary" onClick={() => setImportOpen(true)}>
+            <Button ref={importButton} variant="primary" onClick={() => setImportOpen(true)}>
               <Upload size={14} aria-hidden="true" />
               Import data
             </Button>
@@ -97,7 +100,11 @@ export function AppShell() {
       </div>
       <ImportDialog
         open={importOpen}
-        onOpenChange={setImportOpen}
+        onOpenChange={(open) => {
+          setImportOpen(open);
+          // The dialog has no trigger element, so hand focus back to the button that opened it.
+          if (!open) requestAnimationFrame(() => importButton.current?.focus());
+        }}
         onImported={(d) => selectDataset(d.id)}
       />
       <ConflictDialog />
