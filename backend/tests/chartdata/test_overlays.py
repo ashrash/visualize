@@ -89,6 +89,16 @@ def test_moving_average_and_loess() -> None:
     assert len(smooth.x) == 200 and all(math.isfinite(v) for v in smooth.y)
 
 
+def test_loess_band_from_stats_kernel() -> None:
+    rng = np.random.default_rng(5)
+    x = np.sort(rng.uniform(0, 10, 300))
+    y = np.sin(x) + rng.normal(0, 0.2, 300)
+    result = fit_trendline(Trendline(kind="loess", ci_level=0.9), points(x, y))
+    assert result.lo is not None and result.hi is not None
+    assert all(lo <= mid <= hi for lo, mid, hi in zip(result.lo, result.y, result.hi, strict=True))
+    assert result.equation is None
+
+
 def test_temporal_x_has_no_equation_and_too_few_points() -> None:
     ms = np.array([0.0, 86_400_000.0, 172_800_000.0])
     result = fit_trendline(Trendline(kind="linear"), points(ms, [1.0, 2.0, 3.0], temporal=True))
