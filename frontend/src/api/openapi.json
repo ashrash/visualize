@@ -939,6 +939,24 @@
           },
           "viewport": {
             "$ref": "#/components/schemas/Viewport"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "slot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot"
           }
         },
         "additionalProperties": false,
@@ -3672,7 +3690,8 @@
         "required": [
           "field"
         ],
-        "title": "SortKey"
+        "title": "SortKey",
+        "description": "One sort key, shared by the sort step, grid rows, pipeline previews and exports."
       },
       "SortStep": {
         "properties": {
@@ -4180,6 +4199,59 @@
             },
             "title": "Warnings",
             "type": "array"
+          },
+          "rowsMatched": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rowsmatched"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "xDomain": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xdomain"
           }
         },
         "required": [
@@ -4190,9 +4262,30 @@
           "fields",
           "cached",
           "ms",
-          "warnings"
+          "warnings",
+          "rowsMatched",
+          "params",
+          "xDomain"
         ],
         "title": "ChartDataMeta",
+        "type": "object"
+      },
+      "ChartStatResponse": {
+        "additionalProperties": false,
+        "description": "JSON body of /api/charts/data for plots that use a stat transform. Server-produced.",
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/StatResult"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ChartDataMeta"
+          }
+        },
+        "required": [
+          "result",
+          "meta"
+        ],
+        "title": "ChartStatResponse",
         "type": "object"
       },
       "ExportFile": {
@@ -4257,6 +4350,13 @@
           "format": {
             "$ref": "#/components/schemas/ExportFormat"
           },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          },
           "version": {
             "anyOf": [
               {
@@ -4302,7 +4402,7 @@
           },
           "sort": {
             "items": {
-              "$ref": "#/components/schemas/viz__contracts__dataset__SortKey"
+              "$ref": "#/components/schemas/SortKey"
             },
             "title": "Sort",
             "type": "array"
@@ -4352,6 +4452,44 @@
           "format"
         ],
         "title": "ExportRequest",
+        "type": "object"
+      },
+      "FormulaFunction": {
+        "additionalProperties": false,
+        "description": "Server-produced; feeds formula autocomplete.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "math",
+              "string",
+              "date",
+              "conditional",
+              "null",
+              "type"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "signature": {
+            "title": "Signature",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "signature",
+          "description"
+        ],
+        "title": "FormulaFunction",
         "type": "object"
       },
       "ImportPreviewMeta": {
@@ -4611,6 +4749,171 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "OverlayResult": {
+        "additionalProperties": false,
+        "description": "A server-computed trendline or regression fit, with an optional band. Server-produced.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TrendlineKind"
+          },
+          "series": {
+            "title": "Series",
+            "type": "integer"
+          },
+          "x": {
+            "items": {
+              "type": "number"
+            },
+            "title": "X",
+            "type": "array"
+          },
+          "y": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Y",
+            "type": "array"
+          },
+          "lo": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lo"
+          },
+          "hi": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hi"
+          },
+          "equation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equation"
+          },
+          "r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R2"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "sampled": {
+            "title": "Sampled",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "series",
+          "x",
+          "y",
+          "lo",
+          "hi",
+          "equation",
+          "r2",
+          "n",
+          "sampled",
+          "warnings"
+        ],
+        "title": "OverlayResult",
+        "type": "object"
+      },
+      "PipelinePreviewMeta": {
+        "additionalProperties": false,
+        "description": "Server-produced; travels as viz.meta in the Arrow schema.",
+        "properties": {
+          "stepId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stepid"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "totalRows": {
+            "title": "Totalrows",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "ms": {
+            "title": "Ms",
+            "type": "number"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stepId",
+          "offset",
+          "limit",
+          "totalRows",
+          "columns",
+          "ms",
+          "warnings"
+        ],
+        "title": "PipelinePreviewMeta",
+        "type": "object"
+      },
       "ProjectDuplicate": {
         "additionalProperties": false,
         "properties": {
@@ -4768,6 +5071,29 @@
         "title": "RowsPageMeta",
         "type": "object"
       },
+      "SchemaField": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "semantic": {
+            "$ref": "#/components/schemas/ColumnSemantic"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "semantic"
+        ],
+        "title": "SchemaField",
+        "type": "object"
+      },
       "StagedFile": {
         "additionalProperties": false,
         "description": "An uploaded file waiting to be previewed and imported. Server-produced.",
@@ -4842,49 +5168,6 @@
           "n"
         ],
         "title": "StatResult",
-        "type": "object"
-      },
-      "viz__contracts__dataset__SortKey": {
-        "additionalProperties": false,
-        "properties": {
-          "field": {
-            "title": "Field",
-            "type": "string"
-          },
-          "desc": {
-            "default": false,
-            "title": "Desc",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "field"
-        ],
-        "title": "SortKey",
-        "type": "object"
-      },
-      "viz__contracts__pipeline__SortKey": {
-        "additionalProperties": false,
-        "properties": {
-          "field": {
-            "title": "Field",
-            "type": "string"
-          },
-          "descending": {
-            "default": false,
-            "title": "Descending",
-            "type": "boolean"
-          },
-          "nullsLast": {
-            "default": true,
-            "title": "Nullslast",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "field"
-        ],
-        "title": "SortKey",
         "type": "object"
       }
     }

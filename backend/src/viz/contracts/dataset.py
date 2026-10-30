@@ -7,7 +7,7 @@ from enum import StrEnum
 
 from pydantic import Field, model_validator
 
-from viz.contracts.base import Contract, Scalar
+from viz.contracts.base import Contract, Scalar, SortKey
 from viz.contracts.predicate import Predicate
 
 
@@ -177,11 +177,6 @@ class RefreshRequest(Contract):
 
 class DatasetUpdate(Contract):
     name: str | None = None
-
-
-class SortKey(Contract):
-    field: str
-    desc: bool = False
 
 
 class RowsRequest(Contract):

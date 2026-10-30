@@ -7,8 +7,8 @@ from enum import StrEnum
 
 from pydantic import Field
 
-from viz.contracts.base import Contract, SourceRef
-from viz.contracts.dataset import SortKey
+from viz.contracts.base import Contract, SortKey, SourceRef
+from viz.contracts.pipeline import Pipeline
 from viz.contracts.predicate import Predicate
 
 
@@ -78,6 +78,8 @@ class Job(Contract):
 class ExportRequest(Contract):
     source: SourceRef
     format: ExportFormat
+    # Pipelines the source references, as for chart data.
+    pipelines: list[Pipeline] = Field(default_factory=list)
     # Dataset sources only; default the current version.
     version: int | None = None
     filters: list[Predicate] = Field(default_factory=list)

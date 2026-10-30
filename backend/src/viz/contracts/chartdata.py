@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, JsonValue
 
 from viz.contracts.base import Contract
-from viz.contracts.chart import ChartSpec
+from viz.contracts.chart import ChartSpec, TrendlineKind
+from viz.contracts.pipeline import Pipeline
 from viz.contracts.predicate import Predicate
+from viz.contracts.stats import StatResult
 
 ARROW_STREAM_MEDIA_TYPE = "application/vnd.apache.arrow.stream"
 ARROW_META_KEY = "viz.meta"
@@ -30,6 +32,10 @@ class ChartDataRequest(Contract):
     # Filters from the dashboard, cross-filtering and drill-down (on top of spec.filters).
     filters: list[Predicate] = Field(default_factory=list)
     viewport: Viewport = Field(default_factory=Viewport)
+    # Pipelines the source references (unsaved edits included); the server never loads them.
+    pipelines: list[Pipeline] = Field(default_factory=list)
+    # Cancellation slot; defaults to spec.id. Two widgets showing one chart use different slots.
+    slot: str | None = None
 
 
 class Reduction(StrEnum):
@@ -53,6 +59,12 @@ class ChartDataMeta(Contract):
     cached: bool
     ms: float
     warnings: list[str]
+    # Rows after filters, before reduction; None when not counted.
+    rows_matched: int | None
+    # Resolved reduction parameters, e.g. binWidth, hexRadius, nOut, truncatedGroups.
+    params: dict[str, JsonValue]
+    # Full x extent ignoring viewport.xRange, so a zoom slider keeps its scale.
+    x_domain: tuple[float | str, float | str] | None
 
 
 class RowsPageMeta(Contract):
@@ -63,3 +75,28 @@ class RowsPageMeta(Contract):
     # Rows in the dataset version, before filters.
     dataset_rows: int | None = None
     version: int | None = None
+
+
+class ChartStatResponse(Contract):
+    """JSON body of /api/charts/data for plots that use a stat transform. Server-produced."""
+
+    result: StatResult
+    meta: ChartDataMeta
+
+
+class OverlayResult(Contract):
+    """A server-computed trendline or regression fit, with an optional band. Server-produced."""
+
+    kind: TrendlineKind
+    # Index into the y channel (ChartStyle.trendlines[].series).
+    series: int
+    # Temporal x travels as epoch milliseconds.
+    x: list[float]
+    y: list[float]
+    lo: list[float] | None
+    hi: list[float] | None
+    equation: str | None
+    r2: float | None
+    n: int
+    sampled: bool
+    warnings: list[str]

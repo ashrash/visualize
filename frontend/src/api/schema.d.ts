@@ -321,6 +321,10 @@ export interface components {
             /** Filters */
             filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
             viewport?: components["schemas"]["Viewport"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Slot */
+            slot?: string | null;
         };
         /** ChartSpec */
         ChartSpec: {
@@ -1265,7 +1269,10 @@ export interface components {
             /** Linestyle */
             lineStyle?: ("solid" | "dashed" | "dotted") | null;
         };
-        /** SortKey */
+        /**
+         * SortKey
+         * @description One sort key, shared by the sort step, grid rows, pipeline previews and exports.
+         */
         SortKey: {
             /** Field */
             field: string;
@@ -1517,6 +1524,25 @@ export interface components {
             ms: number;
             /** Warnings */
             warnings: string[];
+            /** Rowsmatched */
+            rowsMatched: number | null;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Xdomain */
+            xDomain: [
+                number | string,
+                number | string
+            ] | null;
+        };
+        /**
+         * ChartStatResponse
+         * @description JSON body of /api/charts/data for plots that use a stat transform. Server-produced.
+         */
+        ChartStatResponse: {
+            result: components["schemas"]["StatResult"];
+            meta: components["schemas"]["ChartDataMeta"];
         };
         /**
          * ExportFile
@@ -1549,6 +1575,8 @@ export interface components {
         ExportRequest: {
             source: components["schemas"]["SourceRef"];
             format: components["schemas"]["ExportFormat"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
             /**
              * Version
              * @default null
@@ -1557,7 +1585,7 @@ export interface components {
             /** Filters */
             filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
             /** Sort */
-            sort?: components["schemas"]["viz__contracts__dataset__SortKey"][];
+            sort?: components["schemas"]["SortKey"][];
             /**
              * Columns
              * @default null
@@ -1573,6 +1601,23 @@ export interface components {
              * @default null
              */
             delimiter: string | null;
+        };
+        /**
+         * FormulaFunction
+         * @description Server-produced; feeds formula autocomplete.
+         */
+        FormulaFunction: {
+            /** Name */
+            name: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "math" | "string" | "date" | "conditional" | "null" | "type";
+            /** Signature */
+            signature: string;
+            /** Description */
+            description: string;
         };
         /**
          * ImportPreviewMeta
@@ -1647,6 +1692,53 @@ export interface components {
          * @enum {string}
          */
         JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        /**
+         * OverlayResult
+         * @description A server-computed trendline or regression fit, with an optional band. Server-produced.
+         */
+        OverlayResult: {
+            kind: components["schemas"]["TrendlineKind"];
+            /** Series */
+            series: number;
+            /** X */
+            x: number[];
+            /** Y */
+            y: number[];
+            /** Lo */
+            lo: number[] | null;
+            /** Hi */
+            hi: number[] | null;
+            /** Equation */
+            equation: string | null;
+            /** R2 */
+            r2: number | null;
+            /** N */
+            n: number;
+            /** Sampled */
+            sampled: boolean;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * PipelinePreviewMeta
+         * @description Server-produced; travels as viz.meta in the Arrow schema.
+         */
+        PipelinePreviewMeta: {
+            /** Stepid */
+            stepId: string | null;
+            /** Offset */
+            offset: number;
+            /** Limit */
+            limit: number;
+            /** Totalrows */
+            totalRows: number;
+            /** Columns */
+            columns: components["schemas"]["SchemaField"][];
+            /** Ms */
+            ms: number;
+            /** Warnings */
+            warnings: string[];
+        };
         /** ProjectDuplicate */
         ProjectDuplicate: {
             /**
@@ -1708,6 +1800,14 @@ export interface components {
              */
             version: number | null;
         };
+        /** SchemaField */
+        SchemaField: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            semantic: components["schemas"]["ColumnSemantic"];
+        };
         /**
          * StagedFile
          * @description An uploaded file waiting to be previewed and imported. Server-produced.
@@ -1740,31 +1840,6 @@ export interface components {
             sampled: boolean;
             /** Warnings */
             warnings?: string[];
-        };
-        /** SortKey */
-        viz__contracts__dataset__SortKey: {
-            /** Field */
-            field: string;
-            /**
-             * Desc
-             * @default false
-             */
-            desc: boolean;
-        };
-        /** SortKey */
-        viz__contracts__pipeline__SortKey: {
-            /** Field */
-            field: string;
-            /**
-             * Descending
-             * @default false
-             */
-            descending: boolean;
-            /**
-             * Nullslast
-             * @default true
-             */
-            nullsLast: boolean;
         };
     };
     responses: never;
