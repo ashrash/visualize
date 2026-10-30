@@ -64,6 +64,14 @@ items in their final report and the lead updates this file. Status values: `todo
   ~20 ms; chart queries p50 56-85 ms; 6-chart refresh p95 0.24 s during a 10M import; 12
   concurrent queries ok at 5% RAM; describe p50 2.99 s (at budget, no margin). Known (Wave 4):
   sorted cold first page 216 ms, cold deep pages 0.6 s filtered / 1.8 s sorted.
+- 2026-10-30: qa review-fix round merged: pinned `setup-uv` action tag, bench known-failure ceilings
+  (1.5x), during-import bench rounds now span the whole import, a global cache-bust counter plus
+  `cached == 0` assertions on dashboard/concurrency checks, an empty-table render crash fix, an
+  anchored project-picker regex (was substring + `.first()`, could silently click the wrong row),
+  and the axe baseline (4 entries, all attributed). Reviewer: approve with nits (none blocking) —
+  one ceiling's docstring is slightly off, `bust()`'s counter has an undocumented low-risk
+  exhaustion edge case, and the new Playwright browser cache step doesn't yet gate the install
+  step. e2e 73 passed/6 skipped (placeholders); contract-drift check passes.
 - 2026-10-30: stats follow-up merged: describe now resolves pipeline sources via `resolve_source`
   (cache key includes the compiled pipeline SQL hash, so a dataset refresh still invalidates it), a
   `data_errors()` context turns transform user errors and the 64 KB calc-guard trip into clean 422s
