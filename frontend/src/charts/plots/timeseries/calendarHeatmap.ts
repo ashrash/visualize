@@ -1,9 +1,15 @@
+import type { ChartSpec } from "../../../api/types";
 import { maxOf, minOf } from "../../core/math";
 import type { Obj } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import { resolveTheme } from "../../core/theme";
+import type { ChartData } from "../../core/types";
 import { definePlot } from "../../core/types";
 import { serverWarnings, timeChannel, valueChannel } from "./shared";
+
+// Each calendar is ~166px tall (CALENDAR_HEIGHT + CALENDAR_GAP): unbounded years would make an
+// unusably tall chart, so only the most recent ones are drawn.
+const MAX_YEARS = 15;
 
 /** Epoch ms (UTC midnight, as `toColumns` delivers a DATE column) to 'YYYY-MM-DD'. */
 function isoDate(ms: number): string {
@@ -12,6 +18,13 @@ function isoDate(ms: number): string {
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** Distinct years present in an x (epoch ms) column, ascending. */
+function yearsPresent(xs: number[]): number[] {
+  const years = new Set<number>();
+  for (const ms of xs) if (typeof ms === "number") years.add(new Date(ms).getUTCFullYear());
+  return [...years].sort((a, b) => a - b);
 }
 
 const CALENDAR_HEIGHT = 130;
@@ -45,7 +58,7 @@ export const calendarHeatmap = definePlot({
       if (list) list.push(point);
       else byYear.set(year, [point]);
     }
-    const years = [...byYear.keys()].sort((a, b) => a - b);
+    const years = yearsPresent(xs).slice(-MAX_YEARS);
     const t = resolveTheme(theme);
     const calendars: Obj[] = years.map((year, i) => ({
       range: String(year),
@@ -84,7 +97,18 @@ export const calendarHeatmap = definePlot({
     };
     return applyStyle(option, spec, theme, undefined, { defaultTrigger: "item" });
   },
-  warnings: serverWarnings,
+  warnings(spec: ChartSpec, data: ChartData): string[] {
+    const xs = (data.columns.x ?? []) as number[];
+    const years = yearsPresent(xs);
+    const notices = serverWarnings(spec, data);
+    if (years.length > MAX_YEARS) {
+      const hidden = years.length - MAX_YEARS;
+      notices.push(
+        `Showing the ${MAX_YEARS} most recent years; ${hidden} earlier year(s) not shown.`,
+      );
+    }
+    return notices;
+  },
   recommend(columns) {
     const temporal = columns.some((c) => c.semantic === "temporal");
     return temporal ? 0.2 : 0.02;

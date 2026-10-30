@@ -1,13 +1,7 @@
 import { cartesianSeries, type Obj, seriesData } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import { definePlot } from "../../core/types";
-import {
-  CARTESIAN_SECTIONS,
-  colorChannel,
-  metaParams,
-  serverWarnings,
-  timeChannel,
-} from "./shared";
+import { CARTESIAN_SECTIONS, metaParams, serverWarnings, timeChannel } from "./shared";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -50,7 +44,9 @@ export const seasonal = definePlot({
       aggregate: true,
       hint: "Leave empty to count rows.",
     },
-    colorChannel("Split line by"),
+    // No color channel: the cycle (one line per year, by default) comes from the "cycle" param
+    // below, computed from the same x field -- the backend has no separate color/series
+    // channel for this plot, so exposing one here would silently do nothing.
   ],
   paramsSchema: [
     {

@@ -83,9 +83,22 @@ describe("timeseries_line", () => {
     );
     expect(recommend?.([{ semantic: "nominal" }] as never)).toBe(0.05);
   });
+
+  it("connects across downsampling gaps (each series can keep a different x subset)", () => {
+    // MinMaxLTTB runs independently per series, so a shared x axis across several series can
+    // end up with each series missing some of the merged x values (cartesianSeries pivots
+    // those onto real `null` entries); without connectNulls the line would visibly fragment.
+    const o = render("timeseries_line", {}, time);
+    for (const s of o.series) expect(s.connectNulls).toBe(true);
+  });
 });
 
 describe("seasonal", () => {
+  it("has no color/series encoding channel (the cycle comes from a param, not a field)", () => {
+    const names = byKey("seasonal").encodingsSchema.map((c) => c.name);
+    expect(names).toEqual(["x", "y"]);
+  });
+
   it("maps month codes to labels and keeps one series per year", () => {
     const data = makeData(
       { x: [1, 2, 1, 2], color: [2023, 2023, 2024, 2024], y0: [10, 20, 30, 40] },
@@ -202,6 +215,11 @@ describe("moving_average", () => {
     expect(avg.lineStyle.width).toBeGreaterThan(raw.lineStyle.width);
     expect(avg.name).toContain("7-pt avg");
   });
+
+  it("connects both series across downsampling gaps", () => {
+    const o = render("moving_average", {}, data);
+    for (const s of o.series) expect(s.connectNulls).toBe(true);
+  });
 });
 
 describe("candlestick", () => {
@@ -285,5 +303,21 @@ describe("calendar_heatmap", () => {
     ]);
     expect(o.visualMap.min).toBe(1);
     expect(o.visualMap.max).toBe(3);
+  });
+
+  it("caps the number of calendars drawn and warns about the hidden years", () => {
+    const years = Array.from({ length: 20 }, (_, i) => 2000 + i); // 20 years, 2000..2019
+    const x = years.map((y) => Date.UTC(y, 0, 1));
+    const y0 = years.map((_, i) => i);
+    const data = makeData({ x, y0 }, { x: "day", y0: "v" }, { kinds: { x: "temporal" } });
+    const o = render("calendar_heatmap", {}, data);
+    expect(o.calendar).toHaveLength(15);
+    // The most recent 15 years are kept.
+    expect(o.calendar[0].range).toBe("2005");
+    expect(o.calendar[14].range).toBe("2019");
+    const entry = byKey("calendar_heatmap");
+    expect(entry.warnings?.(makeSpec(), data)).toEqual([
+      "Showing the 15 most recent years; 5 earlier year(s) not shown.",
+    ]);
   });
 });

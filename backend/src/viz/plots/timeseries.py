@@ -9,12 +9,25 @@ generic aggregate path uses. If the bucketed series is still over the cap (many 
 MinMaxLTTB trims each series to the viewport's point budget, same as the generic line chart.
 
 ACF/PACF run on the series after it has been aggregated to a *regular* calendar grid (gaps are
-carried forward from the previous bucket, and the fill count is reported as a warning): both
-assume evenly spaced observations.
+carried forward from the previous bucket, and the fill count is reported as a warning, loudly
+above `HIGH_FILL_FRACTION`): both assume evenly spaced observations. The grid is bounded at
+`MAX_REGULAR_GRID` buckets (coarsened automatically when the data's own cadence would overflow
+it) and rejected outright (422) on a constant series, where autocorrelation is undefined. The
+confidence band (`y0_lo`/`y0_hi`) is zero-centered (`confint - estimate`), matching statsmodels'
+own `plot_acf`, not centered on each lag's own bar.
+
+Known gap, not fixed here (see the final report to the lead): CLAUDE.md's brief for this family
+says to "respect the dataset's time zone", but there is no dataset-timezone contract field to
+respect. Naive TIMESTAMP columns bucket on their literal wall-clock numbers (no DST awareness:
+see `test_naive_timestamps_bucket_as_literal_wall_clock_across_a_dst_transition`); TIMESTAMPTZ
+columns bucket on the UTC calendar day, because the engine always runs sessions in UTC (see
+`test_timestamptz_buckets_on_the_utc_calendar_day`). This is the current, deliberate behavior
+to build on, not a locale-aware timezone implementation.
 """
 
 from __future__ import annotations
 
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
@@ -184,6 +197,9 @@ class _Aggregated:
     table: pa.Table
     unit: TimeUnit | None
     auto_bucketed: bool
+    # True when `table` is a cap+1-limited probe, not the true full set of groups: summing a
+    # per-group count column would undercount, so callers must fall back to `relation.count()`.
+    truncated: bool
 
 
 def _aggregate_series(
@@ -200,7 +216,9 @@ def _aggregate_series(
 
     `time_unit` set by the caller (or the x encoding) always wins. Otherwise groups by the raw
     x value first; if that overflows the cap, a unit is auto-picked from the data's span and the
-    viewport width (`_auto_time_unit`) and the grouping is redone.
+    viewport width (`_auto_time_unit`) and the grouping is redone. Either way the probe is
+    capped at `mark_cap + 1` rows, so a pathological case (e.g. very high color cardinality even
+    at yearly buckets) never fetches an unbounded result into Python.
     """
     dims: list[tuple[str, exp.Expr]] = [("x", _bucket_dimension(x_field, time_unit))]
     if color_dim is not None:
@@ -210,15 +228,17 @@ def _aggregate_series(
     grouped = aggregate_query(relation, dims, measures)
     probe = over_groups(grouped).order_by(*order).limit(mark_cap + 1)
     data = relation.arrow(probe)
-    if time_unit is not None or data.num_rows <= mark_cap:
-        return _Aggregated(data, time_unit, False)
+    if time_unit is not None:
+        return _Aggregated(data, time_unit, False, data.num_rows > mark_cap)
+    if data.num_rows <= mark_cap:
+        return _Aggregated(data, time_unit, False, False)
 
     span = _x_span_ms(relation, col(x_field))
     unit = _auto_time_unit(span[1] - span[0] if span else 0.0, _target_buckets(width_px, mark_cap))
     dims[0] = ("x", _bucket_dimension(x_field, unit))
     grouped = aggregate_query(relation, dims, measures)
-    data = relation.arrow(over_groups(grouped).order_by(*order))
-    return _Aggregated(data, unit, True)
+    data = relation.arrow(over_groups(grouped).order_by(*order).limit(mark_cap + 1))
+    return _Aggregated(data, unit, True, data.num_rows > mark_cap)
 
 
 def _reduce_to_viewport(
@@ -231,16 +251,16 @@ def _reduce_to_viewport(
     series_col: str | None,
     mark_cap: int,
     width_px: int,
-) -> tuple[pa.Table, bool, int]:
+) -> tuple[pa.Table, bool, bool, int]:
     """If `data` is still over the cap, M4-bucket in SQL then MinMaxLTTB in Python.
 
-    Returns (table, was_reduced, n_out).
+    Returns (table, was_reduced, used_m4, n_out).
     """
     n_series = len(set(data.column(series_col).to_pylist())) if series_col else 1
     n_out = max(3, min(2 * max(1, width_px), mark_cap // max(1, n_series)))
     if data.num_rows <= mark_cap:
         reduced, was_reduced = minmaxlttb(data, x="x", ys=y_names, series=series_col, n_out=n_out)
-        return reduced, was_reduced, n_out
+        return reduced, was_reduced, False, n_out
     source = aggregate_query(relation, dims, lean_measures)
     m4 = m4_query(
         source,
@@ -252,7 +272,7 @@ def _reduce_to_viewport(
     )
     table_ = relation.arrow(m4)
     reduced, _ = minmaxlttb(table_, x="x", ys=y_names, series=series_col, n_out=n_out)
-    return reduced, True, n_out
+    return reduced, True, True, n_out
 
 
 def _trailing_mean(values: np.ndarray, window: int) -> np.ndarray:
@@ -370,10 +390,14 @@ def timeseries_line(req: PlotRequest) -> TableOutput:
     if color_dim is not None:
         dims.append(("color", color_dim))
     lean = [(n, e) for n, e in measures if n != "__viz_n"]
-    rows_matched = int(pc.sum(agg.table.column("__viz_n")).as_py() or 0)
+    # A truncated probe's per-group counts don't cover every group, so they'd undercount; ask
+    # for the real total instead (relation already reflects any top-series narrowing above).
+    if agg.truncated:
+        rows_matched = relation.count()
+    else:
+        rows_matched = int(pc.sum(agg.table.column("__viz_n")).as_py() or 0)
     data = _drop_helpers(agg.table)
-    before_rows = data.num_rows
-    reduced, was_reduced, n_out = _reduce_to_viewport(
+    reduced, was_reduced, used_m4, n_out = _reduce_to_viewport(
         data,
         relation=relation,
         dims=dims,
@@ -385,7 +409,7 @@ def timeseries_line(req: PlotRequest) -> TableOutput:
     )
     if was_reduced:
         out_params["nOut"] = n_out
-        method = "m4+minmaxlttb" if reduced.num_rows < before_rows else "group_by+minmaxlttb"
+        method = "m4+minmaxlttb" if used_m4 else "group_by+minmaxlttb"
         reduction = Reduction.DOWNSAMPLED
     else:
         method = "date_trunc" if agg.unit is not None else "group_by"
@@ -422,12 +446,23 @@ _PERIOD_LABEL = {
     "day_of_month": "Day of month",
     "week": "Week of year",
 }
-_CYCLE_PART = {"year": "year", "month": "month"}
 
 
 class SeasonalParams(PlotParams):
     period: Literal["month", "weekday", "hour", "quarter", "day_of_month", "week"] = "month"
     cycle: Literal["year", "month", "none"] = "year"
+
+
+def _cycle_dimension(cycle: str, x_field: str) -> exp.Expr:
+    """The outer-cycle grouping expression: one value per actual calendar year or month.
+
+    `cycle="month"` truncates to the calendar month (a distinct value per e.g. 2023-01 and
+    2024-01), not `date_part('month', ...)`, which would otherwise merge every January across
+    every year into one series.
+    """
+    if cycle == "month":
+        return cast(fn("date_trunc", lit("month"), col(x_field)), "TIMESTAMP")
+    return cast(fn("date_part", lit("year"), col(x_field)), "BIGINT")
 
 
 @register_plot(
@@ -442,17 +477,16 @@ def seasonal(req: PlotRequest) -> TableOutput:
     x_field = req.field("x")
     assert x_field is not None
     y_encodings = req.spec.encodings.get("y", [])
-    y_enc = y_encodings[0] if y_encodings else Encoding(agg=AggFn.MEAN)
-    if y_enc.field is None and default_agg(y_enc) not in (AggFn.COUNT, AggFn.MEAN):
+    y_enc = y_encodings[0] if y_encodings else Encoding(agg=AggFn.COUNT)
+    if y_enc.field is None and default_agg(y_enc) != AggFn.COUNT:
         raise InvalidSpecError(f"{default_agg(y_enc).value} needs a field")
-    if params.cycle != "none" and _CYCLE_PART[params.cycle] == _PERIOD_PART[params.period]:
+    if params.cycle != "none" and params.cycle == params.period:
         raise InvalidSpecError("the cycle and the period must be different units of time")
 
     period_expr = cast(fn("date_part", lit(_PERIOD_PART[params.period]), col(x_field)), "BIGINT")
     dims: list[tuple[str, exp.Expr]] = [("x", period_expr)]
     if params.cycle != "none":
-        cycle_expr = cast(fn("date_part", lit(_CYCLE_PART[params.cycle]), col(x_field)), "BIGINT")
-        dims.append(("color", cycle_expr))
+        dims.append(("color", _cycle_dimension(params.cycle, x_field)))
 
     agg = y_enc.agg or AggFn.MEAN
     target = col(y_enc.field) if y_enc.field else None
@@ -463,8 +497,10 @@ def seasonal(req: PlotRequest) -> TableOutput:
     ]
 
     grouped = aggregate_query(relation, dims, measures)
-    # Ordered by cycle (series) first, then period, so each series' points are contiguous.
-    order = ([ordered(col("color"))] if params.cycle != "none" else []) + [ordered(col("x"))]
+    # Ordered by period (x) first: `cartesianSeries` dedups x into a shared axis in first-seen
+    # row order, so x must be the primary sort key or a cycle that doesn't start at period 1
+    # (e.g. data beginning in July) would scramble the axis into Jul..Dec, Jan..Jun.
+    order = [ordered(col("x"))] + ([ordered(col("color"))] if params.cycle != "none" else [])
     data = relation.arrow(over_groups(grouped).order_by(*order))
     rows_matched = int(pc.sum(data.column("__viz_n")).as_py() or 0)
     data = _drop_helpers(data)
@@ -493,8 +529,10 @@ class LagParams(PlotParams):
 
 
 def _seed_for(spec_id: str) -> int:
-    # A stable seed per chart so repeated requests return the same sampled points.
-    return (hash(spec_id) ^ DEFAULT_SEED) & 0xFFFFFFFF
+    # A stable seed per chart so repeated requests return the same sampled points. crc32 (not
+    # Python's hash()) so the seed doesn't change across process restarts: str hashing is
+    # salted per-process by default (PYTHONHASHSEED).
+    return zlib.crc32(spec_id.encode()) ^ DEFAULT_SEED
 
 
 @register_plot(
@@ -640,6 +678,17 @@ def _default_lags(n: int) -> int:
     return max(1, min(40, n // 2 - 1))
 
 
+# Forward-filled in a Python loop and fed straight to statsmodels, so the regular grid must stay
+# bounded regardless of how widely spaced a few rows are (CLAUDE.md Sec6: don't let a value
+# blow up unboundedly). 200k buckets is already generous for a lag/ACF chart (at most 1000 lags
+# are ever shown) and keeps the fill loop and statsmodels call well under a second.
+MAX_REGULAR_GRID = 200_000
+# Above this filled fraction, a meaningful share of the series feeding the ACF is synthetic
+# (e.g. business-day data regularized to a daily grid fills every weekend): called out loudly
+# rather than silently changing the numbers.
+HIGH_FILL_FRACTION = 0.15
+
+
 def _native_gap_ms(relation: Relation, time_field: str) -> float | None:
     """The smallest positive gap (ms) between consecutive distinct values of `time_field`.
 
@@ -672,29 +721,58 @@ def _native_gap_ms(relation: Relation, time_field: str) -> float | None:
     return float(value) if value is not None else None
 
 
-def _pick_unit(relation: Relation, time_field: str, explicit: TimeUnit | None) -> TimeUnit:
-    """The data's own calendar grain, rounded up to the nearest unit `date_trunc` supports."""
+def _pick_unit(
+    relation: Relation, time_field: str, explicit: TimeUnit | None
+) -> tuple[TimeUnit, bool]:
+    """The calendar unit to build the regular grid at, and whether it was coarsened beyond the
+    data's own cadence to keep the grid bounded (`MAX_REGULAR_GRID`).
+
+    An explicit unit that is still too fine for the date range raises rather than being
+    silently overridden; the auto-picked native cadence is coarsened quietly (with a warning)
+    since the user never chose it.
+    """
+    span = _x_span_ms(relation, col(time_field))
+    span_ms = span[1] - span[0] if span else 0.0
     if explicit is not None:
-        return explicit
+        if span_ms / _UNIT_MS[explicit] > MAX_REGULAR_GRID:
+            raise InvalidSpecError(
+                f"That time unit would need more than {MAX_REGULAR_GRID:,} buckets to cover "
+                "this date range; pick a coarser one."
+            )
+        return explicit, False
+    native = TimeUnit.DAY
     gap = _native_gap_ms(relation, time_field)
-    if gap is None:
-        return TimeUnit.DAY
-    for unit in _UNIT_ORDER:
-        if _UNIT_MS[unit] >= gap - 1.0:  # a millisecond of slack for float rounding
-            return unit
-    return TimeUnit.YEAR
+    if gap is not None:
+        for unit in _UNIT_ORDER:
+            if _UNIT_MS[unit] >= gap - 1.0:  # a millisecond of slack for float rounding
+                native = unit
+                break
+        else:
+            native = TimeUnit.YEAR
+    if span_ms / _UNIT_MS[native] <= MAX_REGULAR_GRID:
+        return native, False
+    # The native grain itself would still overflow the grid (e.g. a handful of rows spanning
+    # decades at minute cadence): coarsen enough to bound it, like the long-series plots do.
+    return _auto_time_unit(span_ms, MAX_REGULAR_GRID), True
 
 
 _AcfFn = Callable[[np.ndarray, int, float], tuple[np.ndarray, np.ndarray]]
 
 
-def _acf_like(req: PlotRequest, *, label: str, method_name: str, run: _AcfFn) -> TableOutput:
+def _acf_like(
+    req: PlotRequest,
+    *,
+    label: str,
+    method_name: str,
+    run: _AcfFn,
+    max_lags: Callable[[int], int],
+) -> TableOutput:
     params = req.params
     assert isinstance(params, AcfParams)
     time_field = req.field("x")
     value_field = req.field("y")
     assert time_field is not None and value_field is not None
-    unit = _pick_unit(req.relation, time_field, params.time_unit)
+    unit, coarsened = _pick_unit(req.relation, time_field, params.time_unit)
     series = _regular_series(req.relation, time_field, value_field, unit)
     n = series.num_rows
     if n < 4:
@@ -704,25 +782,49 @@ def _acf_like(req: PlotRequest, *, label: str, method_name: str, run: _AcfFn) ->
         )
     raw = series.column("val").to_pylist()
     filled, n_filled = _fill_gaps(raw)
-    lags = min(params.lags or _default_lags(n), n - 1)
+    if min(filled) == max(filled):
+        raise InvalidSpecError(
+            "The series is constant after bucketing; autocorrelation is undefined."
+        )
+    lags = min(params.lags or _default_lags(n), n - 1, max(1, max_lags(n)))
     if lags < 1:
         raise InvalidSpecError("Not enough points for the requested number of lags.")
     alpha = 1 - params.ci_level
     values_arr, confint = run(np.asarray(filled, dtype=np.float64), lags, alpha)
+    # statsmodels centers confint on each lag's own estimate (acf[k] +/- z*se[k]); the standard
+    # reading ("the bar crosses outside the band = significant") needs the band centered on
+    # zero instead, same as statsmodels' own plot_acf (which draws confint - acf).
+    lo = confint[:, 0] - values_arr
+    hi = confint[:, 1] - values_arr
     out = pa.table(
         {
             "x": pa.array(range(lags + 1), pa.int64()),
             "y0": pa.array(values_arr, pa.float64()),
-            "y0_lo": pa.array(confint[:, 0], pa.float64()),
-            "y0_hi": pa.array(confint[:, 1], pa.float64()),
+            "y0_lo": pa.array(lo, pa.float64()),
+            "y0_hi": pa.array(hi, pa.float64()),
         }
     )
     warnings: list[str] = []
-    if n_filled:
+    if coarsened:
         warnings.append(
-            f"{n_filled} empty {unit.value} bucket(s) were carried forward from the previous "
-            "value to keep the series evenly spaced."
+            f"Bucketed to {unit.value} intervals (coarser than the data's own cadence) to keep "
+            "the autocorrelation grid a reasonable size."
         )
+    if n_filled:
+        note = (
+            f"{n_filled} empty {unit.value} bucket(s) were carried forward from the previous "
+            "value to keep the series evenly spaced"
+        )
+        fraction = n_filled / n
+        if fraction > HIGH_FILL_FRACTION:
+            note += (
+                f" ({fraction:.0%} of the series). That's a large share of filled, not "
+                "observed, values (e.g. business-day data regularized to a daily grid fills "
+                "every weekend) -- the autocorrelation may not be meaningful at this time unit."
+            )
+        else:
+            note += "."
+        warnings.append(note)
     return TableOutput(
         table=out,
         reduction=Reduction.AGGREGATED,
@@ -751,7 +853,13 @@ def acf_plot(req: PlotRequest) -> TableOutput:
         assert isinstance(result, tuple)
         return result
 
-    return _acf_like(req, label="Autocorrelation", method_name="statsmodels_acf", run=run)
+    return _acf_like(
+        req,
+        label="Autocorrelation",
+        method_name="statsmodels_acf",
+        run=run,
+        max_lags=lambda n: n - 1,
+    )
 
 
 @register_plot(
@@ -765,7 +873,14 @@ def pacf_plot(req: PlotRequest) -> TableOutput:
         assert isinstance(result, tuple)
         return result
 
-    return _acf_like(req, label="Partial autocorrelation", method_name="statsmodels_pacf", run=run)
+    # statsmodels' pacf rejects nlags > nobs // 2 outright.
+    return _acf_like(
+        req,
+        label="Partial autocorrelation",
+        method_name="statsmodels_pacf",
+        run=run,
+        max_lags=lambda n: n // 2,
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -809,13 +924,16 @@ def moving_average(req: PlotRequest) -> TableOutput:
         ("y0", measure_sql(y_enc)),
         ("__viz_n", exp.Count(this=exp.Star())),
     ]
+    # Each row becomes two marks (y0 and y1), so the per-group cap must be halved like
+    # timeseries_line halves by the number of y measures.
+    per_measure_cap = max(1, req.mark_cap // 2)
     agg = _aggregate_series(
         relation,
         x_field,
         x_enc.time_unit,
         measures,
         color_dim,
-        mark_cap=req.mark_cap,
+        mark_cap=per_measure_cap,
         width_px=req.viewport.width_px,
     )
     out_params: dict[str, JsonValue] = {"window": params.window}
@@ -825,24 +943,35 @@ def moving_average(req: PlotRequest) -> TableOutput:
         out_params["timeUnit"] = agg.unit.value
         warnings.append(
             f"Bucketed to {agg.unit.value} intervals to keep the chart under "
-            f"{req.mark_cap:,} points."
+            f"{per_measure_cap:,} points."
         )
-    rows_matched = int(pc.sum(agg.table.column("__viz_n")).as_py() or 0)
+    if agg.truncated:
+        rows_matched = relation.count()
+    else:
+        rows_matched = int(pc.sum(agg.table.column("__viz_n")).as_py() or 0)
     data = _drop_helpers(agg.table)
     data = _moving_average(data, params.window, series_col)
     fields["y1"] = f"{params.window}-point moving average"
+    # Only called out when it's a meaningful share of what's shown: every series' first
+    # (window - 1) points necessarily average fewer values, but that's negligible noise on a
+    # long series and worth a note mainly when the window is large relative to the series.
+    if data.num_rows and (params.window - 1) / data.num_rows > 0.05:
+        warnings.append(
+            f"The first {params.window - 1} point(s) of each series average fewer than "
+            f"{params.window} values."
+        )
 
-    if data.num_rows > req.mark_cap:
+    if data.num_rows > per_measure_cap:
         # Rare: even the coarsest calendar bucket didn't fit alongside this many color groups.
-        data = data.slice(0, req.mark_cap)
+        data = data.slice(0, per_measure_cap)
         out_params["truncatedGroups"] = True
         warnings.append(
-            f"Showing the first {req.mark_cap:,} points; narrow the data with a filter."
+            f"Showing the first {per_measure_cap:,} points; narrow the data with a filter."
         )
         reduction, method = Reduction.AGGREGATED, "date_trunc" if agg.unit else "group_by"
     else:
         n_series = len(set(data.column("color").to_pylist())) if series_col else 1
-        n_out = max(3, min(2 * max(1, req.viewport.width_px), req.mark_cap // max(1, n_series)))
+        n_out = max(3, min(2 * max(1, req.viewport.width_px), per_measure_cap // max(1, n_series)))
         reduced, was_reduced = minmaxlttb(
             data, x="x", ys=["y0", "y1"], series=series_col, n_out=n_out
         )
@@ -914,7 +1043,10 @@ def candlestick(req: PlotRequest) -> TableOutput:
         width_px=max(1, req.viewport.width_px // 6),
     )
     data = agg.table
-    rows_matched = int(pc.sum(data.column("__viz_n")).as_py() or 0)
+    if agg.truncated:
+        rows_matched = relation.count()
+    else:
+        rows_matched = int(pc.sum(data.column("__viz_n")).as_py() or 0)
     max_per_bar = int(pc.max(data.column("__viz_n")).as_py() or 0)
     data = _drop_helpers(data)
     warnings: list[str] = []
@@ -946,7 +1078,10 @@ def candlestick(req: PlotRequest) -> TableOutput:
         fields["volume"] = "Volume"
     return TableOutput(
         table=data,
-        reduction=Reduction.DOWNSAMPLED if agg.auto_bucketed else Reduction.AGGREGATED,
+        # Bucketing coarser is still an exact aggregation (OHLC math, not point sampling), so
+        # this is never DOWNSAMPLED; truncation past the cap is flagged via the warning/params
+        # above instead, same convention as the other plots in this module.
+        reduction=Reduction.AGGREGATED,
         method="arg_min_max" if agg.unit is None else "date_trunc+arg_min_max",
         fields=fields,
         params=out_params,

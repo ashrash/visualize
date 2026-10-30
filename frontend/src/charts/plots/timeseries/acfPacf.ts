@@ -11,6 +11,9 @@ const LAGS_PARAM = {
   affectsData: true,
   type: "int",
   label: "Lags",
+  help:
+    "The server picks a sensible default from the data (up to 40) until this is changed; " +
+    "PACF additionally caps whatever is requested here at half the series length.",
   min: 1,
   max: 1000,
   default: 10,

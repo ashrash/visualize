@@ -46,6 +46,9 @@ export const movingAverage = definePlot({
         type: "line",
         data: dataFor(s.values),
         showSymbol: false,
+        // Same reasoning as timeseries_line: downsampling can leave each series (and each of
+        // y0/y1) with a different kept subset of x values, which would otherwise fragment.
+        connectNulls: true,
         lineStyle: isAverage ? { width: 2.5 } : { width: 1, opacity: 0.45 },
         z: isAverage ? 3 : 1,
         emphasis: { focus: "series" },

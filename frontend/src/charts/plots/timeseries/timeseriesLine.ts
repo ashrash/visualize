@@ -44,6 +44,11 @@ export const timeseriesLine = definePlot({
       type: "line",
       showSymbol: cd.xs.length <= 60,
       data: dataFor(s.values),
+      // MinMaxLTTB downsamples each series independently, so a shared x axis across several
+      // series ends up with a different subset of x values kept per series: the gaps are real
+      // null entries (cartesianSeries pivots onto the shared/merged x list), and without this
+      // the line would visibly fragment into disconnected segments rather than draw through.
+      connectNulls: true,
       emphasis: { focus: "series" },
     }));
     const single = cd.series.length === 1 ? cd.series[0]?.name : undefined;
