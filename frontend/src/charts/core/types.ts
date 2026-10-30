@@ -59,14 +59,29 @@ export interface ChannelSchema {
 }
 
 /**
+ * When a param control is shown. `param` names another param (compare its value with `equals`)
+ * or a channel (`equals: true` = a field is bound; `atLeast: n` = at least n encodings).
+ */
+export type ShowIf = { param: string; equals: JsonValue } | { param: string; atLeast: number };
+
+/**
  * A plot-specific setting, stored in `spec.params[name]`. The config panel renders one control
- * per entry. `showIf.param` may name another param or a channel ("color is set" = equals true).
+ * per entry.
+ *
+ * `showIf`: one condition, or an array meaning "any of these".
+ *
+ * `affectsData` (default false): set it ONLY when the server needs the param to build the
+ * chart data (bin count, bandwidth, lags, ...). Params without it are cosmetic or client-side:
+ * changing them re-renders from the cached data and never re-queries. Only params with
+ * `affectsData: true` are part of the chart-data query key, so a slider that drives a purely
+ * visual setting does not hit the server on every step.
  */
 export type ParamSchema = {
   name: string;
   label: string;
   help?: string;
-  showIf?: { param: string; equals: JsonValue };
+  showIf?: ShowIf | ShowIf[];
+  affectsData?: boolean;
 } & (
   | { type: "number"; min?: number; max?: number; step?: number; default: number }
   | { type: "int"; min?: number; max?: number; default: number }
@@ -181,6 +196,11 @@ export interface PlotEntry {
   ): EChartsCoreOption;
   /** Lazy assets (GeoJSON, custom series) loaded before the first render. */
   prepare?(spec: ChartSpec): Promise<void>;
+  /**
+   * Notices for the chart footer about data the plot could not draw ("3 negative values
+   * omitted"). Pure, like render. Return [] when nothing was dropped.
+   */
+  warnings?(spec: ChartSpec, data: ChartData): string[];
   /** 0–1 suitability for the given columns (chart recommendations). */
   recommend?(columns: Column[]): number;
 }

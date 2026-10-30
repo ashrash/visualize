@@ -66,8 +66,9 @@ const MIME: Record<Exclude<ExportFormat, "clipboard">, string> = {
 /** A file-system-safe name: letters, digits, dash, underscore; never empty. */
 export function safeFilename(name: string): string {
   const cleaned = name
-    .normalize("NFKD")
-    .replace(/[^\w\- ]+/g, "")
+    .normalize("NFC")
+    // Keep letters and digits of every script (not only ASCII), plus _ - and spaces.
+    .replace(/[^\p{L}\p{N}_\- ]+/gu, "")
     .trim()
     .replace(/\s+/g, "-");
   return cleaned || "chart";
@@ -114,6 +115,16 @@ export function chartToSvg(chart: ECharts, o: Pick<ExportOptions, "theme" | "bac
   }
 }
 
+/**
+ * jsPDF's built-in fonts only cover Latin-1: CJK, Cyrillic, Greek and symbols such as an arrow
+ * come out as garbage. When the title or any chart text needs more, the PDF uses the raster
+ * image instead of vector text, which renders every script correctly.
+ */
+export function needsRasterPdf(svg: string, title?: string): boolean {
+  const outsideLatin1 = /[Ā-\u{10ffff}]/u;
+  return outsideLatin1.test(svg) || (title ? outsideLatin1.test(title) : false);
+}
+
 async function pdfBlob(chart: ECharts, o: ExportOptions): Promise<Blob> {
   // jsPDF and svg2pdf are large; load them only when someone exports a PDF.
   const [{ jsPDF }, { svg2pdf }] = await Promise.all([import("jspdf"), import("svg2pdf.js")]);
@@ -126,23 +137,24 @@ async function pdfBlob(chart: ECharts, o: ExportOptions): Promise<Blob> {
     unit: "pt",
     format: [width + margin * 2, height + margin * 2 + titleHeight],
   });
-  if (o.title) {
-    doc.setFontSize(14);
-    doc.text(o.title, margin, margin + 12);
-  }
   const x = margin;
   const y = margin + titleHeight;
   const svg = chartToSvg(chart, { theme: o.theme, background: o.background ?? "#ffffff" });
+  const raster = needsRasterPdf(svg, o.title);
+  if (o.title && !raster) {
+    doc.setFontSize(14);
+    doc.text(o.title, margin, margin + 12);
+  }
   const host = document.createElement("div");
   host.style.cssText = "position:fixed;left:-10000px;top:0;visibility:hidden";
   host.innerHTML = svg;
   document.body.appendChild(host);
   try {
     const element = host.querySelector("svg");
-    if (!element) throw new Error("no svg");
+    if (!element || raster) throw new Error("raster");
     await svg2pdf(element, doc, { x, y, width, height });
   } catch {
-    // Vector conversion failed (unsupported SVG feature): fall back to a raster image.
+    // Non-Latin text, or a failed vector conversion: use a raster image.
     const url = chart.getDataURL({
       type: "png",
       pixelRatio: 2,

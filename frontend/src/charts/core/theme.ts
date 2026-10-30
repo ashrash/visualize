@@ -77,11 +77,11 @@ export function useChartTheme(): ChartTheme {
     // The theme tokens change after the attribute flips, so read on the next frame.
     const observer = new MutationObserver(() => requestAnimationFrame(update));
     observer.observe(document.documentElement, { attributeFilter: ["data-theme", "class"] });
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    media.addEventListener("change", update);
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    media?.addEventListener("change", update);
     return () => {
       observer.disconnect();
-      media.removeEventListener("change", update);
+      media?.removeEventListener("change", update);
     };
   }, []);
   return theme;

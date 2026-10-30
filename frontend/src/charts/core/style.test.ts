@@ -1,0 +1,172 @@
+import { describe, expect, it } from "vitest";
+import type { ChartSpec } from "../../api/types";
+import { applyStyle, dropNonPositive } from "./style";
+import { makeSpec, makeTheme } from "./testing";
+
+// biome-ignore lint/suspicious/noExplicitAny: tests probe deep into the ECharts option
+type Opt = Record<string, any>;
+const theme = makeTheme();
+const style = (patch: Record<string, unknown>): Partial<ChartSpec> => ({
+  style: {
+    orientation: "vertical",
+    stack: "none",
+    showLabels: false,
+    ...patch,
+  } as ChartSpec["style"],
+});
+
+describe("applyStyle with several grids (S4)", () => {
+  // A candlestick with a volume pane: two grids, two x axes, two y axes.
+  const option = (): Opt => ({
+    grid: [
+      { left: 40, right: 20, top: 30, height: "55%" },
+      { left: 40, right: 20, top: "72%", height: "16%" },
+    ],
+    xAxis: [
+      { type: "category", gridIndex: 0, data: ["a", "b"] },
+      { type: "category", gridIndex: 1, data: ["a", "b"] },
+    ],
+    yAxis: [
+      { type: "value", gridIndex: 0 },
+      { type: "value", gridIndex: 1, splitNumber: 2 },
+    ],
+    series: [
+      { type: "bar", name: "Price", data: [1, 2] },
+      { type: "bar", name: "Volume", data: [5, 6], xAxisIndex: 1, yAxisIndex: 1 },
+    ],
+  });
+
+  it("keeps the plot's grids and axes, applying only theme colors", () => {
+    const out = applyStyle(option(), makeSpec(style({ title: "OHLC" })), theme) as Opt;
+    expect(out.grid).toEqual(option().grid);
+    expect(out.xAxis).toHaveLength(2);
+    expect(out.xAxis[1]).toMatchObject({ gridIndex: 1, data: ["a", "b"] });
+    expect(out.yAxis[1]).toMatchObject({ gridIndex: 1, splitNumber: 2 });
+    expect(out.yAxis[0].axisLabel.color).toBe(theme.textMuted);
+    expect(out.series[1]).toMatchObject({ xAxisIndex: 1, yAxisIndex: 1 });
+  });
+
+  it("still applies title, legend, palette, tooltip and aria", () => {
+    const out = applyStyle(
+      option(),
+      makeSpec(style({ title: "OHLC", palette: "tableau-10" })),
+      theme,
+    ) as Opt;
+    expect(out.title.text).toBe("OHLC");
+    expect(out.legend.show).toBe(true);
+    expect(out.color[0]).toBe("#4e79a7");
+    expect(out.tooltip.show).toBe(true);
+    expect(out.aria.enabled).toBe(true);
+  });
+
+  it("ignores orientation and multi-axis settings for such plots", () => {
+    const out = applyStyle(
+      option(),
+      makeSpec(style({ orientation: "horizontal", yAxes: [{ grid: true }, { grid: true }] })),
+      theme,
+    ) as Opt;
+    expect(out.xAxis[0].type).toBe("category");
+    expect(out.yAxis).toHaveLength(2);
+  });
+
+  it("axes: false opts a single-grid plot out of axis management", () => {
+    const out = applyStyle(
+      { xAxis: { type: "value", name: "mine" }, yAxis: { type: "value" }, series: [] },
+      makeSpec(style({ xAxis: { grid: true, title: "ignored" } })),
+      theme,
+      undefined,
+      { axes: false },
+    ) as Opt;
+    expect(out.xAxis.name).toBe("mine");
+  });
+
+  it("layout: false keeps the plot's own grid but still styles axes", () => {
+    const grid = { left: 5, right: 5, top: 5, bottom: 5 };
+    const out = applyStyle(
+      { grid, xAxis: { type: "category", data: ["a"] }, yAxis: { type: "value" }, series: [] },
+      makeSpec(style({ yAxes: [{ grid: true, scale: "log" }] })),
+      theme,
+      undefined,
+      { layout: false },
+    ) as Opt;
+    expect(out.grid).toBe(grid);
+    expect(out.yAxis.type).toBe("log");
+  });
+});
+
+describe("applyStyle details", () => {
+  const base = (): Opt => ({
+    xAxis: { type: "category", data: ["a", "b", "c"] },
+    yAxis: { type: "value" },
+    series: [{ type: "bar", name: "v", data: [10, 0, -5] }],
+  });
+
+  it("drops zero and negative values on a log axis instead of drawing them", () => {
+    const out = applyStyle(
+      base(),
+      makeSpec(style({ yAxes: [{ grid: true, scale: "log" }] })),
+      theme,
+    ) as Opt;
+    expect(out.series[0].data).toEqual([10, null, null]);
+    expect(
+      dropNonPositive([
+        [1, 0],
+        [2, 3],
+      ]),
+    ).toEqual([
+      [1, null],
+      [2, 3],
+    ]);
+  });
+
+  it("formats axis ticks and labels in the given locale", () => {
+    const spec = makeSpec(style({ yAxes: [{ grid: true, format: "number:1" }] }));
+    const de = applyStyle(base(), spec, theme, { locale: "de-DE" }) as Opt;
+    const en = applyStyle(base(), spec, theme, { locale: "en-US" }) as Opt;
+    expect(de.yAxis.axisLabel.formatter(1234.5)).toBe("1.234,5");
+    expect(en.yAxis.axisLabel.formatter(1234.5)).toBe("1,234.5");
+  });
+
+  it("reserves room at the right for a vertical visualMap", () => {
+    const plain = applyStyle(base(), makeSpec(), theme) as Opt;
+    const withMap = applyStyle(
+      { ...base(), visualMap: { type: "continuous", orient: "vertical" } },
+      makeSpec(),
+      theme,
+    ) as Opt;
+    expect(withMap.grid.right - plain.grid.right).toBe(90);
+  });
+
+  it("gives each trendline band its own stack id", () => {
+    const x = [1, 2];
+    const overlay = (series: number) => ({
+      kind: "linear" as const,
+      series,
+      x,
+      y: [1, 2],
+      lo: [0, 1],
+      hi: [2, 3],
+      equation: null,
+      r2: null,
+      n: 2,
+      sampled: false,
+      warnings: [],
+    });
+    const out = applyStyle(
+      {
+        xAxis: { type: "value" },
+        yAxis: { type: "value" },
+        series: [
+          { type: "line", name: "a", yIndex: 0, data: [[1, 1]] },
+          { type: "line", name: "b", yIndex: 1, data: [[1, 1]] },
+        ],
+      },
+      makeSpec(),
+      theme,
+      { overlays: [overlay(0), overlay(1)] },
+    ) as Opt;
+    const stacks = new Set(out.series.map((s: Opt) => s.stack).filter(Boolean));
+    expect(stacks.size).toBe(2);
+    expect(out.series.filter((s: Opt) => s.stackStrategy === "all")).toHaveLength(4);
+  });
+});

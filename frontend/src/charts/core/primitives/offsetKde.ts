@@ -1,3 +1,4 @@
+import { maxOf } from "../math";
 import { resolveTheme } from "../theme";
 import type { ChartTheme } from "../types";
 
@@ -20,7 +21,8 @@ export function offsetKde(o: {
 }): { series: Record<string, unknown>[]; yAxis: Record<string, unknown>; step: number } {
   const theme = resolveTheme(o.theme);
   const overlap = Math.min(1, Math.max(0, o.overlap ?? 0.5));
-  const peak = Math.max(0, ...o.groups.flatMap((g) => g.density));
+  let peak = 0;
+  for (const g of o.groups) peak = maxOf(g.density, peak);
   const step = peak > 0 ? Math.max(peak * (1 - overlap), peak * 0.05) : 1;
   const n = o.groups.length;
   const names = o.groups.map((g) => g.name);

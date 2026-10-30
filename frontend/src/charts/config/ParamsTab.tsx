@@ -1,5 +1,5 @@
 import type { ChartSpec, Column } from "../../api/types";
-import type { ParamSchema, PlotEntry } from "../core/types";
+import type { ParamSchema, PlotEntry, ShowIf } from "../core/types";
 import { CheckboxField, ColorField, NumberField, SelectField, TextField } from "./controls";
 import { setParam } from "./spec";
 
@@ -10,18 +10,23 @@ export function paramValue(spec: ChartSpec, schema: ParamSchema): unknown {
   return "default" in schema ? schema.default : undefined;
 }
 
-/**
- * Whether a param's `showIf` holds. `param` may name another param, or a channel: then the
- * condition is whether the channel has a field bound (`equals: true`) or not (`false`).
- */
+function holds(spec: ChartSpec, entry: PlotEntry, cond: ShowIf): boolean {
+  const other = entry.paramsSchema.find((p) => p.name === cond.param);
+  const bound = (spec.encodings?.[cond.param] ?? []).filter((e) => e.field || e.agg);
+  if ("atLeast" in cond) return bound.length >= cond.atLeast;
+  if (other) return paramValue(spec, other) === cond.equals;
+  return bound.length > 0 === cond.equals;
+}
+
+/** Whether a param is shown: no `showIf`, or any of its conditions holds (see `ShowIf`). */
 export function isVisible(spec: ChartSpec, entry: PlotEntry, schema: ParamSchema): boolean {
   const cond = schema.showIf;
   if (!cond) return true;
-  const other = entry.paramsSchema.find((p) => p.name === cond.param);
-  if (other) return paramValue(spec, other) === cond.equals;
-  const bound = (spec.encodings?.[cond.param] ?? []).some((e) => e.field || e.agg);
-  return bound === cond.equals;
+  return (Array.isArray(cond) ? cond : [cond]).some((c) => holds(spec, entry, c));
 }
+
+const clamp = (n: number, min?: number, max?: number) =>
+  Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, n));
 
 function ParamControl({
   schema,
@@ -46,7 +51,11 @@ function ParamControl({
           max={schema.max}
           step={schema.type === "int" ? 1 : schema.step}
           onChange={(n) =>
-            onChange(n === null ? schema.default : schema.type === "int" ? Math.round(n) : n)
+            onChange(
+              n === null
+                ? schema.default
+                : clamp(schema.type === "int" ? Math.round(n) : n, schema.min, schema.max),
+            )
           }
         />
       );

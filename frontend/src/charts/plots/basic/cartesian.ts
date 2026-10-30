@@ -1,4 +1,5 @@
 import type { ChartSpec } from "../../../api/types";
+import { maxOf } from "../../core/math";
 import { errorBars } from "../../core/primitives/errorBars";
 import {
   cartesianSeries,
@@ -77,7 +78,11 @@ export const BAR_PARAMS: ParamSchema[] = [
     max: 100,
     step: 5,
     default: 10,
-    showIf: { param: "color", equals: true },
+    // Grouped bars appear with a color group or with several measures.
+    showIf: [
+      { param: "color", equals: true },
+      { param: "y", atLeast: 2 },
+    ],
   },
 ];
 
@@ -97,18 +102,11 @@ export const LINE_PARAMS: ParamSchema[] = [
   { name: "connectNulls", type: "boolean", label: "Connect across gaps", default: false },
 ];
 
-export const AREA_OPACITY_PARAM: ParamSchema = {
-  name: "areaOpacity",
-  type: "number",
-  label: "Fill opacity",
-  min: 0.05,
-  max: 1,
-  step: 0.05,
-  default: 0.25,
-};
-
 function normalizePercent(series: { values: (number | null)[] }[]): void {
-  const length = Math.max(0, ...series.map((s) => s.values.length));
+  const length = maxOf(
+    series.map((s) => s.values.length),
+    0,
+  );
   for (let i = 0; i < length; i++) {
     let total = 0;
     for (const s of series) total += Math.abs(s.values[i] ?? 0);
@@ -137,7 +135,7 @@ export function renderCartesian(
   const type: XAxisType = xAxisType(cd.xKind, style.xAxis.scale, kind !== "bar", cd.xs);
   const categories =
     type === "category"
-      ? cd.xs.map((x) => categoryLabel(x, cd.xKind, style.xAxis.format))
+      ? cd.xs.map((x) => categoryLabel(x, cd.xKind, style.xAxis.format, ctx?.locale))
       : undefined;
   const dataFor = (values: (number | null)[]) => seriesData(categories ?? cd.xs, values, type);
 
@@ -146,7 +144,6 @@ export function renderCartesian(
   const barGap = param(spec, "barGap", 10);
   const step = param(spec, "step", "none");
   const connectNulls = param(spec, "connectNulls", false);
-  const areaOpacity = param(spec, "areaOpacity", style.areaOpacity ?? 0.25);
   const dense = cd.xs.length > 60;
 
   const series: Obj[] = cd.series.map((s) => {
@@ -172,7 +169,7 @@ export function renderCartesian(
       showSymbol: !dense,
       step: step === "none" ? undefined : step,
       connectNulls,
-      ...(kind === "area" ? { areaStyle: { opacity: areaOpacity } } : {}),
+      ...(kind === "area" ? { areaStyle: { opacity: 0.25 } } : {}),
     };
   });
 
@@ -188,6 +185,8 @@ export function renderCartesian(
           orientation: horizontal ? "h" : "v",
           groupIndex: kind === "bar" ? i : 0,
           groupCount: kind === "bar" ? withBounds.length : 1,
+          categoryGap: (100 - barWidth) / 100,
+          barGap: barGap / 100,
           theme,
         }),
         yIndex: s.yIndex,
@@ -221,4 +220,25 @@ export function hasMeasureAndCategory(
     columns.some((c) => c.semantic === "nominal" && c.approxDistinct <= maxDistinct),
     columns.some((c) => c.semantic === "quantitative"),
   ];
+}
+
+/**
+ * Notices for the chart footer: values a log axis cannot draw (zero or negative) are left out
+ * of the drawn series, and the user is told how many.
+ */
+export function cartesianWarnings(spec: ChartSpec, data: ChartData): string[] {
+  const style = resolveStyle(spec);
+  const logged = style.yAxes.some((a) => a.scale === "log");
+  if (!logged) return [];
+  let omitted = 0;
+  for (const s of cartesianSeries(data).series) {
+    const axis = style.series.find((x) => x.index === s.yIndex)?.yAxis ?? 0;
+    if (style.yAxes[axis]?.scale !== "log") continue;
+    for (const v of s.values) if (v !== null && v <= 0) omitted += 1;
+  }
+  return omitted > 0
+    ? [
+        `${omitted.toLocaleString()} value${omitted === 1 ? "" : "s"} of zero or below not shown on the log axis.`,
+      ]
+    : [];
 }

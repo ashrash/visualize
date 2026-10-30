@@ -48,9 +48,11 @@ export function validateEntry(entry: PlotEntry): string[] {
     problems.push(`${where} declares no channels`);
   }
   for (const param of entry.paramsSchema) {
-    const ref = param.showIf?.param;
-    if (ref && !paramNames.includes(ref) && !channelNames.includes(ref)) {
-      problems.push(`${where} param "${param.name}" showIf references unknown "${ref}"`);
+    const conds = param.showIf ? (Array.isArray(param.showIf) ? param.showIf : [param.showIf]) : [];
+    for (const { param: ref } of conds) {
+      if (!paramNames.includes(ref) && !channelNames.includes(ref)) {
+        problems.push(`${where} param "${param.name}" showIf references unknown "${ref}"`);
+      }
     }
     if ("default" in param && !matchesParam(param, param.default as JsonValue)) {
       problems.push(`${where} param "${param.name}" default does not match its schema`);

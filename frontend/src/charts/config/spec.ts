@@ -1,5 +1,5 @@
 import type { ChartSpec, ChartStyle, Encoding } from "../../api/types";
-import type { AxisStyle, DeepPartial, PlotEntry } from "../core/types";
+import type { AxisStyle, DeepPartial, PlotEntry, StyleSection } from "../core/types";
 
 /** A full style from a partial one: every required field present. */
 export function fullStyle(style: ChartStyle | undefined): ChartStyle {
@@ -63,6 +63,26 @@ function mergeDeep<T extends object>(base: T, patch: DeepPartial<T> | undefined)
 }
 
 /**
+ * Style settings the target plot has no Style-tab section for would linger invisibly (a pie
+ * that is still "stacked", a scatter with leftover error bars). Reset them to their defaults.
+ */
+function dropUnsupported(style: ChartStyle, entry: PlotEntry): ChartStyle {
+  const has = (s: StyleSection) => entry.styleSections.includes(s);
+  const out: ChartStyle = { ...style };
+  // Value labels are per-plot (a pie defaults to on); the new plot's default decides.
+  out.showLabels = false;
+  if (!has("stack")) out.stack = "none";
+  if (!has("orientation")) out.orientation = "vertical";
+  if (!has("errorBars")) out.errorBars = null;
+  if (!has("trendline")) out.trendlines = [];
+  if (!has("annotations")) out.annotations = [];
+  if (!has("refLines")) out.refLines = [];
+  if (!has("seriesStyle") && !has("multiAxis")) out.series = [];
+  if (!has("multiAxis")) out.yAxes = out.yAxes?.slice(0, 1);
+  return out;
+}
+
+/**
  * Switch a spec to another plot type: take that plot's default params, style and interactions
  * and keep only the channels it understands.
  */
@@ -80,7 +100,10 @@ export function applyPlotDefaults(spec: ChartSpec, entry: PlotEntry): ChartSpec 
     plotType: entry.key,
     encodings,
     params: { ...entry.defaults.params },
-    style: mergeDeep(fullStyle(spec.style), entry.defaults.style as DeepPartial<ChartStyle>),
+    style: mergeDeep(
+      dropUnsupported(fullStyle(spec.style), entry),
+      entry.defaults.style as DeepPartial<ChartStyle>,
+    ),
     interactions: entry.defaults.interactions
       ? ({ ...spec.interactions, ...entry.defaults.interactions } as ChartSpec["interactions"])
       : spec.interactions,

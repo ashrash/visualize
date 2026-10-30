@@ -1,5 +1,5 @@
 import { definePlot, type StyleSection } from "../../core/types";
-import { AREA_OPACITY_PARAM, cartesianChannels, LINE_PARAMS, renderCartesian } from "./cartesian";
+import { cartesianChannels, cartesianWarnings, LINE_PARAMS, renderCartesian } from "./cartesian";
 
 const LINE_SECTIONS: StyleSection[] = [
   "title",
@@ -32,6 +32,7 @@ export const line = definePlot({
   styleSections: LINE_SECTIONS,
   defaults: { params: { step: "none", connectNulls: false } },
   render: (spec, data, theme, ctx) => renderCartesian("line", spec, data, theme, ctx),
+  warnings: cartesianWarnings,
   recommend(columns) {
     const temporal = columns.some((c) => c.semantic === "temporal");
     const measure = columns.some((c) => c.semantic === "quantitative");
@@ -45,10 +46,11 @@ export const area = definePlot({
   family: "basic",
   description: "A line chart with the area below filled; stack to show composition over time.",
   encodingsSchema: cartesianChannels("X axis", [...X_ACCEPTS]),
-  paramsSchema: [...LINE_PARAMS, AREA_OPACITY_PARAM],
+  paramsSchema: LINE_PARAMS,
   styleSections: [...LINE_SECTIONS.filter((s) => s !== "trendline" && s !== "errorBars"), "stack"],
-  defaults: { params: { step: "none", connectNulls: false, areaOpacity: 0.25 } },
+  defaults: { params: { step: "none", connectNulls: false } },
   render: (spec, data, theme, ctx) => renderCartesian("area", spec, data, theme, ctx),
+  warnings: cartesianWarnings,
   recommend(columns) {
     const temporal = columns.some((c) => c.semantic === "temporal");
     const measure = columns.some((c) => c.semantic === "quantitative");

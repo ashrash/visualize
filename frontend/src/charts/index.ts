@@ -1,3 +1,4 @@
+export { ExportSinkProvider } from "../export/sinkContext";
 export { ChartBuilder } from "./config/ChartBuilder";
 export {
   ChartConfigPanel,

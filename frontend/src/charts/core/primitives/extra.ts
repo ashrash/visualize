@@ -1,11 +1,11 @@
 import type { ChartDataMeta } from "../../../api/types";
 
 /**
- * Typed reads from `meta.params` (binWidth, hexRadius, nOut, truncatedGroups, ...). Read
- * defensively: the field may be absent in older responses, and values may be malformed.
+ * Typed reads from `meta.params` (binWidth, hexRadius, nOut, truncatedGroups, ...). Values are
+ * unknown JSON, so each accessor checks the type and returns undefined on a mismatch.
  */
 export function chartParams(meta: ChartDataMeta) {
-  const params = (meta as { params?: Record<string, unknown> }).params ?? {};
+  const params = meta.params ?? {};
   return {
     number(key: string): number | undefined {
       const value = params[key];
@@ -19,16 +19,19 @@ export function chartParams(meta: ChartDataMeta) {
   };
 }
 
-/** The full x extent of the data ignoring any zoom (`meta.xDomain`), if the server sent it. */
+const toMs = (v: number | string): number | undefined => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+  const ms = Date.parse(v);
+  return Number.isNaN(ms) ? undefined : ms;
+};
+
+/**
+ * The full x extent of the data ignoring any zoom (`meta.xDomain`), as numbers (temporal
+ * bounds become epoch ms), or undefined when the server sent none.
+ */
 export function chartXDomain(meta: ChartDataMeta): [number, number] | undefined {
-  const domain = (meta as { xDomain?: unknown }).xDomain;
-  if (
-    Array.isArray(domain) &&
-    domain.length === 2 &&
-    typeof domain[0] === "number" &&
-    typeof domain[1] === "number"
-  ) {
-    return [domain[0], domain[1]];
-  }
-  return undefined;
+  if (!meta.xDomain) return undefined;
+  const lo = toMs(meta.xDomain[0]);
+  const hi = toMs(meta.xDomain[1]);
+  return lo !== undefined && hi !== undefined ? [lo, hi] : undefined;
 }

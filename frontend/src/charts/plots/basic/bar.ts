@@ -1,6 +1,12 @@
 import type { ChartSpec } from "../../../api/types";
 import { definePlot, type PlotEntry, type StyleSection } from "../../core/types";
-import { BAR_PARAMS, cartesianChannels, hasMeasureAndCategory, renderCartesian } from "./cartesian";
+import {
+  BAR_PARAMS,
+  cartesianChannels,
+  cartesianWarnings,
+  hasMeasureAndCategory,
+  renderCartesian,
+} from "./cartesian";
 
 const SECTIONS: StyleSection[] = [
   "title",
@@ -46,6 +52,7 @@ function variant(
     defaults: { params: { barWidth: 60, barGap: 10 } },
     render: (spec, data, theme, ctx) =>
       renderCartesian("bar", { ...spec, style: force(spec) }, data, theme, ctx),
+    warnings: (spec, data) => cartesianWarnings({ ...spec, style: force(spec) }, data),
     recommend,
   });
 }

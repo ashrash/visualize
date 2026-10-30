@@ -51,6 +51,7 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
 
   const run = async (format: ExportFormat) => {
     setOpen(false);
+    triggerRef.current?.focus();
     try {
       await onExport(format);
       setStatus({ tone: "ok", text: format === "clipboard" ? "Copied" : "Exported" });
@@ -59,8 +60,10 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
     }
   };
 
-  const moveFocus = (current: HTMLElement, delta: number) => {
+  const moveFocus = (current: HTMLElement, delta: number | "first" | "last") => {
     const items = [...(rootRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    if (delta === "first") return items[0]?.focus();
+    if (delta === "last") return items[items.length - 1]?.focus();
     const index = items.indexOf(current);
     items[(index + delta + items.length) % items.length]?.focus();
   };
@@ -75,6 +78,12 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" && !open) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
         className="inline-flex items-center gap-1 rounded-md border border-line bg-bg px-2 py-1 text-xs text-fg hover:bg-surface focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
       >
         <Download size={14} aria-hidden="true" />
@@ -96,7 +105,14 @@ export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
               autoFocus={index === 0}
               onClick={() => void run(option.format)}
               onKeyDown={(event) => {
-                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                if (event.key === "Tab") {
+                  // Close and hand focus back so Tab continues from the trigger.
+                  setOpen(false);
+                  triggerRef.current?.focus();
+                } else if (event.key === "Home" || event.key === "End") {
+                  event.preventDefault();
+                  moveFocus(event.currentTarget, event.key === "Home" ? "first" : "last");
+                } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault();
                   moveFocus(event.currentTarget, event.key === "ArrowDown" ? 1 : -1);
                 }

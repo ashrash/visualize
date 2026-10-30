@@ -5,6 +5,8 @@ export {
   type ExportFormat,
   type ExportOptions,
   type ExportSink,
+  needsRasterPdf,
   safeFilename,
   saveChart,
 } from "./saveChart";
+export { ExportSinkProvider, useExportSink } from "./sinkContext";

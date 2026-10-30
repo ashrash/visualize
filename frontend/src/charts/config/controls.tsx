@@ -127,8 +127,26 @@ export function NumberField({
           placeholder={placeholder}
           onChange={(e) => {
             setDraft(e.target.value);
-            if (e.target.value === "") onChange(null);
-            else if (Number.isFinite(Number(e.target.value))) onChange(Number(e.target.value));
+            if (e.target.value === "") return onChange(null);
+            const n = Number(e.target.value);
+            // Out-of-range values stay in the box until blur (typing "5" on the way to "50"
+            // must not jump to the minimum); in-range values apply as you type.
+            if (
+              Number.isFinite(n) &&
+              (min === undefined || n >= min) &&
+              (max === undefined || n <= max)
+            ) {
+              onChange(n);
+            }
+          }}
+          onBlur={() => {
+            const n = Number(draft);
+            if (draft === "" || !Number.isFinite(n)) return;
+            const clamped = Math.min(max ?? n, Math.max(min ?? n, n));
+            if (clamped !== n) {
+              setDraft(String(clamped));
+              onChange(clamped);
+            }
           }}
         />
       )}

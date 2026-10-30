@@ -1,3 +1,4 @@
+import { maxOf } from "../math";
 import { sequentialRamp } from "../palettes";
 import { resolveTheme } from "../theme";
 import type { ChartData, ChartTheme } from "../types";
@@ -19,14 +20,20 @@ interface RenderApi {
  */
 export function densityFallback(
   data: ChartData,
-  o: { theme: ChartTheme; xAxisIndex?: number; yAxisIndex?: number },
+  o: {
+    theme: ChartTheme;
+    xAxisIndex?: number;
+    yAxisIndex?: number;
+    /** Index of the density series in the final `series` array (default 0), so the legend colors only it. */
+    seriesIndex?: number;
+  },
 ): { series: Record<string, unknown>; visualMap: Record<string, unknown> } | null {
   if (data.meta.reduction !== "binned") return null;
   const { x_lo, x_hi, y_lo, y_hi, count } = data.columns as Record<string, number[] | undefined>;
   if (!x_lo || !x_hi || !y_lo || !y_hi || !count) return null;
 
   const theme = resolveTheme(o.theme);
-  const max = Math.max(1, ...count);
+  const max = maxOf(count, 1);
   return {
     series: {
       type: "custom",
@@ -53,12 +60,13 @@ export function densityFallback(
     },
     visualMap: {
       type: "continuous",
+      seriesIndex: o.seriesIndex ?? 0,
       dimension: 4,
       min: 0,
       max,
       calculable: false,
       orient: "vertical",
-      right: 4,
+      right: 4, // applyStyle reserves 90px at the right edge for a vertical visualMap
       top: "middle",
       inRange: { color: sequentialRamp(theme) },
       textStyle: { color: theme.textMuted },

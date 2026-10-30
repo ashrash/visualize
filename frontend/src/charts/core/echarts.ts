@@ -2,6 +2,7 @@ import { BarChart, CustomChart, LineChart, PieChart, ScatterChart } from "echart
 import {
   AriaComponent,
   DataZoomComponent,
+  GraphicComponent,
   GridComponent,
   LegendComponent,
   MarkAreaComponent,
@@ -24,6 +25,7 @@ echarts.use([
   CustomChart,
   AriaComponent,
   DataZoomComponent,
+  GraphicComponent,
   GridComponent,
   LegendComponent,
   MarkAreaComponent,

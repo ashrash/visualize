@@ -31,7 +31,7 @@ describe("plot registry", () => {
   });
 
   // Turned on at the Wave 2 exit gate (CLAUDE.md §10): every Plots.md chart has a renderer.
-  it.skipIf(!process.env.VIZ_REQUIRE_ALL_PLOTS)("covers every plot type", () => {
+  it.skipIf(process.env.VIZ_REQUIRE_ALL_PLOTS !== "1")("covers every plot type", () => {
     const registered = new Set(listPlots().map((entry) => entry.key));
     expect(plotTypes.filter((type) => !registered.has(type as never))).toEqual([]);
   });

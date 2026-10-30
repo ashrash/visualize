@@ -127,10 +127,20 @@ export function ChartConfigPanel({
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
 
   const onKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const delta = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (!delta) return;
+    const last = TABS.length - 1;
+    const target =
+      event.key === "ArrowRight"
+        ? (index + 1) % TABS.length
+        : event.key === "ArrowLeft"
+          ? (index - 1 + TABS.length) % TABS.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? last
+              : undefined;
+    if (target === undefined) return;
     event.preventDefault();
-    const next = TABS[(index + delta + TABS.length) % TABS.length];
+    const next = TABS[target];
     if (next) {
       setTab(next.id);
       tabRefs.current[next.id]?.focus();

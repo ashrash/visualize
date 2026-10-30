@@ -70,11 +70,16 @@ export function xAxisType(
 }
 
 /** Category label for a raw x value; temporal values arrive as epoch ms. */
-export function categoryLabel(value: unknown, kind: string | undefined, format?: string | null) {
+export function categoryLabel(
+  value: unknown,
+  kind: string | undefined,
+  format?: string | null,
+  locale?: string,
+) {
   if (value === null || value === undefined || value === "") return "(blank)";
-  if (format && format !== "auto") return makeFormatter(format)(value) || "(blank)";
+  if (format && format !== "auto") return makeFormatter(format, locale)(value) || "(blank)";
   if (kind === "temporal") return formatDateAuto(value) || String(value);
-  return typeof value === "number" ? makeFormatter("auto")(value) : String(value);
+  return typeof value === "number" ? makeFormatter("auto", locale)(value) : String(value);
 }
 
 export interface CartesianSeries {
@@ -144,28 +149,32 @@ export function cartesianSeries(data: ChartData): CartesianData {
       xs.push(x);
     }
   });
-  const groups: unknown[] = [];
-  const seen = new Set<unknown>();
-  for (const c of colors) {
-    if (!seen.has(c)) {
-      seen.add(c);
-      groups.push(c);
-    }
-  }
+  // Rows per color group, in first-seen order: one pass instead of one scan per group.
+  const rowsByGroup = new Map<unknown, number[]>();
+  colors.forEach((c, row) => {
+    const rows = rowsByGroup.get(c);
+    if (rows) rows.push(row);
+    else rowsByGroup.set(c, [row]);
+  });
   const series: CartesianSeries[] = [];
-  for (const group of groups) {
+  for (const [group, rows] of rowsByGroup) {
     const groupName = categoryLabel(group, kinds.color);
     keys.forEach((key, i) => {
-      const values: (number | null)[] = new Array(xs.length).fill(null);
-      const source = columns[key] ?? [];
-      colors.forEach((c, row) => {
-        if (c === group) values[xIndex.get(xRaw[row]) as number] = num(source[row]);
-      });
+      // Values and, when the server sends them, error bounds, pivoted onto the shared x list.
+      const pivot = (name: string): (number | null)[] | undefined => {
+        const source = columns[name];
+        if (!source) return undefined;
+        const out: (number | null)[] = new Array(xs.length).fill(null);
+        for (const row of rows) out[xIndex.get(xRaw[row]) as number] = num(source[row]);
+        return out;
+      };
       series.push({
         name: keys.length > 1 ? `${groupName} · ${labelOf(key, i)}` : groupName,
         yIndex: i,
         group: groupName,
-        values,
+        values: pivot(key) ?? [],
+        lo: pivot(`${key}_lo`),
+        hi: pivot(`${key}_hi`),
       });
     });
   }

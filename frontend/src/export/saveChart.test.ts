@@ -5,7 +5,14 @@ import { echarts } from "../charts/core/echarts";
 import { getPlot } from "../charts/core/registry";
 import { makeData, makeSpec, makeTheme } from "../charts/core/testing";
 import { svgSafeFont } from "../charts/core/theme";
-import { chartToSvg, dataUrlToBlob, type ExportSink, safeFilename, saveChart } from "./saveChart";
+import {
+  chartToSvg,
+  dataUrlToBlob,
+  type ExportSink,
+  needsRasterPdf,
+  safeFilename,
+  saveChart,
+} from "./saveChart";
 
 // 1x1 transparent PNG
 const PNG =
@@ -112,11 +119,24 @@ function renderPieOption() {
   );
 }
 
+describe("needsRasterPdf (S10)", () => {
+  it("keeps vector PDFs for Latin-1 text and rasterizes anything else", () => {
+    expect(needsRasterPdf("<svg><text>Sales · café</text></svg>", "Q4 report")).toBe(false);
+    expect(needsRasterPdf("<svg><text>売上</text></svg>")).toBe(true);
+    expect(needsRasterPdf("<svg><text>Продажи</text></svg>")).toBe(true);
+    expect(needsRasterPdf("<svg><text>a → b</text></svg>")).toBe(true);
+    expect(needsRasterPdf("<svg></svg>", "売上")).toBe(true);
+  });
+});
+
 describe("helpers", () => {
   it("makes safe, non-empty file names", () => {
     expect(safeFilename("  Q4 sales / EU  ")).toBe("Q4-sales-EU");
     expect(safeFilename("///")).toBe("chart");
-    expect(safeFilename("Ünïcode")).toBe("Unicode");
+    // Letters of every script survive; only punctuation and path characters go.
+    expect(safeFilename("Ünïcode")).toBe("Ünïcode");
+    expect(safeFilename("売上 / 2026年")).toBe("売上-2026年");
+    expect(safeFilename("Продажи: Q4")).toBe("Продажи-Q4");
   });
 
   it("decodes data URLs to blobs", () => {

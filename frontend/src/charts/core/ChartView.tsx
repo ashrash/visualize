@@ -5,6 +5,7 @@ import type { components } from "../../api/schema";
 import type { ChartDataMeta, ChartSpec, Predicate } from "../../api/types";
 import { ExportMenu } from "../../export/ExportMenu";
 import { type ExportFormat, saveChart } from "../../export/saveChart";
+import { useExportSink } from "../../export/sinkContext";
 import { dataIdentity, isSuperseded, useChartData, useChartOverlays } from "./data";
 import { EChart, type XRange } from "./EChart";
 import { chartXDomain } from "./primitives/extra";
@@ -30,9 +31,14 @@ function Notice({ children, tone = "muted" }: { children: string; tone?: "muted"
   );
 }
 
+/** Rows that matched the filters (what the chart summarises); falls back to rows scanned. */
+export function matchedRows(meta: ChartDataMeta): number {
+  return meta.rowsMatched ?? meta.rowsScanned;
+}
+
 /** Text for the "this is not every row" badge, or null when the chart shows the raw data. */
 export function reductionBadge(meta: ChartDataMeta): string | null {
-  const scanned = meta.rowsScanned.toLocaleString();
+  const scanned = matchedRows(meta).toLocaleString();
   const returned = meta.rowsReturned.toLocaleString();
   switch (meta.reduction) {
     case "aggregated":
@@ -96,20 +102,24 @@ function DataTable({ data }: { data: ChartData }) {
 export function ChartView({ spec, filters, pipelines, toolbar = true }: ChartViewProps) {
   const entry = getPlot(spec.plotType);
   const theme = useChartTheme();
-  const [zoom, setZoom] = useState<XRange | null>(null);
+  // The zoom belongs to one chart identity: derived, so a new spec never queries with the
+  // previous chart's range (resetting it in an effect would be one refetch too late).
+  const identity = JSON.stringify(dataIdentity(spec));
+  const [zoomState, setZoomState] = useState<{ identity: string; range: XRange | null }>({
+    identity,
+    range: null,
+  });
+  const zoom = zoomState.identity === identity ? zoomState.range : null;
+  const setZoom = useCallback(
+    (range: XRange | null) => setZoomState({ identity, range }),
+    [identity],
+  );
+  const sink = useExportSink();
   const [asTable, setAsTable] = useState(false);
   const chartRef = useRef<ECharts | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef<{ widthPx: number; heightPx: number } | null>(null);
-  const extentRef = useRef<[number, number] | null>(null);
-
-  // Detail on demand: a new spec (not a zoom) starts from the full range again.
-  const identity = JSON.stringify(dataIdentity(spec));
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `identity` is the trigger
-  useEffect(() => {
-    setZoom(null);
-    extentRef.current = null;
-  }, [identity]);
+  const extentRef = useRef<{ identity: string; extent: [number, number] } | null>(null);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -147,11 +157,10 @@ export function ChartView({ spec, filters, pipelines, toolbar = true }: ChartVie
     if (!data) return undefined;
     const domain = chartXDomain(data.meta);
     if (domain) return domain;
-    return zoom
-      ? (extentRef.current ?? undefined)
-      : (numericExtent(data.columns.x ?? []) ?? undefined);
-  }, [data, zoom]);
-  if (!zoom && fullExtent) extentRef.current = fullExtent;
+    const remembered = extentRef.current?.identity === identity ? extentRef.current.extent : null;
+    return zoom ? (remembered ?? undefined) : (numericExtent(data.columns.x ?? []) ?? undefined);
+  }, [data, zoom, identity]);
+  if (!zoom && fullExtent) extentRef.current = { identity, extent: fullExtent };
 
   const overlayData = overlays.data;
   const option = useMemo(() => {
@@ -172,15 +181,18 @@ export function ChartView({ spec, filters, pipelines, toolbar = true }: ChartVie
       const chart = chartRef.current;
       if (!chart) throw new Error("The chart is not ready yet.");
       const page = getComputedStyle(document.documentElement).getPropertyValue("--viz-bg").trim();
-      await saveChart(chart, {
-        format,
-        filename: spec.style?.title || spec.name || spec.plotType,
-        title: spec.style?.title ?? undefined,
-        background: page || "#ffffff",
-        theme: buildEChartsTheme(theme),
-      });
+      await saveChart(
+        chart,
+        {
+          format,
+          filename: spec.style?.title || spec.name || spec.plotType,
+          background: page || "#ffffff",
+          theme: buildEChartsTheme(theme),
+        },
+        sink,
+      );
     },
-    [spec, theme],
+    [spec, theme, sink],
   );
 
   const framed = (child: React.ReactNode) => (
@@ -192,9 +204,28 @@ export function ChartView({ spec, filters, pipelines, toolbar = true }: ChartVie
   if (query.error && !isSuperseded(query.error) && !data) {
     return framed(<Notice tone="danger">{query.error.message}</Notice>);
   }
+  if (!data && query.error && isSuperseded(query.error) && !query.isFetching) {
+    // The retries ran out and nothing else is loading: say so, and let the user retry.
+    return framed(
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted">
+        <p>A newer request replaced this chart's update.</p>
+        <button
+          type="button"
+          onClick={() => void query.refetch()}
+          className="rounded-md border border-line bg-bg px-2 py-1 text-xs text-fg hover:bg-surface focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          Reload chart
+        </button>
+      </div>,
+    );
+  }
   if (!data || !option) return framed(<Notice>Loading…</Notice>);
+  if (!data.stat && data.rowCount === 0) {
+    return framed(<Notice>No data to show: no rows match this chart's fields and filters.</Notice>);
+  }
 
   const { meta } = data;
+  const notices = [...meta.warnings, ...(entry.warnings?.(spec, data) ?? [])];
   const badge = reductionBadge(meta);
   const label = spec.style?.title ?? `${entry.label}: ${Object.values(meta.fields).join(", ")}`;
   const failed = query.error && !isSuperseded(query.error) ? query.error.message : null;
@@ -224,6 +255,7 @@ export function ChartView({ spec, filters, pipelines, toolbar = true }: ChartVie
             theme={theme}
             className="h-full"
             ariaLabel={label}
+            resetKey={`${identity}|${spec.interactions?.zoom ?? true}`}
             onReady={onReady}
             onViewport={setZoom}
           />
@@ -238,8 +270,8 @@ export function ChartView({ spec, filters, pipelines, toolbar = true }: ChartVie
             {badge}
           </span>
         ) : null}
-        <span>{`${meta.rowsScanned.toLocaleString()} rows · ${meta.ms} ms`}</span>
-        {meta.warnings.length > 0 ? <span>{meta.warnings.join(" ")}</span> : null}
+        <span>{`${matchedRows(meta).toLocaleString()} rows · ${meta.ms} ms`}</span>
+        {notices.length > 0 ? <span role="status">{notices.join(" ")}</span> : null}
         {failed ? <span className="text-danger">{failed}</span> : null}
       </p>
     </div>,

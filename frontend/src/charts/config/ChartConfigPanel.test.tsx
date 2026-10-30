@@ -151,6 +151,114 @@ describe("ChartConfigPanel", () => {
   });
 });
 
+describe("plot-type switch (S6)", () => {
+  it("resets style the target plot has no section for", () => {
+    const stale = makeSpec({
+      plotType: "bar",
+      style: {
+        orientation: "horizontal",
+        stack: "percent",
+        showLabels: true,
+        errorBars: { kind: "sd", level: 0.95 },
+        trendlines: [{ kind: "linear", series: 0, degree: 2, showEquation: false, showR2: false }],
+        refLines: [{ axis: "y", value: 1, lineStyle: "dashed" }],
+        series: [{ index: 0, yAxis: 1 }],
+        palette: "viridis",
+      },
+    });
+    const pie = getPlot("pie");
+    if (!pie) throw new Error("pie missing");
+    const next = applyPlotDefaults(stale, pie);
+    expect(next.style).toMatchObject({
+      orientation: "vertical",
+      stack: "none",
+      errorBars: null,
+      trendlines: [],
+      refLines: [],
+      series: [],
+      // Settings the pie does support carry over.
+      palette: "viridis",
+      showLabels: true,
+    });
+  });
+
+  it("does not leak a pie's default value labels into the next plot", () => {
+    const pie = getPlot("pie");
+    const bar = getPlot("bar");
+    if (!pie || !bar) throw new Error("missing");
+    const asPie = applyPlotDefaults(makeSpec(), pie);
+    expect(asPie.style?.showLabels).toBe(true);
+    expect(applyPlotDefaults(asPie, bar).style?.showLabels).toBe(false);
+  });
+
+  it("keeps settings the target plot supports", () => {
+    const area = getPlot("area");
+    if (!area) throw new Error("area missing");
+    const next = applyPlotDefaults(
+      makeSpec({
+        style: {
+          orientation: "vertical",
+          stack: "stack",
+          showLabels: false,
+          refLines: [{ axis: "y", value: 1, lineStyle: "dashed" }],
+        },
+      }),
+      area,
+    );
+    expect(next.style).toMatchObject({ stack: "stack", refLines: [{ axis: "y", value: 1 }] });
+    expect(next.style?.trendlines).toEqual([]); // area has no trendline section
+  });
+});
+
+describe("params UI (nits)", () => {
+  it("shows the grouped-bar gap for a color group or for several measures", () => {
+    const bar = getPlot("bar");
+    const gap = bar?.paramsSchema.find((p) => p.name === "barGap");
+    if (!bar || !gap) throw new Error("bar missing");
+    expect(isVisible(makeSpec(), bar, gap)).toBe(false);
+    expect(isVisible(makeSpec({ encodings: { color: [{ field: "r" }] } }), bar, gap)).toBe(true);
+    expect(
+      isVisible(
+        makeSpec({
+          encodings: {
+            y: [
+              { field: "a", agg: "sum" },
+              { field: "b", agg: "sum" },
+            ],
+          },
+        }),
+        bar,
+        gap,
+      ),
+    ).toBe(true);
+    expect(isVisible(makeSpec({ encodings: { y: [{ field: "a", agg: "sum" }] } }), bar, gap)).toBe(
+      false,
+    );
+  });
+
+  it("clamps a typed number to the param's range when the box loses focus", () => {
+    const onChange = setup(makeSpec({ encodings: { x: [{ field: "region" }] } }));
+    fireEvent.click(tab("Chart"));
+    const box = screen.getByLabelText("Bar width (%)") as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "5" } }); // below the minimum of 10: held in the box
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.blur(box);
+    expect(call(onChange, 0).params).toMatchObject({ barWidth: 10 });
+    expect(box.value).toBe("10");
+    fireEvent.change(box, { target: { value: "500" } });
+    fireEvent.blur(box);
+    expect(call(onChange, onChange.mock.calls.length - 1).params).toMatchObject({ barWidth: 100 });
+  });
+
+  it("Home and End move between tabs", () => {
+    setup();
+    fireEvent.keyDown(tab("Data"), { key: "End" });
+    expect(tab("Style").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tab("Style"), { key: "Home" });
+    expect(tab("Data").getAttribute("aria-selected")).toBe("true");
+  });
+});
+
 describe("spec helpers", () => {
   it("setChannel adds and removes a channel", () => {
     const spec = setChannel(makeSpec(), "x", [{ field: "a" }]);

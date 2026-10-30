@@ -15,6 +15,12 @@ export interface ErrorBarsOptions {
   yAxisIndex?: number;
   xAxisIndex?: number;
   capWidth?: number;
+  /**
+   * The bar chart's `barCategoryGap` and `barGap` as fractions (ECharts defaults 0.2 and 0.3),
+   * so whiskers line up with grouped bars.
+   */
+  categoryGap?: number;
+  barGap?: number;
   theme: ChartTheme;
 }
 
@@ -35,6 +41,8 @@ export function errorBars(o: ErrorBarsOptions): Record<string, unknown> {
   const count = o.groupCount ?? 1;
   const index = o.groupIndex ?? 0;
   const cap = o.capWidth ?? 5;
+  const categoryGap = o.categoryGap ?? 0.2;
+  const barGap = o.barGap ?? 0.3;
   const data = o.x
     .map((x, i) => [x, o.lo[i] ?? null, o.hi[i] ?? null])
     .filter((row) => row[1] !== null && row[2] !== null);
@@ -58,8 +66,8 @@ export function errorBars(o: ErrorBarsOptions): Record<string, unknown> {
       const [bx = 0, by = 0] = api.coord(horizontal ? [hi, cx] : [cx, hi]);
       // Slide along the category axis so each grouped bar gets its own whisker.
       const band = api.size(horizontal ? [0, 1] : [1, 0])[horizontal ? 1 : 0] ?? 0;
-      const barWidth = (band * 0.8) / (count + (count - 1) * 0.3);
-      const shift = (index - (count - 1) / 2) * barWidth * 1.3;
+      const barWidth = (band * (1 - categoryGap)) / (count + (count - 1) * barGap);
+      const shift = (index - (count - 1) / 2) * barWidth * (1 + barGap);
       const dx = horizontal ? 0 : shift;
       const dy = horizontal ? shift : 0;
       const style = { stroke, lineWidth: 1.5, fill: "none" };

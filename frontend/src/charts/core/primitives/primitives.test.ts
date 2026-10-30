@@ -63,9 +63,11 @@ describe("ciBand", () => {
     expect(band?.tooltip).toEqual({ show: false });
   });
 
-  it("pairs x with values on value axes and uses a fresh stack per band", () => {
-    const a = ciBand({ x: [1, 2], lo: [0, 0], hi: [1, 1] });
-    const b = ciBand({ x: [1, 2], lo: [0, 0], hi: [1, 1] });
+  it("pairs x with values on value axes; stack ids come from the caller, so render is pure", () => {
+    const a = ciBand({ x: [1, 2], lo: [0, 0], hi: [1, 1], id: "a" });
+    const b = ciBand({ x: [1, 2], lo: [0, 0], hi: [1, 1], id: "b" });
+    // Same input, same output (no hidden counter).
+    expect(ciBand({ x: [1, 2], lo: [0, 0], hi: [1, 1], id: "a" })).toEqual(a);
     expect(a[0]?.data).toEqual([
       [1, 0],
       [2, 0],
@@ -86,6 +88,32 @@ describe("errorBars", () => {
       x: [1, 2],
       y: 0,
     });
+  });
+
+  it("aligns grouped whiskers using the bar chart's real gaps", () => {
+    const make = (barGap: number, categoryGap: number) =>
+      errorBars({
+        x: ["a"],
+        lo: [1],
+        hi: [2],
+        groupIndex: 0,
+        groupCount: 2,
+        barGap,
+        categoryGap,
+        theme,
+      });
+    const api = {
+      value: (dim: number) => [0, 1, 2][dim] as number,
+      coord: () => [100, 100],
+      size: () => [100, 0],
+    };
+    type Item = { children: { shape: { x1: number } }[] };
+    const x1 = (series: ReturnType<typeof make>) =>
+      (series.renderItem as (p: unknown, a: typeof api) => Item)(null, api).children[0]?.shape.x1;
+    // Band 100, two bars: width = 100*(1-categoryGap)/(2+barGap); the first bar's centre sits
+    // half a (width * (1 + barGap)) step left of the category centre.
+    expect(x1(make(0.3, 0.2))).toBeCloseTo(100 - ((80 / 2.3) * 1.3) / 2, 5);
+    expect(x1(make(0.1, 0.4))).toBeCloseTo(100 - ((60 / 2.1) * 1.1) / 2, 5);
   });
 
   it("draws a whisker with two caps", () => {
@@ -174,6 +202,13 @@ describe("densityFallback", () => {
       [1, 2, 0, 1, 20],
     ]);
     expect(result?.visualMap).toMatchObject({ dimension: 4, max: 20 });
+  });
+
+  it("ties the visualMap to the density series by index", () => {
+    expect(densityFallback(binned, { theme, seriesIndex: 2 })?.visualMap).toMatchObject({
+      seriesIndex: 2,
+    });
+    expect(densityFallback(binned, { theme })?.visualMap).toMatchObject({ seriesIndex: 0 });
   });
 });
 

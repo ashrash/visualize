@@ -1,5 +1,6 @@
 import type { ChartSpec } from "../../api/types";
 import { makeFormatter, toDate, type ValueFormatter } from "./format";
+import { maxOf, minOf } from "./math";
 import { paletteColors } from "./palettes";
 import { ciBand } from "./primitives/ciBand";
 import { refLineItem } from "./primitives/refLine";
@@ -16,6 +17,14 @@ export interface ApplyStyleOptions {
   defaultYFormat?: string;
   /** Colors needed when the plot has no series list (pie: one color per slice). */
   colorCount?: number;
+  /**
+   * `false`: do not manage axes (no scale/format/title/orientation/multi-axis handling, no
+   * reference lines or trendlines); the plot's `xAxis`/`yAxis`/`grid` pass through with only
+   * theme colors filled in. Detected automatically when `grid` or `xAxis` is an array.
+   */
+  axes?: false;
+  /** `false`: keep the plot's own `grid`; title, legend and palette are still applied. */
+  layout?: false;
 }
 
 const TITLE_HEIGHT = 30;
@@ -30,6 +39,18 @@ const asArray = <T>(value: T | T[] | undefined): T[] =>
 function labelWidth(values: string[]): number {
   const longest = values.reduce((n, s) => Math.max(n, s.length), 0);
   return Math.min(140, Math.max(24, longest * 7));
+}
+
+/** Replace non-positive values with null (log axes). Handles plain values and [x, y] pairs. */
+export function dropNonPositive(data: unknown): unknown {
+  if (!Array.isArray(data)) return data;
+  return data.map((item) => {
+    if (Array.isArray(item)) {
+      const y = item[item.length - 1];
+      return typeof y === "number" && y <= 0 ? [...item.slice(0, -1), null] : item;
+    }
+    return typeof item === "number" && item <= 0 ? null : item;
+  });
 }
 
 function valuesOf(series: Obj[]): number[] {
@@ -53,6 +74,18 @@ function bound(value: AxisStyle["min"], type: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** Theme colors for an axis the plot laid out itself; the plot's own settings win. */
+function themeAxis(a: Obj, t: Required<ChartTheme>): Obj {
+  return {
+    nameTextStyle: { color: t.textMuted },
+    ...a,
+    axisLine: { lineStyle: { color: t.axis }, ...(a.axisLine as Obj | undefined) },
+    axisTick: { lineStyle: { color: t.axis }, ...(a.axisTick as Obj | undefined) },
+    axisLabel: { color: t.textMuted, hideOverlap: true, ...(a.axisLabel as Obj | undefined) },
+    splitLine: { lineStyle: { color: t.grid }, ...(a.splitLine as Obj | undefined) },
+  };
+}
+
 interface AxisBuild {
   base: Obj;
   style: AxisStyle;
@@ -66,6 +99,7 @@ interface AxisBuild {
   theme: Required<ChartTheme>;
   inverse?: boolean;
   fullExtent?: [number, number];
+  locale?: string;
 }
 
 function buildAxis(o: AxisBuild): Obj {
@@ -87,7 +121,7 @@ function buildAxis(o: AxisBuild): Obj {
       ? "bottom"
       : "top";
   const formatter: ValueFormatter | undefined =
-    o.format && o.format !== "auto" ? makeFormatter(o.format) : undefined;
+    o.format && o.format !== "auto" ? makeFormatter(o.format, o.locale) : undefined;
 
   const axis: Obj = {
     ...base,
@@ -136,6 +170,7 @@ function overlaySeries(
     axisIndex: number;
     horizontal: boolean;
     category: boolean;
+    id: number;
   },
 ): Obj[] {
   const n = o.categories?.length ?? 0;
@@ -160,6 +195,7 @@ function overlaySeries(
       lo,
       hi,
       color,
+      id: o.id,
       axis: o.category ? "category" : "value",
       yAxisIndex: o.axisIndex,
     })) {
@@ -222,7 +258,13 @@ export function applyStyle(
   const t = resolveTheme(theme);
   const rawSeries = asArray(option.series as Obj[] | undefined);
   const cartesian = option.xAxis !== undefined && option.yAxis !== undefined;
-  const horizontal = cartesian && (opts.orientable ?? true) && style.orientation === "horizontal";
+  // Several grids (candlestick + volume, pair plots, marginals) are laid out by the plot: axes
+  // and grids are passed through with only the theme applied.
+  const multiGrid =
+    Array.isArray(option.grid) || (Array.isArray(option.xAxis) && option.xAxis.length > 1);
+  const managed = cartesian && opts.axes !== false && !multiGrid;
+  const horizontal = managed && (opts.orientable ?? true) && style.orientation === "horizontal";
+  const locale = ctx?.locale;
   const out: Obj = { ...option };
 
   // Palette and base text.
@@ -268,6 +310,9 @@ export function applyStyle(
   const dataZoom = asArray(option.dataZoom as Obj | Obj[] | undefined);
   const hasSlider = dataZoom.some((z) => z.type === "slider");
   if (hasSlider) bottom += 34;
+  // A vertical visualMap (continuous legend) sits at the right edge: keep the plot clear of it.
+  const visualMaps = asArray(option.visualMap as Obj | Obj[] | undefined);
+  const visualMapSpace = visualMaps.some((v) => v.orient !== "horizontal") ? 90 : 0;
   if (style.legend.show && wantsLegend) {
     const position = style.legend.position;
     const legendBase: Obj = {
@@ -303,7 +348,7 @@ export function applyStyle(
   const axisOf = (s: Obj, i: number) =>
     seriesStyles.get((s.yIndex as number | undefined) ?? i)?.yAxis ?? 0;
   let yAxisCount = 1;
-  if (cartesian) {
+  if (managed) {
     yAxisCount = Math.max(
       asArray(option.yAxis as Obj | Obj[]).length,
       style.yAxes.length,
@@ -311,15 +356,14 @@ export function applyStyle(
     );
   }
 
-  const baseX = (cartesian ? option.xAxis : undefined) as Obj | undefined;
-  const baseY = (cartesian ? asArray(option.yAxis as Obj | Obj[])[0] : undefined) as
-    | Obj
-    | undefined;
+  const baseX = (managed ? option.xAxis : undefined) as Obj | undefined;
+  const baseY = (managed ? asArray(option.yAxis as Obj | Obj[])[0] : undefined) as Obj | undefined;
   const xType = (baseX?.type as string | undefined) ?? "category";
   const categories = baseX?.data as unknown[] | undefined;
   const extent = ctx?.viewport?.fullExtent;
 
-  if (cartesian && baseX && baseY) {
+  const yAxisTypes: string[] = [];
+  if (managed && baseX && baseY) {
     const yFormatOf = (i: number) =>
       style.yAxes[i]?.format ?? (i === 0 ? (style.numberFormat ?? opts.defaultYFormat) : undefined);
     const fmtAuto = makeFormatter("auto");
@@ -329,9 +373,9 @@ export function applyStyle(
       const a = style.yAxes[i] ?? ({ grid: true } as AxisStyle);
       const side = a.position ?? (i === 0 ? "start" : "end");
       const onAxis = rawSeries.filter((s, k) => axisOf(s, k) === i);
-      const fmt = makeFormatter(yFormatOf(i) ?? "auto");
+      const fmt = makeFormatter(yFormatOf(i) ?? "auto", locale);
       const vals = valuesOf(onAxis);
-      const ticks = vals.length ? [fmt(Math.max(...vals)), fmt(Math.min(...vals))] : [fmtAuto(0)];
+      const ticks = vals.length ? [fmt(maxOf(vals)), fmt(minOf(vals))] : [fmtAuto(0)];
       yAxes.push(
         buildAxis({
           base: i === 0 ? baseY : { type: "value" },
@@ -343,8 +387,10 @@ export function applyStyle(
           format: yFormatOf(i) ?? undefined,
           tickLabels: ticks,
           theme: t,
+          locale,
         }),
       );
+      yAxisTypes.push(yAxes[i]?.type as string);
       sidesUsed[side] += 1;
       // Title space beyond the tick labels.
       if (yAxes[i]?.name) {
@@ -373,6 +419,7 @@ export function applyStyle(
           ? !style.xAxis.inverse
           : (style.xAxis.inverse ?? undefined),
       fullExtent: extent,
+      locale,
     });
     if (xAxis.name) {
       if (horizontal) left += AXIS_TITLE;
@@ -415,7 +462,9 @@ export function applyStyle(
     let type = (s.type as string | undefined) ?? "line";
     if (ss?.kind) type = ss.kind === "area" ? "line" : ss.kind;
     const result: Obj = { ...s, type };
-    if (cartesian) {
+    // A log axis cannot draw zero or negative values; drop them rather than draw garbage.
+    if (managed && yAxisTypes[ss?.yAxis ?? 0] === "log") result.data = dropNonPositive(s.data);
+    if (managed) {
       const axis = ss?.yAxis ?? 0;
       if (axis > 0 || s[axisKey] !== undefined) result[axisKey] = axis;
     }
@@ -452,7 +501,7 @@ export function applyStyle(
       }
     }
     if (style.showLabels && type !== "pie") {
-      const fmt = makeFormatter(valueFormat(ss?.yAxis ?? 0) ?? "auto");
+      const fmt = makeFormatter(valueFormat(ss?.yAxis ?? 0) ?? "auto", locale);
       result.label = {
         show: true,
         color: t.textMuted,
@@ -463,7 +512,7 @@ export function applyStyle(
     }
     const tooltipFormat = valueFormat(ss?.yAxis ?? 0);
     if (tooltipFormat && tooltipFormat !== "auto" && type !== "custom") {
-      const fmt = makeFormatter(tooltipFormat);
+      const fmt = makeFormatter(tooltipFormat, locale);
       result.tooltip = {
         ...(s.tooltip as Obj | undefined),
         valueFormatter: (v: unknown) =>
@@ -474,7 +523,7 @@ export function applyStyle(
   });
 
   // Server-computed overlays (trendlines, regression), drawn in the base series' color.
-  for (const ov of overlays) {
+  for (const [overlayIndex, ov] of overlays.entries()) {
     const idx = rawSeries.findIndex((s) => (s.yIndex as number | undefined) === ov.series);
     const base = rawSeries[idx];
     const color =
@@ -492,12 +541,13 @@ export function applyStyle(
         axisIndex: seriesStyles.get(ov.series)?.yAxis ?? 0,
         horizontal,
         category: xType === "category",
+        id: overlayIndex,
       }),
     );
   }
 
   // Reference lines and annotations ride on the first real series.
-  if (cartesian && (style.refLines.length > 0 || style.annotations.length > 0)) {
+  if (managed && (style.refLines.length > 0 || style.annotations.length > 0)) {
     let host = seriesOut.findIndex((s) => s.silent !== true);
     if (host < 0) {
       seriesOut = [
@@ -592,6 +642,18 @@ export function applyStyle(
     textStyle: { color: t.tooltipText },
   };
 
-  out.grid = cartesian ? { left, right, top, bottom, containLabel: true } : option.grid;
+  if (managed && opts.layout !== false) {
+    out.grid = { left, right: right + visualMapSpace, top, bottom, containLabel: true };
+  } else {
+    out.grid = option.grid;
+  }
+  if (cartesian && !managed) {
+    out.xAxis = Array.isArray(option.xAxis)
+      ? option.xAxis.map((a: Obj) => themeAxis(a, t))
+      : themeAxis(option.xAxis as Obj, t);
+    out.yAxis = Array.isArray(option.yAxis)
+      ? option.yAxis.map((a: Obj) => themeAxis(a, t))
+      : themeAxis(option.yAxis as Obj, t);
+  }
   return out;
 }

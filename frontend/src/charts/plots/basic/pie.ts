@@ -25,7 +25,7 @@ interface Slice {
   value: number;
 }
 
-function slices(data: ChartData, spec: ChartSpec): Slice[] {
+function slices(data: ChartData, spec: ChartSpec, locale?: string): Slice[] {
   const xs = data.columns.x ?? [];
   const ys = data.columns.y0 ?? [];
   const sorted = param(spec, "sortSlices", true);
@@ -35,7 +35,7 @@ function slices(data: ChartData, spec: ChartSpec): Slice[] {
     const value = ys[i];
     // Pie slices must be positive; null and negative values have no angle to draw.
     if (typeof value === "number" && value > 0) {
-      out.push({ name: categoryLabel(x, data.kinds.x), value });
+      out.push({ name: categoryLabel(x, data.kinds.x, null, locale), value });
     }
   });
   if (sorted) out.sort((a, b) => b.value - a.value);
@@ -43,6 +43,27 @@ function slices(data: ChartData, spec: ChartSpec): Slice[] {
   const head = out.slice(0, maxSlices - 1);
   const rest = out.slice(maxSlices - 1).reduce((sum, s) => sum + s.value, 0);
   return [...head, { name: "Other", value: rest }];
+}
+
+/** Slices need a positive size; say how many rows could not be drawn. */
+function pieWarnings(_spec: ChartSpec, data: ChartData): string[] {
+  let negative = 0;
+  let zero = 0;
+  let missing = 0;
+  for (const v of data.columns.y0 ?? []) {
+    if (typeof v !== "number") missing += 1;
+    else if (v < 0) negative += 1;
+    else if (v === 0) zero += 1;
+  }
+  const parts: string[] = [];
+  if (negative) parts.push(`${negative.toLocaleString()} negative`);
+  if (zero) parts.push(`${zero.toLocaleString()} zero`);
+  if (missing) parts.push(`${missing.toLocaleString()} missing`);
+  return parts.length
+    ? [
+        `Not shown as slices: ${parts.join(", ")} value${negative + zero + missing === 1 ? "" : "s"}.`,
+      ]
+    : [];
 }
 
 function renderPie(
@@ -53,10 +74,10 @@ function renderPie(
   ctx?: RenderContext,
 ): Obj {
   const style = resolveStyle(spec);
-  const items = slices(data, spec);
+  const items = slices(data, spec, ctx?.locale);
   const inner = donut ? Math.min(90, Math.max(10, param(spec, "innerRadius", 55))) : 0;
   const labelMode = param(spec, "labelMode", "percent");
-  const fmt = makeFormatter(style.numberFormat ?? "auto");
+  const fmt = makeFormatter(style.numberFormat ?? "auto", ctx?.locale);
   const total = items.reduce((sum, s) => sum + s.value, 0);
 
   const option: Obj = {
@@ -183,6 +204,7 @@ function pieEntry(donut: boolean): PlotEntry {
       style: { showLabels: true },
     },
     render: (spec, data, theme, ctx) => renderPie(donut, spec, data, theme, ctx),
+    warnings: pieWarnings,
     recommend(columns) {
       const small = columns.some((c) => c.semantic === "nominal" && c.approxDistinct <= 7);
       const measure = columns.some((c) => c.semantic === "quantitative");

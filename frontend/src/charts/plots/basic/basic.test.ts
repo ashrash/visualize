@@ -327,4 +327,77 @@ describe("pie and donut", () => {
   it("uses the chosen palette for the slices", () => {
     expect(render("pie", style({ palette: "okabe-ito" }), pieData).color[0]).toBe("#0072b2");
   });
+
+  it("reports what it could not draw (S11)", () => {
+    const warn = byKey("pie").warnings;
+    const spec = makeSpec({ plotType: "pie" });
+    const messy = makeData({ x: ["a", "b", "c", "d"], y0: [-1, 0, null, 5] }, { x: "k", y0: "v" });
+    expect(warn?.(spec, messy)).toEqual([
+      "Not shown as slices: 1 negative, 1 zero, 1 missing values.",
+    ]);
+    expect(warn?.(spec, pieData)).toEqual(["Not shown as slices: 1 zero value."]);
+    const clean = makeData({ x: ["a"], y0: [3] });
+    expect(warn?.(spec, clean)).toEqual([]);
+  });
+});
+
+describe("error bars with a color group (S8)", () => {
+  it("pivots the bounds with the values instead of dropping them", () => {
+    const data = makeData(
+      {
+        x: ["N", "N", "S"],
+        color: ["A", "B", "A"],
+        y0: [1, 2, 3],
+        y0_lo: [0.5, 1.5, 2.5],
+        y0_hi: [1.5, 2.5, 3.5],
+      },
+      { x: "region", color: "product", y0: "Mean" },
+    );
+    const o = render("bar", style({ errorBars: { kind: "sd", level: 0.95 } }), data);
+    const bars = o.series.filter((s: Opt) => s.type === "custom");
+    expect(bars).toHaveLength(2);
+    expect(bars[0].data).toEqual([
+      ["N", 0.5, 1.5],
+      ["S", 2.5, 3.5],
+    ]);
+    expect(bars[1].data).toEqual([["N", 1.5, 2.5]]);
+  });
+
+  it("passes the bar chart's real gaps to the whiskers", () => {
+    const data = makeData(
+      { x: ["a"], color: ["A"], y0: [1], y0_lo: [0], y0_hi: [2] },
+      { x: "x", y0: "v" },
+    );
+    const o = byKey("bar").render(
+      makeSpec({
+        ...style({ errorBars: { kind: "sd", level: 0.95 } }),
+        params: { barWidth: 50, barGap: 20 },
+      }),
+      data,
+      theme,
+    ) as Opt;
+    const bar = o.series.find((s: Opt) => s.type === "bar");
+    expect(bar.barCategoryGap).toBe("50%");
+    expect(bar.barGap).toBe("20%");
+  });
+});
+
+describe("log axis (nit)", () => {
+  it("warns about values it cannot draw", () => {
+    const spec = makeSpec(style({ yAxes: [{ grid: true, scale: "log" }] }));
+    const data = makeData({ x: ["a", "b", "c"], y0: [10, 0, -3] }, { x: "k", y0: "v" });
+    expect(byKey("bar").warnings?.(spec, data)).toEqual([
+      "2 values of zero or below not shown on the log axis.",
+    ]);
+    expect(byKey("bar").warnings?.(makeSpec(), data)).toEqual([]);
+  });
+});
+
+describe("area opacity has one source (nit)", () => {
+  it("comes from style.areaOpacity only", () => {
+    expect(byKey("area").paramsSchema.some((p) => p.name === "areaOpacity")).toBe(false);
+    const o = render("area", style({ areaOpacity: 0.6 }), simple);
+    expect(o.series[0].areaStyle.opacity).toBe(0.6);
+    expect(render("area", {}, simple).series[0].areaStyle.opacity).toBe(0.25);
+  });
 });
