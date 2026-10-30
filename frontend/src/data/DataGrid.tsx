@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { fetchRowsPage, postRows } from "../api/datasetRows";
+import { postRows } from "../api/datasetRows";
 import { fetchColumnValues } from "../api/datasets";
-import { featureOn } from "../api/features";
 import type { Dataset, ExportRequest, RowsPageMeta, SortKey } from "../api/types";
 import { Button } from "../components/ui/button";
 import {
@@ -14,40 +13,38 @@ import {
 import type { LoadValues } from "./ColumnFilter";
 import { describeFilter, type FilterMap, filterList, setFilter } from "./filters";
 import { type FetchPage, GridView, useGridHead } from "./GridView";
-import { buildRowsQuery } from "./requests";
+import { useDebounced } from "./pipeline/usePipelineApi";
 import { useExport } from "./useExport";
 
 export function DataGrid({ dataset }: { dataset: Dataset }) {
   const version = dataset.versions?.at(-1);
   const columns = useMemo(() => version?.columns ?? [], [version]);
-  const serverRows = featureOn("serverRows");
   const [sort, setSort] = useState<SortKey[]>([]);
   const [filters, setFilters] = useState<FilterMap>({});
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const [searchText, setSearchText] = useState("");
+  const search = useDebounced(searchText.trim(), 300) || null;
   const exporter = useExport();
 
   const fetchPage: FetchPage = ({ offset, limit, signal }) =>
-    serverRows
-      ? postRows(
-          dataset.id,
-          {
-            offset,
-            limit,
-            sort,
-            filters: filterList(filters),
-            search: null,
-            columns: null,
-            version: version?.n ?? null,
-          },
-          signal,
-        )
-      : fetchRowsPage(dataset.id, buildRowsQuery({ offset, limit }), signal);
+    postRows(
+      dataset.id,
+      {
+        offset,
+        limit,
+        sort,
+        filters: filterList(filters),
+        search,
+        columns: null,
+        version: version?.n ?? null,
+      },
+      signal,
+    );
 
-  const gridKey = `${dataset.id}:${version?.n}`;
-  const head = useGridHead({ gridKey, sort, filters, fetchPage, enabled: serverRows });
-  const totalRows = serverRows
-    ? ((head.data?.meta as RowsPageMeta | undefined)?.totalRows ?? 0)
-    : (version?.rowCount ?? 0);
+  // The search text is part of the cache key: a different search is a different set of rows.
+  const gridKey = `${dataset.id}:${version?.n}:${search ?? ""}`;
+  const head = useGridHead({ gridKey, sort, filters, fetchPage });
+  const totalRows = (head.data?.meta as RowsPageMeta | undefined)?.totalRows ?? 0;
   const datasetRows = version?.rowCount ?? 0;
 
   const valuesLoader = (field: string): LoadValues => {
@@ -79,10 +76,18 @@ export function DataGrid({ dataset }: { dataset: Dataset }) {
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="text-muted" aria-live="polite">
-        {serverRows && totalRows !== datasetRows
+        {totalRows !== datasetRows
           ? `${totalRows.toLocaleString()} of ${datasetRows.toLocaleString()} rows`
           : `${datasetRows.toLocaleString()} rows`}
       </span>
+      <input
+        type="search"
+        aria-label="Search rows"
+        placeholder="Search…"
+        value={searchText}
+        onChange={(e) => setSearchText(e.target.value)}
+        className="h-7 w-44 rounded-md border border-line bg-bg px-2 text-sm"
+      />
       {active.map((p) => (
         <span
           key={`${p.field}:${p.op}`}
@@ -126,7 +131,7 @@ export function DataGrid({ dataset }: { dataset: Dataset }) {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        {featureOn("exports") ? (
+        {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" disabled={exporter.busy}>
@@ -142,7 +147,7 @@ export function DataGrid({ dataset }: { dataset: Dataset }) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
+        }
       </div>
     </div>
   );
@@ -160,7 +165,7 @@ export function DataGrid({ dataset }: { dataset: Dataset }) {
       filters={filters}
       onFilterChange={(field, p) => setFilters((f) => setFilter(f, field, p))}
       valuesLoader={valuesLoader}
-      controlsEnabled={serverRows}
+      controlsEnabled
       toolbar={toolbar}
     />
   );

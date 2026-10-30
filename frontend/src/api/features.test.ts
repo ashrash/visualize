@@ -6,25 +6,25 @@ afterEach(() => localStorage.clear());
 const set = (value: unknown) => localStorage.setItem("viz.features", JSON.stringify(value));
 
 describe("feature flags", () => {
-  it("has platform projects on and the unmerged backends off by default", () => {
+  it("has merged backends on and transform's pipeline API off by default", () => {
     expect(featureOn("platformProjects")).toBe(true);
-    expect(featureOn("stagedImport")).toBe(false);
+    expect(featureOn("pipelineApi")).toBe(false);
   });
 
   it("accepts boolean overrides for known flags", () => {
-    set({ stagedImport: true, platformProjects: false });
-    expect(featureOn("stagedImport")).toBe(true);
+    set({ pipelineApi: true, platformProjects: false });
+    expect(featureOn("pipelineApi")).toBe(true);
     expect(featureOn("platformProjects")).toBe(false);
   });
 
   it("ignores non-boolean values, unknown flags and malformed JSON", () => {
-    set({ stagedImport: "yes", exports: 1, bogus: true });
-    expect(features().stagedImport).toBe(false);
-    expect(features().exports).toBe(false);
+    set({ pipelineApi: "yes", platformProjects: 0, bogus: true });
+    expect(features().pipelineApi).toBe(false);
+    expect(features().platformProjects).toBe(true);
     expect("bogus" in features()).toBe(false);
     localStorage.setItem("viz.features", "{not json");
-    expect(features().serverRows).toBe(false);
-    set(["stagedImport"]);
-    expect(features().stagedImport).toBe(false);
+    expect(features().pipelineApi).toBe(false);
+    set(["pipelineApi"]);
+    expect(features().pipelineApi).toBe(false);
   });
 });

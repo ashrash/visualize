@@ -102,7 +102,7 @@ function RenameDialog({
   );
 }
 
-function DeleteDialog({
+export function DeleteDialog({
   dataset,
   onOpenChange,
   onDeleted,
@@ -141,7 +141,10 @@ function DeleteDialog({
       >
         {inUse ? (
           <p role="alert" className="rounded-md border border-warning p-2 text-sm">
-            {inUse} Deleting it anyway will break the charts and pipelines that use it.
+            <span className="block">{inUse}</span>
+            <span className="block text-muted">
+              Deleting it anyway will break the charts and pipelines that use it.
+            </span>
           </p>
         ) : null}
         {error ? (
