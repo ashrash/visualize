@@ -5,6 +5,7 @@
       "**",
       "!src/api/schema.d.ts",
       "!src/api/openapi.json",
+      "!src/charts/plots/geo/assets/*.json",
       "!dist",
       "!coverage",
       "!test-results",
