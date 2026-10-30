@@ -64,6 +64,18 @@ items in their final report and the lead updates this file. Status values: `todo
   ~20 ms; chart queries p50 56-85 ms; 6-chart refresh p95 0.24 s during a 10M import; 12
   concurrent queries ok at 5% RAM; describe p50 2.99 s (at budget, no margin). Known (Wave 4):
   sorted cold first page 216 ms, cold deep pages 0.6 s filtered / 1.8 s sorted.
+- 2026-10-30: data-core round 3+4 follow-up merged: `.txt` auto-detected as CSV again; the `?kind=`
+  chosen at staging is remembered in a `.kind` sidecar; a staged refresh falls back to the
+  dataset's kind with a synchronous 415 on mismatch; uploads are marked in-use at submit and the
+  expiry sweep skips them; a job stops any running view build and builds wait until no job cursor
+  is live (bounded wait, no deadlock); cleanup paths suppress Windows `ConflictError` without
+  masking the job's real result; encoding-invalid-share threshold raised to 15%;
+  `viz.ingest.staging` removed, tracking moved into `LocalStorage`. Reviewer: approve with nits
+  (xhigh) — a corrupted `.kind` sidecar would 500 instead of degrading to `None`; four
+  `LocalStorage` methods skip defense-in-depth id validation (not currently reachable). pytest 722
+  passed/6 skipped on the full suite, ruff/mypy clean. `?kind=` on `POST /datasets/staged` is
+  additive; gen:api run. Still open: "plain import 210-233 ms vs 110 ms quiet control" on a loaded
+  dev machine, unconfirmed whether real or machine noise.
 - 2026-10-30: qa review-fix round merged: pinned `setup-uv` action tag, bench known-failure ceilings
   (1.5x), during-import bench rounds now span the whole import, a global cache-bust counter plus
   `cached == 0` assertions on dashboard/concurrency checks, an empty-table render crash fix, an
