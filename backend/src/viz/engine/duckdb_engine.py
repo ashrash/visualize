@@ -347,6 +347,9 @@ class Engine:
             latest = self._latest_generation.get(key)
             if latest is not None and generation < latest:
                 return False
+            # A later cancel of a newer generation must not un-cancel this one: once the newer
+            # generation is the latest, older ones are refused as superseded anyway.
+            self._latest_generation[key] = generation
             self._cancelled_generation[key] = generation
             entry = self._by_key.get(key)
             if entry is not None and entry.generation == generation:
@@ -419,6 +422,12 @@ class Engine:
                 if previous is not None and not same_request:
                     self._cancel_locked(previous, "superseded")
             self._live.add(entry)
+            if key is not None and key.startswith("job:"):
+                # Jobs share the background instance with grid-view builds, which are only a
+                # cache: stop any running build so it doesn't slow the job (or dashboards).
+                for other in self._live:
+                    if other.key is not None and other.key.startswith("view:"):
+                        self._cancel_locked(other, "yielded")
         return entry
 
     def _attach(self, entry: _Entry, background: bool, timeout_s: float | None) -> None:
@@ -517,7 +526,12 @@ class Engine:
         `generation` (optional) orders requests on `key`; take it from `next_generation()`.
         A generation the counter never issued is accepted and advances the counter to it,
         so it can't lock the key against later tickets. Without one, the current request
-        owner's ticket is used."""
+        owner's ticket is used.
+
+        Only the newest cursor on a key is registered under it. When one request opens
+        several cursors on the same key (they don't supersede each other), `interrupt(key)`,
+        `cancel(key, generation)` and a newer request's supersede reach only the newest of
+        them; `cancel_owner(owner)` reaches all of them."""
         entry = self._register(key, generation, interactive=True)
         acquired = False
         try:
@@ -545,17 +559,26 @@ class Engine:
         with self._lock:
             return sum(1 for e in self._live if e.interactive)
 
-    def wait_interactive_idle(self, quiet_s: float = 0.3, max_wait_s: float = 10.0) -> None:
-        """Block until no interactive query has run for `quiet_s` (or `max_wait_s` passes).
-        Background work that can wait (grid-view builds) calls this before starting."""
+    def active_jobs(self) -> int:
+        """Cursors of running jobs (keys `job:<id>`)."""
+        with self._lock:
+            return sum(1 for e in self._live if e.key is not None and e.key.startswith("job:"))
+
+    def wait_interactive_idle(
+        self, quiet_s: float = 0.3, max_wait_s: float = 10.0, *, no_jobs: bool = False
+    ) -> bool:
+        """Block until no interactive query (and with `no_jobs`, no job) has run for `quiet_s`.
+        Returns False if that didn't happen within `max_wait_s`. Background work that can
+        wait (grid-view builds) calls this before starting."""
         deadline = time.monotonic() + max_wait_s
         quiet_since = time.monotonic()
         while time.monotonic() < deadline and not self._closed.is_set():
-            if self.active_interactive():
+            if self.active_interactive() or (no_jobs and self.active_jobs()):
                 quiet_since = time.monotonic()
             elif time.monotonic() - quiet_since >= quiet_s:
-                return
+                return True
             time.sleep(0.02)
+        return False
 
     # -- queries ------------------------------------------------------------------------
 

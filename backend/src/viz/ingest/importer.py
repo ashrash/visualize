@@ -136,11 +136,19 @@ def not_utf8_warning(encoding: str) -> str:
 
 
 def replaced_warning(count: int) -> str:
+    what = "1 byte that isn't" if count == 1 else f"{count:,} bytes that aren't"
+    verb = "was" if count == 1 else "were"
     return (
-        f"{count:,} byte{'s' if count != 1 else ''} that aren't valid UTF-8 were replaced "
-        "with \ufffd. If the file uses another encoding, set Encoding in the import options "
-        "(or the refresh options)."
+        f"{what} valid UTF-8 {verb} replaced with \ufffd. If the file uses another encoding, "
+        "set Encoding in the import options (or the refresh options)."
     )
+
+
+# Read as UTF-8 with replacement only if invalid sequences are at most this share of the
+# valid multi-byte characters. A UTF-8 file with a few stray bytes is far below it;
+# cp1252 text, where an accent byte pair only sometimes looks like one UTF-8 character
+# ("Ã©"), sits around 200%.
+MAX_INVALID_SHARE = 0.15
 
 
 @dataclass(frozen=True)
@@ -167,10 +175,10 @@ def choose_encoding(
     - an explicit non-UTF-8 encoding is used as given;
     - a UTF-16 BOM means UTF-16;
     - clean UTF-8 is read as is;
-    - mostly-UTF-8 text (valid multi-byte sequences, and no more invalid bytes than valid
-      ones) or an explicit "utf-8" is transcoded as UTF-8 with the bad bytes replaced, and a
-      warning counts them;
-    - anything else (no valid multi-byte sequence at all) is read as cp1252.
+    - mostly-UTF-8 text (invalid sequences at most `MAX_INVALID_SHARE`, 15%, of the decoded
+      multi-byte characters) or an explicit "utf-8" is transcoded as UTF-8 with the bad
+      bytes replaced, and a warning counts them;
+    - anything else is read as cp1252.
     """
     if kind not in _TEXT_KINDS:
         return EncodingChoice(None, None)
@@ -178,12 +186,11 @@ def choose_encoding(
     if explicit is not None and not readers.is_utf8(explicit):
         return EncodingChoice(explicit, explicit)
     if readers.detect_encoding(readers.read_head(path, 4)) == "utf-16":
-        warn = () if explicit else (not_utf8_warning("utf-16"),)
-        return EncodingChoice("utf-16", "utf-16", warn)
+        return EncodingChoice("utf-16", "utf-16")  # a BOM is unambiguous: no warning
     stats = readers.scan_utf8(path, max_bytes=max_bytes, on_chunk=on_bytes)
     if stats.invalid == 0:
         return EncodingChoice(None, explicit)
-    if explicit is not None or (stats.multibyte > 0 and stats.invalid <= stats.multibyte):
+    if explicit is not None or stats.invalid <= stats.multibyte * MAX_INVALID_SHARE:
         return EncodingChoice("utf-8", "utf-8", (replaced_warning(stats.invalid),))
     return EncodingChoice(
         FALLBACK_ENCODING, FALLBACK_ENCODING, (not_utf8_warning(FALLBACK_ENCODING),)
@@ -243,6 +250,38 @@ def prepare_source(
     else:
         raise InvalidSpecError("give a staged upload or a path")
 
+    try:
+        return _prepare(
+            storage,
+            settings,
+            dataset_id,
+            original,
+            staged_id,
+            in_place_allowed,
+            kind,
+            options,
+            progress,
+        )
+    except FileNotFoundError as exc:
+        if staged_id is not None:
+            raise NotFoundError("the uploaded file was deleted; upload it again") from exc
+        raise NotFoundError(f"{original.name} was moved or deleted during the import") from exc
+
+
+def _prepare(
+    storage: LocalStorage,
+    settings: Settings,
+    dataset_id: str,
+    original: Path,
+    staged_id: str | None,
+    in_place_allowed: bool,
+    kind: SourceKind | None,
+    options: ImportOptions,
+    progress: Progress,
+) -> PreparedSource:
+    if kind is None and staged_id is not None:
+        staged_kind = storage.staged_kind(staged_id)
+        kind = SourceKind(staged_kind) if staged_kind else None
     resolved_kind = readers.sniff_kind(original, kind or readers.detect_kind(original.name))
     size = original.stat().st_size
 
@@ -403,6 +442,49 @@ def write_version(
         options=source.options,
         size_bytes=storage.size(rel_path),
     )
+
+
+# A single text column whose median cell is longer than this looks like prose, not a table.
+PROSE_MEDIAN_CHARS = 80
+PROSE_MIN_ROWS = 3
+
+
+def shape_warnings(
+    kind: SourceKind, columns: list[Column], rows: int, median_length: float | None = None
+) -> list[str]:
+    """Hints (never errors) for text that probably isn't a table, e.g. prose read as a CSV:
+    one column and no rows, or one column of more than a few rows of long text (no
+    delimiter was found)."""
+    if kind not in (SourceKind.CSV, SourceKind.TSV) or len(columns) != 1:
+        return []
+    label = kind.value.upper()
+    if rows == 0:
+        return [
+            "The file was read as one column with no rows, so it may not be a "
+            f"{label} file. Check the delimiter and header options."
+        ]
+    if rows > PROSE_MIN_ROWS and median_length is not None and median_length > PROSE_MEDIAN_CHARS:
+        return [
+            f"The file was read as one column of long text (no delimiter found), so it may not "
+            f"be a {label} file. Check the delimiter and header options."
+        ]
+    return []
+
+
+def median_text_length(
+    cur: duckdb.DuckDBPyConnection, parquet: Path, column: Column
+) -> float | None:
+    """Median character length of a single text column (for `shape_warnings`)."""
+    if not column.type.upper().startswith("VARCHAR"):
+        return None
+    sql = exp.select(
+        exp.Anonymous(
+            this="median",
+            expressions=[exp.Length(this=exp.column(column.name, quoted=True))],
+        )
+    ).from_(exp.Anonymous(this="read_parquet", expressions=[exp.Literal.string(str(parquet))]))
+    value = cur.sql(sql.sql(dialect="duckdb")).fetchall()[0][0]
+    return None if value is None else float(value)
 
 
 def schema_changes(before: list[Column], after: list[Column]) -> list[str]:

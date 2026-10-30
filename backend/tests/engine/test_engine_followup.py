@@ -162,3 +162,20 @@ def test_explicit_memory_limit_and_temp_disk_are_split(tmp_path: Path) -> None:
         assert _gib(main_tmp) == pytest.approx(2 * _gib(bg_tmp), rel=0.06)
     finally:
         eng.close()
+
+
+def test_a_second_sticky_cancel_does_not_uncancel_the_first(eng: Engine) -> None:
+    """sticky_stress step 4: cancel(g1), then cancel(g2) for a newer g2 that never
+    registered (its request aborted early); g1's next query must still be refused."""
+    g1 = next_generation()
+    eng.query_arrow("SELECT 1", key="chart:y", generation=g1)
+    assert eng.cancel("chart:y", g1) is True
+    g2 = next_generation()
+    assert eng.cancel("chart:y", g2) is True
+    with pytest.raises(QueryInterruptedError):
+        eng.query_arrow("SELECT 1", key="chart:y", generation=g1)
+    with pytest.raises(QueryInterruptedError):
+        eng.query_arrow("SELECT 1", key="chart:y", generation=g2)
+    # A newer request is unaffected.
+    with request_scope():
+        assert eng.query_arrow("SELECT 1 AS x", key="chart:y").num_rows == 1

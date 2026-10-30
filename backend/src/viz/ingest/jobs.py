@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from viz.contracts import (
     Dataset,
     DatasetSource,
+    DatasetVersion,
     ImportOptions,
     JobKind,
     JobResult,
@@ -17,12 +19,15 @@ from viz.contracts import (
 from viz.errors import NotFoundError
 from viz.ingest import catalog
 from viz.ingest.importer import (
+    PROSE_MIN_ROWS,
     PreparedSource,
     Progress,
     finish_source,
+    median_text_length,
     prepare_source,
     rollback_source,
     schema_changes,
+    shape_warnings,
     write_version,
 )
 from viz.jobs import JobContext, job_handler, job_result
@@ -43,6 +48,8 @@ class RefreshParams(BaseModel):
     staged_id: str | None = None
     # None reuses the current version's options.
     options: ImportOptions | None = None
+    # Kind of a re-upload (resolved at submit); None re-reads with the dataset's kind.
+    kind: SourceKind | None = None
 
 
 def dataset_key(dataset_id: str) -> str:
@@ -57,10 +64,36 @@ def _progress(ctx: JobContext) -> Progress:
     return report
 
 
+# The staged upload is marked in use from submit until the job ends (`on_done` releases it,
+# see `api/datasets.py`), so queued jobs are protected from DELETE and the expiry sweep too.
+
+
 @job_handler(JobKind.IMPORT, ImportParams)
 def run_import(ctx: JobContext, params: ImportParams) -> JobResult:
-    """A new dataset. On failure or cancel nothing is left behind: the staged upload is
-    moved back and `sources/<id>` and `datasets/<id>` are removed."""
+    if params.staged_id is not None:
+        ctx.storage.touch_staged(params.staged_id)
+    return _import(ctx, params)
+
+
+@job_handler(JobKind.REFRESH, RefreshParams)
+def run_refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
+    if params.staged_id is not None:
+        ctx.storage.touch_staged(params.staged_id)
+    return _refresh(ctx, params)
+
+
+def _shape(cur: Any, ctx: JobContext, kind: SourceKind, version: DatasetVersion) -> list[str]:
+    median = None
+    if len(version.columns) == 1 and version.row_count > PROSE_MIN_ROWS:
+        median = median_text_length(
+            cur, ctx.storage.resolve(version.parquet_path), version.columns[0]
+        )
+    return shape_warnings(kind, version.columns, version.row_count, median)
+
+
+def _import(ctx: JobContext, params: ImportParams) -> JobResult:
+    """A new dataset. On failure or cancel nothing is left behind: `sources/<id>` and
+    `datasets/<id>` are removed; the staged upload is untouched."""
     source: PreparedSource | None = None
     try:
         ctx.progress(0.0, "Reading source")
@@ -77,6 +110,7 @@ def run_import(ctx: JobContext, params: ImportParams) -> JobResult:
         ctx.progress(0.3, "Converting to Parquet")
         with ctx.cursor(progress=(0.3, 0.9)) as cur:
             version = write_version(cur, ctx.storage, source, params.dataset_id, 1)
+            source.warnings.extend(_shape(cur, ctx, source.kind, version))
         ctx.progress(0.95, "Saving")
         original = str(Path(params.path).expanduser().resolve()) if params.path else None
         dataset = Dataset(
@@ -101,10 +135,9 @@ def run_import(ctx: JobContext, params: ImportParams) -> JobResult:
     return job_result(dataset_id=dataset.id, version=version.n, warnings=source.warnings)
 
 
-@job_handler(JobKind.REFRESH, RefreshParams)
-def run_refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
+def _refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
     """A new version of an existing dataset. On failure the new source copy and Parquet file
-    are removed and a re-uploaded file goes back to staging; earlier versions are untouched."""
+    are removed; earlier versions and the staged upload are untouched."""
     with ctx.session() as db:
         dataset = catalog.get_dataset(db, params.dataset_id)
     options = params.options or (dataset.current().options if dataset.versions else None)
@@ -126,15 +159,16 @@ def run_refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
             dataset.id,
             staged_id=params.staged_id,
             path=path,
-            kind=dataset.source.kind if params.staged_id is None else None,
+            kind=dataset.source.kind if params.staged_id is None else params.kind,
             options=options,
             progress=_progress(ctx),
         )
         ctx.progress(0.3, "Converting to Parquet")
         with ctx.cursor(progress=(0.3, 0.9)) as cur:
             version = write_version(cur, ctx.storage, source, dataset.id, number)
+            shape = _shape(cur, ctx, source.kind, version)
         ctx.progress(0.95, "Saving")
-        warnings = list(source.warnings)
+        warnings = list(source.warnings) + shape
         if dataset.versions:
             warnings += schema_changes(dataset.current().columns, version.columns)
         ctx.check_cancelled()

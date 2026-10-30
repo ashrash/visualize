@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from pathlib import Path
 
 import duckdb
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from viz.config import Settings
 from viz.contracts import (
@@ -18,7 +20,7 @@ from viz.contracts import (
     StagedFile,
 )
 from viz.engine import Engine
-from viz.errors import InvalidSpecError, NotFoundError
+from viz.errors import ConflictError, InvalidSpecError, NotFoundError
 from viz.ingest import readers
 from viz.ingest.importer import (
     EncodingChoice,
@@ -27,6 +29,7 @@ from viz.ingest.importer import (
     open_relation,
     profile_relation,
     read_error,
+    shape_warnings,
 )
 from viz.ingest.upload import Upload
 from viz.storage import LocalStorage
@@ -36,13 +39,19 @@ _PREVIEW_TRANSCODE_BYTES = 8 * 1024 * 1024
 _ESTIMATE_SAMPLE_BYTES = 1024 * 1024
 
 
-def finish_staging(storage: LocalStorage, upload: Upload) -> StagedFile:
+def finish_staging(
+    storage: LocalStorage, upload: Upload, kind: SourceKind | None = None
+) -> StagedFile:
     """Sniff a streamed upload's type and list Excel sheets; deletes it if it's unusable."""
     try:
-        kind = readers.sniff_kind(upload.path, readers.detect_kind(upload.file_name))
+        chosen = kind
+        kind = readers.sniff_kind(upload.path, readers.detect_kind(upload.file_name, kind))
         sheets = readers.excel_sheets(upload.path) if kind == SourceKind.EXCEL else []
+        if chosen is not None:
+            storage.set_staged_kind(upload.staged_id, kind.value)
     except BaseException:
-        storage.delete_staged(upload.staged_id)
+        with contextlib.suppress(ConflictError):  # don't mask the real error
+            storage.delete_staged(upload.staged_id)
         raise
     return StagedFile(
         staged_id=upload.staged_id,
@@ -51,6 +60,12 @@ def finish_staging(storage: LocalStorage, upload: Upload) -> StagedFile:
         size_bytes=upload.size,
         sheets=sheets,
     )
+
+
+def staged_kind(storage: LocalStorage, staged_id: str | None) -> SourceKind | None:
+    """The kind chosen when the file was staged (`?kind=`), if any."""
+    value = storage.staged_kind(staged_id) if staged_id else None
+    return SourceKind(value) if value else None
 
 
 def resolve_input(
@@ -103,7 +118,10 @@ def _preview(
     encoding_override: str | None,
 ) -> tuple[pa.Table, ImportPreviewMeta]:
     source = resolve_input(storage, settings, request.staged_id, request.path)
-    kind = readers.sniff_kind(source, request.kind or readers.detect_kind(source.name))
+    kind = readers.sniff_kind(
+        source,
+        request.kind or staged_kind(storage, request.staged_id) or readers.detect_kind(source.name),
+    )
     options = request.options
     limit = min(request.limit, settings.preview_rows)
     warnings: list[str] = []
@@ -150,6 +168,12 @@ def _preview(
             estimated = _estimate_rows(
                 source, shown, bool(detected.header) if kind != SourceKind.JSON else False
             )
+            median = None
+            if table.num_columns == 1 and pa.types.is_string(table.schema.field(0).type):
+                lengths = pc.utf8_length(table.column(0))
+                median_value = pc.approximate_median(lengths).as_py()
+                median = None if median_value is None else float(median_value)
+            warnings.extend(shape_warnings(kind, columns, shown, median))
             if kind == SourceKind.JSON and shown == 1 and not options.json_path and nested:
                 warnings.append(
                     "This looks like a single JSON object. To import a list inside it, "

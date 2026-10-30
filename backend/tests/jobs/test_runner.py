@@ -147,3 +147,39 @@ def test_close_cancels_running_jobs(jobs: InProcessJobRunner) -> None:
     closer.join(15)
     assert not closer.is_alive()
     assert jobs.get(job_id).status == JobStatus.CANCELLED
+
+
+def test_on_done_runs_once_whatever_the_outcome(jobs: InProcessJobRunner) -> None:
+    calls: list[str] = []
+    ok = jobs.submit(
+        JobKind.MATERIALIZE, Params(mode="ok"), title="ok", on_done=lambda: calls.append("ok")
+    )
+    jobs.wait(ok.id, 10)
+    failed = jobs.submit(
+        JobKind.MATERIALIZE, Params(mode="fail"), title="f", on_done=lambda: calls.append("fail")
+    )
+    jobs.wait(failed.id, 10)
+    running = jobs.submit(
+        JobKind.MATERIALIZE,
+        Params(mode="sleep"),
+        title="s",
+        dedupe_key="k",
+        on_done=lambda: calls.append("sleep"),
+    )
+    # A dedupe hit returns the running job and calls its own on_done right away.
+    same = jobs.submit(
+        JobKind.MATERIALIZE,
+        Params(mode="ok"),
+        title="dup",
+        dedupe_key="k",
+        on_done=lambda: calls.append("dup"),
+    )
+    assert same.id == running.id
+    queued = jobs.submit(
+        JobKind.MATERIALIZE, Params(mode="ok"), title="q", on_done=lambda: calls.append("queued")
+    )
+    jobs.cancel(queued.id)
+    jobs.cancel(running.id)
+    jobs.wait(running.id, 10)
+    time.sleep(0.05)
+    assert sorted(calls) == ["dup", "fail", "ok", "queued", "sleep"]

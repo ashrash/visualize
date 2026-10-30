@@ -218,7 +218,10 @@ async def receive_upload(
             async for chunk in request.stream():
                 received += len(chunk)
                 if received > limit + _ENVELOPE:
-                    raise _too_large(limit, hint)
+                    raise PayloadTooLargeError(
+                        f"the upload is larger than {limit / 2**20:,.0f} MB in total "
+                        "(file plus form fields and headers)"
+                    )
                 parser.write(chunk)
             parser.finalize()
         except MultipartParseError as exc:
