@@ -1,6 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { featureOn } from "../../api/features";
 import { checkFormula, inspectPipeline, listFormulaFunctions } from "../../api/pipelines";
 import type { Pipeline } from "../../api/types";
 
@@ -43,20 +42,20 @@ export function referencedPipelines(pipeline: Pipeline, all: Pipeline[]): Pipeli
 }
 
 /** Server schema of every step (status, columns, errors), re-fetched as the pipeline is edited. */
-export function usePipelineInspect(pipeline: Pipeline, all: Pipeline[]) {
-  const enabled = featureOn("pipelineApi");
+export function usePipelineInspect(pipeline: Pipeline | undefined, all: Pipeline[]) {
   const body = useDebounced(
-    JSON.stringify({
-      pipeline,
-      pipelines: referencedPipelines(pipeline, all),
-      includeSql: false,
-    }),
+    JSON.stringify(
+      pipeline
+        ? { pipeline, pipelines: referencedPipelines(pipeline, all), includeSql: false }
+        : null,
+    ),
     400,
   );
   return useQuery({
     queryKey: ["pipeline-inspect", body],
     queryFn: ({ signal }) => inspectPipeline(JSON.parse(body), signal),
-    enabled,
+    // `body` lags the pipeline by the debounce; never send the placeholder.
+    enabled: pipeline !== undefined && body !== "null",
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
@@ -66,7 +65,6 @@ export function useFormulaFunctions() {
   return useQuery({
     queryKey: ["formula-functions"],
     queryFn: ({ signal }) => listFormulaFunctions(signal),
-    enabled: featureOn("pipelineApi"),
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -91,7 +89,7 @@ export function useFormulaCheck(args: {
   const query = useQuery({
     queryKey: ["formula-check", body],
     queryFn: ({ signal }) => checkFormula(JSON.parse(body), signal),
-    enabled: featureOn("pipelineApi") && pipeline !== undefined && args.expression.trim() !== "",
+    enabled: pipeline !== undefined && args.expression.trim() !== "",
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });

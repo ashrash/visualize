@@ -17,7 +17,13 @@ export function useActiveDataset(): {
   const datasets = useMemo(() => query.data ?? [], [query.data]);
   // Until the project loads we don't know which dataset its chart uses, so don't pick one yet
   // (picking the first dataset would fetch rows only to cancel them a moment later).
-  const defaultId = project ? (project.charts?.[0]?.source.id ?? datasets[0]?.id) : undefined;
+  // A chart may read a pipeline: its dataset is the pipeline's own source.
+  const firstChart = project?.charts?.[0];
+  const chartDataset =
+    firstChart?.source.kind === "pipeline"
+      ? project?.pipelines?.find((p) => p.id === firstChart.source.id)?.source.id
+      : firstChart?.source.id;
+  const defaultId = project ? (chartDataset ?? datasets[0]?.id) : undefined;
   const id = selectedId ?? defaultId;
   const dataset = datasets.find((d) => d.id === id);
   const columns = useMemo(() => dataset?.versions?.at(-1)?.columns ?? [], [dataset]);
