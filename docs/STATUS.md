@@ -14,6 +14,15 @@ items in their final report and the lead updates this file. Status values: `todo
   and may replace what's there.
 - Gotchas found during Phase 0 are listed in CLAUDE.md §12.
 
+## Wave 1 log
+
+- 2026-10-30: plans for data-core, transform, stats, platform and ui-charts approved; contracts added to
+  main. Plans live in `docs/plans/<agent>.md`.
+- 2026-10-30: stats seam merged (`stats/relation.py` Relation, `plots/` registry and dispatch).
+- 2026-10-30: platform merged (MVP §10 backend). Reviewer: approve with nits after one fix round.
+  Open nits: duplicate manifest ids, Parquet column-type check, `schemaVersion` stamp in
+  `create_from_doc`, streaming upload size limit (needs middleware).
+
 ## MVP.md
 
 ### 1. Data Sources & Import
@@ -162,16 +171,16 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Save projects | platform · ui-data | partial | Save with revision check + snapshot. Manual save only. |
-| Open existing projects | platform · ui-data | partial | Reopens the last project. No project picker yet. |
-| Autosave | platform · ui-data | todo |  |
+| Save projects | platform · ui-data | partial | Backend done: atomic revision check (409), named snapshots. UI: manual save; autosave UI in review (ui-data). |
+| Open existing projects | platform · ui-data | partial | Backend done: list/get/delete/rename/duplicate. UI: project picker in review (ui-data). |
+| Autosave | platform · ui-data | partial | Backend done: no-op skip, snapshot every N (VIZ_AUTOSAVE_SNAPSHOT_EVERY), pruning. UI: 2 s debounce in review (ui-data). |
 | Undo and redo | platform · ui-data | partial | zundo history, buttons and Ctrl/Cmd+Z / Shift+Z / Y. |
-| Version history | platform · ui-data | partial | Snapshots + list API. No UI or restore yet. |
+| Version history | platform · ui-data | partial | Backend done: list (kind/limit), preview, restore as new revision. UI: read-only list in review; restore UI todo (ui-data). |
 | Duplicate charts | platform · ui-data | todo |  |
 | Duplicate dashboards | platform · ui-data | todo |  |
 | Rename charts | platform · ui-data | todo |  |
-| Organize charts into folders | platform · ui-data | todo |  |
-| Import/export project configuration | platform · ui-data | todo |  |
+| Organize charts into folders | platform · ui-data | partial | Backend done: folder/ItemRef validation on save and import. UI todo (ui-data). |
+| Import/export project configuration | platform · ui-data | partial | Backend done: .vizproj export/import (sanitized, fresh dataset ids, optional Parquet). UI todo (ui-data). |
 
 ## Plots.md
 
