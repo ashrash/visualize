@@ -12,6 +12,7 @@ from viz.contracts.chart import (
     PLOT_FAMILY,
     Annotation,
     AxisStyle,
+    ChannelInfo,
     ChartSpec,
     ChartStyle,
     Encoding,
@@ -119,7 +120,12 @@ from viz.contracts.project import (
     ProjectVersion,
     Theme,
 )
-from viz.contracts.stats import StatResult
+from viz.contracts.stats import (
+    DescribeRequest,
+    FieldSummary,
+    Quantile,
+    StatResult,
+)
 
 # Models always published in the OpenAPI schema (and so in the generated TypeScript types),
 # even before an endpoint uses them. Request/response models of planned endpoints go here so the
@@ -134,7 +140,9 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     Dashboard,
     Dataset,
     DatasetUpdate,
+    DescribeRequest,
     ExportRequest,
+    FieldSummary,
     FormulaCheckRequest,
     FormulaCheckResult,
     FormulaFunction,
@@ -171,6 +179,7 @@ __all__ = [
     "AggFn",
     "Annotation",
     "AxisStyle",
+    "ChannelInfo",
     "ChartDataMeta",
     "ChartDataRequest",
     "ChartSpec",
@@ -190,12 +199,14 @@ __all__ = [
     "DatasetSource",
     "DatasetUpdate",
     "DatasetVersion",
+    "DescribeRequest",
     "Encoding",
     "EqPredicate",
     "ErrorBars",
     "ExportFile",
     "ExportFormat",
     "ExportRequest",
+    "FieldSummary",
     "FilterWidget",
     "Folder",
     "FormulaCheckRequest",
@@ -240,6 +251,7 @@ __all__ = [
     "ProjectRestore",
     "ProjectSummary",
     "ProjectVersion",
+    "Quantile",
     "RangePredicate",
     "Reduction",
     "RefLine",
