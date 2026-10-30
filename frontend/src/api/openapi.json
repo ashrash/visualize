@@ -901,6 +901,53 @@
         ],
         "title": "CastStep"
       },
+      "ChannelInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "accepts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ColumnSemantic"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepts"
+          },
+          "min": {
+            "type": "integer",
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "accepts",
+          "min",
+          "max"
+        ],
+        "title": "ChannelInfo",
+        "description": "A channel a plot's server module validates. Server-produced."
+      },
       "ChartDataRequest": {
         "properties": {
           "spec": {
@@ -3107,6 +3154,34 @@
           },
           "family": {
             "$ref": "#/components/schemas/PlotFamily"
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChannelInfo"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels"
+          },
+          "paramsSchema": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paramsschema"
           }
         },
         "additionalProperties": false,
@@ -4399,6 +4474,102 @@
         "title": "DatasetUpdate",
         "type": "object"
       },
+      "DescribeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Fields",
+            "type": "array"
+          },
+          "groupBy": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Groupby",
+            "type": "array"
+          },
+          "filters": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "percentiles": {
+            "items": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            "maxItems": 20,
+            "title": "Percentiles",
+            "type": "array"
+          },
+          "includeOverall": {
+            "default": true,
+            "title": "Includeoverall",
+            "type": "boolean"
+          },
+          "includeMode": {
+            "default": true,
+            "title": "Includemode",
+            "type": "boolean"
+          },
+          "maxGroups": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "title": "Maxgroups",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "fields"
+        ],
+        "title": "DescribeRequest",
+        "type": "object"
+      },
       "ExportFile": {
         "additionalProperties": false,
         "description": "Server-produced.",
@@ -4563,6 +4734,300 @@
           "format"
         ],
         "title": "ExportRequest",
+        "type": "object"
+      },
+      "FieldSummary": {
+        "additionalProperties": false,
+        "description": "One field within one group of a descriptive-statistics table. Server-produced.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "kind": {
+            "enum": [
+              "numeric",
+              "temporal",
+              "categorical",
+              "boolean"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "distinct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distinct"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "std": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Std"
+          },
+          "variance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variance"
+          },
+          "sem": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sem"
+          },
+          "sum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sum"
+          },
+          "iqr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iqr"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "q1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q1"
+          },
+          "q3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q3"
+          },
+          "skewness": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skewness"
+          },
+          "kurtosis": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kurtosis"
+          },
+          "quantiles": {
+            "items": {
+              "$ref": "#/components/schemas/Quantile"
+            },
+            "title": "Quantiles",
+            "type": "array"
+          },
+          "modes": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Modes",
+            "type": "array"
+          },
+          "modeCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modecount"
+          }
+        },
+        "required": [
+          "field",
+          "group",
+          "kind",
+          "count",
+          "missing",
+          "distinct",
+          "mean",
+          "std",
+          "variance",
+          "sem",
+          "sum",
+          "iqr",
+          "min",
+          "max",
+          "median",
+          "q1",
+          "q3",
+          "skewness",
+          "kurtosis",
+          "quantiles",
+          "modes",
+          "modeCount"
+        ],
+        "title": "FieldSummary",
         "type": "object"
       },
       "FormulaCheckRequest": {
@@ -5519,6 +5984,35 @@
         "title": "ProjectRestore",
         "type": "object"
       },
+      "Quantile": {
+        "additionalProperties": false,
+        "properties": {
+          "p": {
+            "title": "P",
+            "type": "number"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "p",
+          "value"
+        ],
+        "title": "Quantile",
+        "type": "object"
+      },
       "Reduction": {
         "enum": [
           "none",
@@ -5793,6 +6287,23 @@
             },
             "title": "Warnings",
             "type": "array"
+          },
+          "nTotal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ntotal"
+          },
+          "nMissing": {
+            "default": 0,
+            "title": "Nmissing",
+            "type": "integer"
           }
         },
         "required": [

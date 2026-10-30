@@ -315,6 +315,20 @@ export interface components {
             /** Casts */
             casts: components["schemas"]["Cast"][];
         };
+        /**
+         * ChannelInfo
+         * @description A channel a plot's server module validates. Server-produced.
+         */
+        ChannelInfo: {
+            /** Name */
+            name: string;
+            /** Accepts */
+            accepts: components["schemas"]["ColumnSemantic"][] | null;
+            /** Min */
+            min: number;
+            /** Max */
+            max: number | null;
+        };
         /** ChartDataRequest */
         ChartDataRequest: {
             spec: components["schemas"]["ChartSpec"];
@@ -1074,6 +1088,12 @@ export interface components {
         PlotInfo: {
             type: components["schemas"]["PlotType"];
             family: components["schemas"]["PlotFamily"];
+            /** Channels */
+            channels?: components["schemas"]["ChannelInfo"][] | null;
+            /** Paramsschema */
+            paramsSchema?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
         };
         /**
          * PlotType
@@ -1581,6 +1601,35 @@ export interface components {
              */
             name: string | null;
         };
+        /** DescribeRequest */
+        DescribeRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Fields */
+            fields: string[];
+            /** Groupby */
+            groupBy?: string[];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Percentiles */
+            percentiles?: number[];
+            /**
+             * Includeoverall
+             * @default true
+             */
+            includeOverall: boolean;
+            /**
+             * Includemode
+             * @default true
+             */
+            includeMode: boolean;
+            /**
+             * Maxgroups
+             * @default 50
+             */
+            maxGroups: number;
+        };
         /**
          * ExportFile
          * @description Server-produced.
@@ -1638,6 +1687,59 @@ export interface components {
              * @default null
              */
             delimiter: string | null;
+        };
+        /**
+         * FieldSummary
+         * @description One field within one group of a descriptive-statistics table. Server-produced.
+         */
+        FieldSummary: {
+            /** Field */
+            field: string;
+            /** Group */
+            group: (string | number | boolean | null)[] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "numeric" | "temporal" | "categorical" | "boolean";
+            /** Count */
+            count: number;
+            /** Missing */
+            missing: number;
+            /** Distinct */
+            distinct: number | null;
+            /** Mean */
+            mean: number | null;
+            /** Std */
+            std: number | null;
+            /** Variance */
+            variance: number | null;
+            /** Sem */
+            sem: number | null;
+            /** Sum */
+            sum: number | null;
+            /** Iqr */
+            iqr: number | null;
+            /** Min */
+            min: number | string | null;
+            /** Max */
+            max: number | string | null;
+            /** Median */
+            median: number | string | null;
+            /** Q1 */
+            q1: number | string | null;
+            /** Q3 */
+            q3: number | string | null;
+            /** Skewness */
+            skewness: number | null;
+            /** Kurtosis */
+            kurtosis: number | null;
+            /** Quantiles */
+            quantiles: components["schemas"]["Quantile"][];
+            /** Modes */
+            modes: (string | number | boolean | null)[];
+            /** Modecount */
+            modeCount: number | null;
         };
         /** FormulaCheckRequest */
         FormulaCheckRequest: {
@@ -1951,6 +2053,13 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /** Quantile */
+        Quantile: {
+            /** P */
+            p: number;
+            /** Value */
+            value: number | string | null;
+        };
         /**
          * Reduction
          * @enum {string}
@@ -2057,6 +2166,16 @@ export interface components {
             sampled: boolean;
             /** Warnings */
             warnings?: string[];
+            /**
+             * Ntotal
+             * @default null
+             */
+            nTotal: number | null;
+            /**
+             * Nmissing
+             * @default 0
+             */
+            nMissing: number;
         };
         /** StepError */
         StepError: {
