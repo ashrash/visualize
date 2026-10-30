@@ -47,12 +47,17 @@ class Settings(BaseSettings):
     prewarm_process_pool: bool = True
     # Background jobs (imports, materialisation, exports).
     max_concurrent_jobs: int = 1
-    # Threads for a second DuckDB instance used only by jobs; None = share the main instance.
+    # Threads for the background DuckDB instance (jobs, grid-view builds): None = a quarter of
+    # the cores (at least 2), 0 = share the main instance.
     job_duckdb_threads: int | None = None
     job_retention_s: int = 3600
     export_retention_s: int = 3600
     staged_retention_s: int = 86_400
     preview_rows: int = 1000
+    # Disk budget for materialized grid views (sorted/filtered copies) in temp/views.
+    grid_views_mb: int = 1024
+    # How often the job runner deletes expired staged uploads and export files.
+    sweep_interval_s: int = 3600
 
     # Projects: every Nth autosave also writes a snapshot; older autosave snapshots are pruned.
     autosave_snapshot_every: int = 10

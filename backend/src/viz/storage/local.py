@@ -19,7 +19,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from viz.errors import ConflictError, NotFoundError
+
 _UNSAFE = re.compile(r'[\x00-\x1f<>:"/\\|?*]')
+_ID = re.compile(r"[0-9a-f\-]{8,64}")
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9_.\-]+(/[A-Za-z0-9_.\-]+)*$")
 STAGED = "_staged"
 
@@ -113,16 +116,19 @@ class LocalStorage:
 
     def staged_path(self, staged_id: str, file_name: str | None = None) -> Path:
         """The staged upload's directory, or the file in it when `file_name` is given."""
-        if not re.fullmatch(r"[0-9a-f\-]{8,64}", staged_id):
-            raise ValueError("invalid staged id")
+        if not _ID.fullmatch(staged_id):
+            raise NotFoundError("the uploaded file has expired or doesn't exist; upload it again")
         directory = self.staged_dir / staged_id
         return directory / safe_file_name(file_name) if file_name else directory
 
     def find_staged(self, staged_id: str) -> Path | None:
-        directory = self.staged_path(staged_id)
+        """The staged file, or None if the id is unknown, malformed or expired."""
+        if not _ID.fullmatch(staged_id):
+            return None
+        directory = self.staged_dir / staged_id
         if not directory.is_dir():
             return None
-        files = [p for p in directory.iterdir() if p.is_file()]
+        files = [p for p in directory.iterdir() if p.is_file() and not p.name.endswith(".tmp")]
         return files[0] if files else None
 
     def delete_staged(self, staged_id: str) -> None:
@@ -147,25 +153,73 @@ class LocalStorage:
 
     # -- deletes and expiry ---------------------------------------------------------------
 
+    @property
+    def trash_dir(self) -> Path:
+        return self.temp_dir / "trash"
+
+    def _dataset_dirs(self, dataset_id: str) -> list[Path]:
+        if not _ID.fullmatch(dataset_id) and not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", dataset_id):
+            raise ValueError(f"invalid dataset id {dataset_id!r}")
+        return [self.datasets_dir / dataset_id, self.sources_dir / dataset_id]
+
+    def trash_dataset(self, dataset_id: str) -> None:
+        """Move a dataset's Parquet versions and source copies to the trash, all or nothing.
+
+        On Windows a directory with an open file can't be renamed; then nothing is moved and
+        `ConflictError` names the folder, so the caller can keep the catalog row."""
+        self.trash_dir.mkdir(parents=True, exist_ok=True)
+        moved: list[tuple[Path, Path]] = []
+        for directory in self._dataset_dirs(dataset_id):
+            if not directory.exists():
+                continue
+            target = self.trash_dir / f"{directory.parent.name}-{dataset_id}-{uuid.uuid4().hex[:8]}"
+            try:
+                os.replace(directory, target)
+            except OSError as exc:
+                for original, trashed in reversed(moved):
+                    os.replace(trashed, original)
+                raise ConflictError(
+                    f"some files of this dataset are in use ({self.rel(directory)}); close "
+                    "anything reading them and try again"
+                ) from exc
+            moved.append((directory, target))
+        self.empty_trash()
+
+    def empty_trash(self) -> list[Path]:
+        """Delete trashed directories; returns those that couldn't be removed (still in use)."""
+        left: list[Path] = []
+        if not self.trash_dir.is_dir():
+            return left
+        for child in self.trash_dir.iterdir():
+            shutil.rmtree(child, ignore_errors=True)
+            if child.exists():
+                left.append(child)
+        return left
+
     def delete_dataset(self, dataset_id: str) -> None:
-        """Remove a dataset's Parquet versions and source copies."""
-        for directory in (self.datasets_dir / dataset_id, self.sources_dir / dataset_id):
-            if directory.resolve().is_relative_to(self.root) and directory.name == dataset_id:
-                shutil.rmtree(directory, ignore_errors=True)
+        """Remove a dataset's Parquet versions and source copies (best effort)."""
+        for directory in self._dataset_dirs(dataset_id):
+            shutil.rmtree(directory, ignore_errors=True)
 
     def export_path(self, export_id: str, file_name: str) -> Path:
         directory = self.exports_dir / export_id
         directory.mkdir(parents=True, exist_ok=True)
         return directory / safe_file_name(file_name)
 
-    def find_export(self, export_id: str) -> Path | None:
-        if not re.fullmatch(r"[0-9a-f\-]{8,64}", export_id):
+    def find_export(self, export_id: str, *, max_age_s: float | None = None) -> Path | None:
+        """The export file, or None if unknown, unfinished or older than `max_age_s`."""
+        if not _ID.fullmatch(export_id):
             return None
         directory = self.exports_dir / export_id
         if not directory.is_dir():
             return None
         files = [p for p in directory.iterdir() if p.is_file() and not p.name.endswith(".tmp")]
-        return files[0] if files else None
+        if not files:
+            return None
+        if max_age_s is not None and time.time() - files[0].stat().st_mtime > max_age_s:
+            shutil.rmtree(directory, ignore_errors=True)
+            return None
+        return files[0]
 
     def download_url(self, export_id: str) -> str:
         """Locally a route on this server; on AWS this becomes a presigned S3 URL."""

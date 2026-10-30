@@ -1,6 +1,9 @@
 """CSV and Excel exports of underlying data (MVP §9), run as export jobs.
 
-- CSV is written by DuckDB (`COPY ... TO`, via `relation.write_csv`).
+- CSV is written by DuckDB (`COPY ... TO`, via `relation.write_csv`). Values are written as
+  they are: a cell starting with `=`, `+`, `-` or `@` is *not* escaped, so a spreadsheet app
+  may treat it as a formula ("CSV injection"). Whether to guard against that is an open
+  product decision; Excel exports below are safe either way.
 - Excel is streamed through xlsxwriter in constant-memory mode from Arrow record batches.
   Strings are never turned into formulas, URLs or numbers (no formula injection). Excel holds
   at most 1,048,576 rows including the header; past that the export is truncated with a
@@ -13,6 +16,7 @@ import datetime as dt
 import decimal
 import math
 import os
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -33,7 +37,7 @@ from viz.contracts import (
 )
 from viz.errors import InvalidSpecError, NotImplementedYetError
 from viz.ingest import catalog
-from viz.ingest.rows import filtered_select, order_sql, pick_version
+from viz.ingest.rows import filtered_select, pick_version
 from viz.jobs import JobContext, job_handler, job_result
 from viz.storage import LocalStorage
 from viz.storage.local import safe_file_name
@@ -71,18 +75,24 @@ def check_request(request: ExportRequest) -> None:
 def source_query(storage: LocalStorage, dataset: Dataset, request: ExportRequest) -> exp.Select:
     version = pick_version(dataset, request.version)
     path = storage.resolve(version.parquet_path)
-    query = filtered_select(path, version, request.filters, None, request.columns)
-    if request.sort:
-        known = {c.name for c in version.columns}
-        unknown = [k.field for k in request.sort if k.field not in known]
-        if unknown:
-            raise InvalidSpecError(f"unknown column(s): {', '.join(unknown)}")
-        query = query.order_by(*order_sql(request.sort))
-    return query
+    return filtered_select(path, version, request.filters, None, request.columns, request.sort)
 
 
 def write_csv(cur: duckdb.DuckDBPyConnection, sql: str, out: Path, delimiter: str | None) -> None:
     cur.sql(sql).write_csv(str(out), sep=delimiter or ",", header=True)
+
+
+_SHEET_FORBIDDEN = re.compile(r"[\[\]:*?/\\]")
+
+
+def excel_sheet_name(name: str) -> str:
+    """A valid worksheet name: no `[]:*?/\\`, no leading/trailing apostrophe, <= 31 chars,
+    not the reserved "History"."""
+    cleaned = _SHEET_FORBIDDEN.sub(" ", name).strip().strip("'").strip()
+    cleaned = cleaned[:31].strip().strip("'").strip()
+    if not cleaned or cleaned.lower() == "history":
+        return "Data"
+    return cleaned
 
 
 def _cell_writer(field: pa.Field, formats: dict[str, Any]) -> tuple[str, Any]:
@@ -127,7 +137,7 @@ def write_xlsx(
         },
     )
     try:
-        sheet = book.add_worksheet(safe_file_name(sheet_name)[:31] or "Data")
+        sheet = book.add_worksheet(excel_sheet_name(sheet_name))
         header = book.add_format({"bold": True})
         formats = {
             "datetime": book.add_format({"num_format": "yyyy-mm-dd hh:mm:ss"}),

@@ -398,8 +398,19 @@ class InProcessJobRunner:
                 self._finish(job_id, JobStatus.SUCCEEDED, message="Done", result=result)
 
     def _tick(self) -> None:
-        """Map DuckDB's progress for running statements into each job's progress band."""
+        """Map DuckDB's progress for running statements into each job's progress band, and
+        sweep expired staged uploads and export files every `sweep_interval_s`."""
+        last_sweep = time.monotonic()
         while not self._closed.wait(_PROGRESS_POLL_S):
+            if time.monotonic() - last_sweep >= self.settings.sweep_interval_s:
+                last_sweep = time.monotonic()
+                try:
+                    self.storage.sweep(
+                        staged_max_age_s=self.settings.staged_retention_s,
+                        exports_max_age_s=self.settings.export_retention_s,
+                    )
+                except OSError:
+                    log.warning("expiry sweep failed", exc_info=True)
             with self._lock:
                 running = [
                     (s.job.id, s.progress_band, s.job.progress)

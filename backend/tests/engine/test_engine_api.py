@@ -55,7 +55,7 @@ def small_engine(tmp_path: Path) -> Iterator[Engine]:
 
 def test_older_generation_is_refused_without_interrupting_newer(engine: Engine) -> None:
     thread, errors = run_in_thread(lambda: engine.query_arrow(SLOW_SQL, key="c", generation=5))
-    assert wait_for(lambda: engine.progress("c") is not None or "c" in engine._active)
+    assert wait_for(lambda: engine.progress("c") is not None or "c" in engine._by_key)
     with pytest.raises(QueryInterruptedError) as info:
         engine.query_arrow("SELECT 1", key="c", generation=4)
     assert info.value.reason == "superseded" and info.value.status_code == 409
@@ -69,7 +69,7 @@ def test_older_generation_is_refused_without_interrupting_newer(engine: Engine) 
 
 def test_newer_generation_supersedes_running_older(engine: Engine) -> None:
     thread, errors = run_in_thread(lambda: engine.query_arrow(SLOW_SQL, key="c", generation=1))
-    assert wait_for(lambda: "c" in engine._active)
+    assert wait_for(lambda: "c" in engine._by_key)
     assert engine.query_arrow("SELECT 1 AS one", key="c", generation=2).num_rows == 1
     thread.join(10)
     assert isinstance(errors[0], QueryInterruptedError) and errors[0].reason == "superseded"

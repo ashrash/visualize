@@ -43,8 +43,8 @@ def start_export(
     response_class=FileResponse,
     responses={200: {"content": {m: {} for m in _MEDIA_TYPES.values()}}},
 )
-def download_export(export_id: str, storage: StorageDep) -> FileResponse:
-    path = storage.find_export(export_id)
+def download_export(export_id: str, storage: StorageDep, settings: SettingsDep) -> FileResponse:
+    path = storage.find_export(export_id, max_age_s=settings.export_retention_s)
     if path is None:
         raise NotFoundError("this export has expired or doesn't exist; export again")
     return FileResponse(

@@ -51,6 +51,9 @@ def _check_fields(version: DatasetVersion, fields: list[str]) -> None:
         raise InvalidSpecError(f"unknown column(s): {', '.join(unknown)}")
 
 
+ROW_NUMBER = "file_row_number"
+
+
 def order_sql(sort: list[SortKey]) -> list[exp.Ordered]:
     return [
         exp.Ordered(this=col(k.field), desc=k.descending, nulls_first=not k.nulls_last)
@@ -58,11 +61,24 @@ def order_sql(sort: list[SortKey]) -> list[exp.Ordered]:
     ]
 
 
+def rownum_source(path: Path) -> exp.Expr:
+    """`read_parquet(path, file_row_number := true)`: the row number as an explicit column.
+    (The *virtual* column inside a window/QUALIFY crashes DuckDB 2.0.0; see CLAUDE.md §12.)"""
+    return exp.Anonymous(
+        this="read_parquet",
+        expressions=[
+            exp.Literal.string(str(path)),
+            exp.PropertyEQ(this=exp.column(ROW_NUMBER), expression=exp.true()),
+        ],
+    )
+
+
 def search_sql(version: DatasetVersion, search: str | None) -> exp.Expr | None:
-    """Case-insensitive contains across text columns."""
+    """Case-insensitive "contains" across text (VARCHAR/ENUM) columns only; numbers and dates
+    aren't searched (filter them with predicates)."""
     if not search:
         return None
-    needle = lit(search.lower())
+    needle = exp.Lower(this=lit(search))
     parts: list[exp.Expr] = [
         exp.Anonymous(
             this="contains",
@@ -80,13 +96,30 @@ def filtered_select(
     filters: list[Predicate],
     search: str | None,
     columns: list[str] | None,
+    sort: list[SortKey] | None = None,
 ) -> exp.Select:
-    _check_fields(version, [p.field for p in filters] + list(columns or []))
-    projection: list[exp.Expr] = [col(c) for c in columns] if columns else [exp.Star()]
-    query = exp.select(*projection).from_(parquet_source(path))
+    """SELECT over one version with filters and search. With `sort`, rows are ordered by the
+    sort keys and then by file row number, so ties page deterministically (DuckDB's parallel
+    sort isn't stable); the row number is not in the output."""
+    _check_fields(
+        version,
+        [p.field for p in filters] + list(columns or []) + [k.field for k in sort or []],
+    )
+    projection: list[exp.Expr]
+    if sort:
+        if columns:
+            projection = [col(c) for c in columns]
+        else:
+            projection = [exp.Star(except_=[exp.column(ROW_NUMBER)])]
+        query = exp.select(*projection).from_(rownum_source(path))
+    else:
+        projection = [col(c) for c in columns] if columns else [exp.Star()]
+        query = exp.select(*projection).from_(parquet_source(path))
     conditions = [c for c in (where_sql(filters), search_sql(version, search)) if c is not None]
     if conditions:
         query = query.where(exp.and_(*(exp.Paren(this=c) for c in conditions)))
+    if sort:
+        query = query.order_by(*order_sql(sort), exp.Ordered(this=exp.column(ROW_NUMBER)))
     return query
 
 
@@ -114,10 +147,9 @@ def rows_page(
             table, total = served
             return table, _meta(request, limit, total, version)
 
-    base = filtered_select(path, version, request.filters, request.search, request.columns)
-    query = base.copy()
-    if request.sort:
-        query = query.order_by(*order_sql(request.sort))
+    query = filtered_select(
+        path, version, request.filters, request.search, request.columns, request.sort
+    )
     query = query.limit(limit).offset(request.offset)
     table = engine.query_arrow(query.sql(dialect="duckdb"), key=key)
 
@@ -126,15 +158,15 @@ def rows_page(
             exp.Subquery(this=filtered_select(path, version, request.filters, request.search, None))
         )
         counted = engine.query_arrow_cached(
-            count_query.sql(dialect="duckdb"), versions=[version_token(dataset.id, version.n)]
+            count_query.sql(dialect="duckdb"),
+            versions=[version_token(dataset.id, version.n)],
+            key=key,
         )
         total = int(counted.table.column(0)[0].as_py())
     else:
         total = version.row_count
     if views is not None:
-        full = filtered_select(path, version, request.filters, request.search, None)
-        if request.sort:
-            full = full.order_by(*order_sql(request.sort))
+        full = filtered_select(path, version, request.filters, request.search, None, request.sort)
         views.ensure(dataset, version, request, full)
     return table, _meta(request, limit, total, version)
 

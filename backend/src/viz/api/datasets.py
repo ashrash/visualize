@@ -6,10 +6,12 @@ option change -> POST /datasets/import (202 Job) -> follow /jobs/{id}/events.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
+from anyio.to_thread import run_sync
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import ValidationError
 
 from viz.api.deps import DbDep, EngineDep, SettingsDep, StorageDep
@@ -35,11 +37,12 @@ from viz.contracts import (
     new_id,
 )
 from viz.engine import ipc_bytes, run_cancellable
-from viz.errors import ConflictError, InvalidSpecError
+from viz.errors import ConflictError, InvalidSpecError, NotFoundError
 from viz.ingest import catalog, readers
 from viz.ingest.jobs import ImportParams, RefreshParams, dataset_key
-from viz.ingest.preview import preview, resolve_input, stage_upload
+from viz.ingest.preview import finish_staging, preview, resolve_input
 from viz.ingest.rows import column_values, rows_key, rows_page
+from viz.ingest.upload import UPLOAD_OPENAPI, receive_upload, upload_openapi
 from viz.ingest.views import RowViews
 from viz.jobs import JobRunner
 from viz.storage import LocalStorage
@@ -58,6 +61,8 @@ _ARROW_RESPONSE: dict[int | str, dict[str, Any]] = {
 }
 # Sync import endpoints wait this long for their job.
 _SYNC_IMPORT_TIMEOUT_S = 3600.0
+# Serializes "check for active jobs, then delete" against "queue a refresh".
+_dataset_mutations = threading.Lock()
 
 
 # -- catalog -------------------------------------------------------------------------------
@@ -95,15 +100,18 @@ def delete_dataset(
     views: RowViewsDep,
     force: Annotated[bool, Query()] = False,
 ) -> Response:
-    dataset = catalog.get_dataset(db, dataset_id)
-    if jobs.find_active(dataset_key(dataset_id)) is not None:
-        raise ConflictError(f"{dataset.name} is being imported or refreshed; try again shortly")
-    users = catalog.projects_using(db, dataset_id)
-    if users and not force:
-        raise ConflictError(f"{dataset.name} is used by: {', '.join(users)}")
-    catalog.delete_dataset_row(db, dataset_id)
-    views.drop(dataset_id)
-    storage.delete_dataset(dataset_id)
+    """Delete a dataset: files first (all or nothing; 409 if Windows reports them in use),
+    then the catalog row."""
+    with _dataset_mutations:  # no refresh can be queued between the check and the delete
+        dataset = catalog.get_dataset(db, dataset_id)
+        if jobs.find_active(dataset_key(dataset_id)) is not None:
+            raise ConflictError(f"{dataset.name} is being imported or refreshed; try again shortly")
+        users = catalog.projects_using(db, dataset_id)
+        if users and not force:
+            raise ConflictError(f"{dataset.name} is used by: {', '.join(users)}")
+        views.drop(dataset_id)
+        storage.trash_dataset(dataset_id)
+        catalog.delete_dataset_row(db, dataset_id)
     engine.cache.evict(f"ds:{dataset_id}@")
     return Response(status_code=204)
 
@@ -111,19 +119,17 @@ def delete_dataset(
 # -- staging, preview, import ----------------------------------------------------------------
 
 
-@router.post("/staged", response_model=StagedFile, status_code=201)
-def stage_file(
-    file: Annotated[UploadFile, File()], storage: StorageDep, settings: SettingsDep
-) -> StagedFile:
-    return stage_upload(storage, settings, file.filename or "upload.csv", file.file)
+@router.post("/staged", response_model=StagedFile, status_code=201, openapi_extra=UPLOAD_OPENAPI)
+async def stage_file(request: Request, storage: StorageDep, settings: SettingsDep) -> StagedFile:
+    """Upload a file (multipart field `file`) for preview and import. The body is streamed to
+    disk; files over `max_upload_mb` are refused from `Content-Length` before reading."""
+    upload = await receive_upload(request, storage, settings)
+    return await run_sync(finish_staging, storage, upload)
 
 
 @router.delete("/staged/{staged_id}", status_code=204)
 def delete_staged(staged_id: str, storage: StorageDep) -> Response:
-    try:
-        storage.delete_staged(staged_id)
-    except ValueError as exc:
-        raise InvalidSpecError(str(exc)) from exc
+    storage.delete_staged(staged_id)  # 404 for a malformed id
     return Response(status_code=204)
 
 
@@ -181,17 +187,23 @@ def refresh_dataset(
     storage: StorageDep,
 ) -> Job:
     """Re-read the original file (or a re-upload) as a new version; old versions stay."""
-    dataset = catalog.get_dataset(db, dataset_id)
-    if body.staged_id is None and not dataset.source.original_path:
-        raise ConflictError(
-            "this dataset was uploaded, so there's no original file to re-read; upload it again"
+    with _dataset_mutations:
+        dataset = catalog.get_dataset(db, dataset_id)
+        if body.staged_id is None and not dataset.source.original_path:
+            raise ConflictError(
+                "this dataset was uploaded, so there's no original file to re-read; upload it again"
+            )
+        if body.staged_id is not None and storage.find_staged(body.staged_id) is None:
+            raise NotFoundError("the uploaded file has expired; upload it again")
+        params = RefreshParams(
+            dataset_id=dataset_id, staged_id=body.staged_id, options=body.options
         )
-    if body.staged_id is not None and storage.find_staged(body.staged_id) is None:
-        raise InvalidSpecError("the uploaded file has expired; upload it again")
-    params = RefreshParams(dataset_id=dataset_id, staged_id=body.staged_id, options=body.options)
-    return jobs.submit(
-        JobKind.REFRESH, params, title=f"Refresh {dataset.name}", dedupe_key=dataset_key(dataset_id)
-    )
+        return jobs.submit(
+            JobKind.REFRESH,
+            params,
+            title=f"Refresh {dataset.name}",
+            dedupe_key=dataset_key(dataset_id),
+        )
 
 
 def _wait_for_dataset(jobs: JobRunner, job: Job, db: DbDep) -> Dataset:
@@ -201,35 +213,41 @@ def _wait_for_dataset(jobs: JobRunner, job: Job, db: DbDep) -> Dataset:
     return catalog.get_dataset(db, done.result.dataset_id)
 
 
-@router.post("/upload", response_model=Dataset, status_code=201)
-def upload_dataset(
-    file: Annotated[UploadFile, File()],
+@router.post(
+    "/upload",
+    response_model=Dataset,
+    status_code=201,
+    openapi_extra=upload_openapi(
+        name={"type": "string"},
+        kind={"type": "string", "enum": [k.value for k in SourceKind]},
+        options={"type": "string", "description": "ImportOptions as JSON"},
+    ),
+)
+async def upload_dataset(
+    request: Request,
     db: DbDep,
     jobs: JobsDep,
     storage: StorageDep,
     settings: SettingsDep,
-    name: Annotated[str | None, Form()] = None,
-    kind: Annotated[SourceKind | None, Form()] = None,
-    options: Annotated[str | None, Form(description="ImportOptions as JSON")] = None,
 ) -> Dataset:
-    """One-shot upload + import that waits for the job. The wizard uses staged + import."""
+    """One-shot upload + import that waits for the job. The wizard uses staged + import.
+    Form fields: `file`, optional `name`, `kind`, `options` (ImportOptions as JSON)."""
+    upload = await receive_upload(request, storage, settings)
     try:
-        parsed = ImportOptions.model_validate_json(options) if options else ImportOptions()
-    except ValidationError as exc:
-        raise InvalidSpecError(f"invalid options: {exc.errors()[0]['msg']}") from exc
-    file_name = file.filename or "upload.csv"
-    staged = stage_upload(storage, settings, file_name, file.file)
-    try:
-        job = submit_import(
-            jobs,
-            storage,
-            settings,
-            ImportRequest(staged_id=staged.staged_id, name=name, kind=kind, options=parsed),
+        options = upload.fields.get("options")
+        try:
+            parsed = ImportOptions.model_validate_json(options) if options else ImportOptions()
+            kind = SourceKind(upload.fields["kind"]) if upload.fields.get("kind") else None
+        except (ValidationError, ValueError) as exc:
+            raise InvalidSpecError(f"invalid options or kind: {exc}") from exc
+        body = ImportRequest(
+            staged_id=upload.staged_id, name=upload.fields.get("name"), kind=kind, options=parsed
         )
+        job = await run_sync(submit_import, jobs, storage, settings, body)
     except BaseException:
-        storage.delete_staged(staged.staged_id)
+        storage.delete_staged(upload.staged_id)
         raise
-    return _wait_for_dataset(jobs, job, db)
+    return await run_sync(_wait_for_dataset, jobs, job, db)
 
 
 @router.post("/import-path", response_model=Dataset, status_code=201)

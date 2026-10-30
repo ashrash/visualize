@@ -21,7 +21,7 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from concurrent.futures.process import BrokenProcessPool
 from typing import ParamSpec, TypeVar
 
-from viz.errors import QueryInterruptedError
+from viz.errors import EngineBusyError, QueryInterruptedError
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -35,7 +35,7 @@ def _init_worker(blas_threads: int, modules: tuple[str, ...]) -> None:
         os.environ[name] = str(blas_threads)
     import importlib
 
-    from threadpoolctl import threadpool_limits  # type: ignore[import-untyped]
+    from threadpoolctl import threadpool_limits
 
     for module in modules:
         with contextlib.suppress(ImportError):  # optional module missing
@@ -57,11 +57,17 @@ _main_limits_lock = threading.Lock()
 
 def limit_main_process_blas(threads: int) -> None:
     """Cap BLAS/OpenMP threads in this (API) process once, so concurrent in-process fits in
-    the request threadpool don't oversubscribe the cores."""
+    the request threadpool don't oversubscribe the cores.
+
+    threadpoolctl only reaches libraries already loaded, so the environment variables are
+    also set (unless the user set them) for libraries loaded later, e.g. SciPy's own
+    OpenBLAS on first use. `viz dev`/`viz serve` set them before numpy loads at all."""
     global _main_limits_applied
     with _main_limits_lock:
         if _main_limits_applied:
             return
+        for name in _THREAD_ENV:
+            os.environ.setdefault(name, str(max(1, threads)))
         from threadpoolctl import threadpool_limits
 
         threadpool_limits(limits=max(1, threads))
@@ -100,43 +106,61 @@ class ProcessPool(Executor):
         executor = self._get()
         return [executor.submit(_noop) for _ in range(self.workers)]
 
-    def submit(self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> Future[T]:
+    def _submit(
+        self, fn: Callable[..., T], args: tuple[object, ...], kwargs: dict[str, object]
+    ) -> tuple[Future[T], ProcessPoolExecutor]:
+        executor = self._get()
         try:
-            return self._get().submit(fn, *args, **kwargs)
+            return executor.submit(fn, *args, **kwargs), executor
         except BrokenProcessPool:
-            self.restart()
-            return self._get().submit(fn, *args, **kwargs)
+            self.restart(executor)
+            executor = self._get()
+            return executor.submit(fn, *args, **kwargs), executor
+
+    def submit(self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> Future[T]:
+        return self._submit(fn, args, kwargs)[0]
 
     def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
         with self._lock:
             executor, self._executor = self._executor, None
         if executor is not None:
-            executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+            if wait:
+                executor.shutdown(wait=True, cancel_futures=cancel_futures)
+            else:
+                _terminate(executor)
 
     def run(self, fn: Callable[..., T], *args: object, timeout_s: float | None = None) -> T:
-        """Run `fn(*args)` in a worker and block for the result. Call from a worker thread."""
-        future = self.submit(fn, *args)
+        """Run `fn(*args)` in a worker and block for the result. Call from a worker thread.
+
+        A timeout restarts the pool (a running task can't be cancelled otherwise), which also
+        fails other tasks running at that moment with `EngineBusyError`."""
+        future, executor = self._submit(fn, args, {})
         try:
             return future.result(timeout=timeout_s)
         except FutureTimeout as exc:
-            self.restart()
+            self.restart(executor)
             raise QueryInterruptedError("timed out") from exc
-        except BrokenProcessPool:
-            self.restart()
-            raise
+        except BrokenProcessPool as exc:
+            self.restart(executor)
+            raise EngineBusyError(
+                "a worker process stopped (it may have run out of memory, or the pool was "
+                "restarted); try again"
+            ) from exc
 
-    def restart(self) -> None:
-        """Tear the pool down (killing running tasks); the next call starts a fresh one."""
+    def restart(self, executor: ProcessPoolExecutor | None = None) -> None:
+        """Tear the pool down (killing running tasks); the next call starts a fresh one.
+        With `executor`, only if that executor is still the current one."""
         with self._lock:
-            executor, self._executor = self._executor, None
-        if executor is not None:
-            _terminate(executor)
+            current = self._executor
+            if current is None or (executor is not None and executor is not current):
+                return
+            self._executor = None
+        _terminate(current)
 
     def close(self) -> None:
         with self._lock:
             executor, self._executor = self._executor, None
         if executor is not None:
-            executor.shutdown(wait=False, cancel_futures=True)
             _terminate(executor)
 
 

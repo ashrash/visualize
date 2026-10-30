@@ -130,7 +130,7 @@ def test_non_utf8_is_detected_and_transcoded(
     table, meta = preview(client, stagedId=staged["stagedId"])
     assert table.column("name").to_pylist() == ["José", "Renée"]
     assert meta["detected"]["encoding"] == "cp1252"
-    assert any("isn't UTF-8" in w for w in meta["warnings"])
+    assert any("isn't valid UTF-8" in w for w in meta["warnings"])
     dataset = run_import(stagedId=staged["stagedId"])
     page, _ = rows(client, dataset["id"])
     assert page.column("city").to_pylist() == ["Zürich", "Café"]

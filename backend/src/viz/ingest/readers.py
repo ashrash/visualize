@@ -101,6 +101,8 @@ def locked_file_error(path: Path) -> ConflictError:
 def sniff_kind(path: Path, kind: SourceKind) -> SourceKind:
     """Check the file's leading bytes against its claimed kind. Returns the kind to use."""
     head = read_head(path, 8192)
+    if not head:
+        raise InvalidSpecError(f"{path.name} is empty")
     is_workbook = head.startswith(_ZIP_MAGIC) or head.startswith(_OLE_MAGIC)
     if kind == SourceKind.EXCEL:
         if not is_workbook:
@@ -223,8 +225,17 @@ def csv_kwargs(kind: SourceKind, options: ImportOptions) -> dict[str, Any]:
 def read_csv(
     cur: duckdb.DuckDBPyConnection, path: Path, kind: SourceKind, options: ImportOptions
 ) -> duckdb.DuckDBPyRelation:
-    """`path` must be UTF-8 (the importer transcodes anything else first)."""
-    return cur.read_csv(str(path), **csv_kwargs(kind, options))
+    """`path` must be UTF-8 (the importer transcodes anything else first).
+
+    DuckDB's sniffer rejects files that mix CRLF and LF line endings (common after editing
+    on two OSes); those are retried with `strict_mode=False`, which reads them correctly."""
+    kwargs = csv_kwargs(kind, options)
+    try:
+        return cur.read_csv(str(path), **kwargs)
+    except duckdb.InvalidInputException as exc:
+        if "sniffing" not in str(exc).lower():
+            raise
+        return cur.read_csv(str(path), **kwargs, strict_mode=False)
 
 
 def sniff_csv(cur: duckdb.DuckDBPyConnection, path: Path) -> ImportOptions:
@@ -358,7 +369,8 @@ def read_excel(
             schema_sample_rows=1000,
         )
         table = sheet.to_arrow()
-        total = int(sheet.total_height)
+        # total_height counts data rows after the header, before skip_rows.
+        total = max(0, int(sheet.total_height) - int(options.skip_rows or 0))
     except PermissionError as exc:
         raise locked_file_error(path) from exc
     except fastexcel.FastExcelError as exc:

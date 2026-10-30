@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import BinaryIO
 
 import duckdb
 import pyarrow as pa
@@ -17,54 +16,40 @@ from viz.contracts import (
     JsonFormat,
     SourceKind,
     StagedFile,
-    new_id,
 )
 from viz.engine import Engine
-from viz.errors import InvalidSpecError, NotFoundError, PayloadTooLargeError
+from viz.errors import InvalidSpecError, NotFoundError
 from viz.ingest import readers
 from viz.ingest.importer import (
+    FALLBACK_ENCODING,
+    NotUtf8Error,
+    not_utf8_warning,
     open_relation,
     profile_relation,
-    read_error_message,
+    read_error,
     resolve_text_encoding,
 )
+from viz.ingest.upload import Upload
 from viz.storage import LocalStorage
 
-_COPY_CHUNK = 1024 * 1024
 # How much of a non-UTF-8 file is transcoded for a preview.
 _PREVIEW_TRANSCODE_BYTES = 8 * 1024 * 1024
 _ESTIMATE_SAMPLE_BYTES = 1024 * 1024
 
 
-def stage_upload(
-    storage: LocalStorage, settings: Settings, file_name: str, stream: BinaryIO
-) -> StagedFile:
-    """Save an upload under sources/_staged/<id>/ with a size limit and a type sniff."""
-    kind = readers.detect_kind(file_name)
-    staged_id = new_id()
-    target = storage.staged_path(staged_id, file_name)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    limit = settings.max_upload_mb * 1024 * 1024
-    written = 0
+def finish_staging(storage: LocalStorage, upload: Upload) -> StagedFile:
+    """Sniff a streamed upload's type and list Excel sheets; deletes it if it's unusable."""
     try:
-        with target.open("wb") as out:
-            while chunk := stream.read(_COPY_CHUNK):
-                written += len(chunk)
-                if written > limit:
-                    raise PayloadTooLargeError(
-                        f"file is larger than {settings.max_upload_mb} MB; import it from its path"
-                    )
-                out.write(chunk)
-        kind = readers.sniff_kind(target, kind)
-        sheets = readers.excel_sheets(target) if kind == SourceKind.EXCEL else []
+        kind = readers.sniff_kind(upload.path, readers.detect_kind(upload.file_name))
+        sheets = readers.excel_sheets(upload.path) if kind == SourceKind.EXCEL else []
     except BaseException:
-        storage.delete_staged(staged_id)
+        storage.delete_staged(upload.staged_id)
         raise
     return StagedFile(
-        staged_id=staged_id,
-        file_name=target.name,
+        staged_id=upload.staged_id,
+        file_name=upload.file_name,
         kind=kind,
-        size_bytes=written,
+        size_bytes=upload.size,
         sheets=sheets,
     )
 
@@ -102,6 +87,23 @@ def _estimate_rows(path: Path, shown: int, header: bool) -> int | None:
 def preview(
     engine: Engine, storage: LocalStorage, settings: Settings, request: ImportPreviewRequest
 ) -> tuple[pa.Table, ImportPreviewMeta]:
+    """First rows with the given options. A file whose head is UTF-8 but that has a bad byte
+    further in is retried as cp1252 (with a warning) unless the user set an encoding."""
+    try:
+        return _preview(engine, storage, settings, request, None)
+    except NotUtf8Error:
+        if request.options.encoding:
+            raise
+        return _preview(engine, storage, settings, request, FALLBACK_ENCODING)
+
+
+def _preview(
+    engine: Engine,
+    storage: LocalStorage,
+    settings: Settings,
+    request: ImportPreviewRequest,
+    encoding_override: str | None,
+) -> tuple[pa.Table, ImportPreviewMeta]:
     source = resolve_input(storage, settings, request.staged_id, request.path)
     kind = readers.sniff_kind(source, request.kind or readers.detect_kind(source.name))
     options = request.options
@@ -112,43 +114,44 @@ def preview(
     temp: Path | None = None
     try:
         read_path = source
-        encoding = resolve_text_encoding(source, kind, options)
+        encoding = encoding_override or resolve_text_encoding(source, kind, options)
         if encoding is not None:
             temp = storage.temp_dir / f"preview-{uuid.uuid4().hex}{source.suffix}"
             readers.transcode(source, temp, encoding, max_bytes=_PREVIEW_TRANSCODE_BYTES)
             read_path = temp
             if not options.encoding:
-                warnings.append(f"The file isn't UTF-8; reading it as {encoding}.")
+                warnings.append(not_utf8_warning(encoding))
 
+        excel_table: pa.Table | None = None
+        if kind == SourceKind.EXCEL:
+            # Parse the sheet before taking an interactive query slot.
+            excel_table, sheet, estimated = readers.read_excel(source, options, n_rows=limit)
+            sheets = readers.excel_sheets(source)
         with engine.cursor() as cur:
             detected = _detect(cur, read_path, kind, options, encoding)
-            if kind == SourceKind.EXCEL:
-                table, sheet, total = readers.read_excel(source, options, n_rows=limit)
-                sheets = readers.excel_sheets(source)
+            if excel_table is not None:
                 detected = detected.model_copy(update={"sheet": sheet})
-                estimated = total
-                relation = readers.finalize(cur.from_arrow(table), options, cast_types=True)
+                relation = readers.finalize(cur.from_arrow(excel_table), options, cast_types=True)
             else:
                 relation = open_relation(cur, read_path, kind, options)
             try:
                 relation = relation.limit(limit)
                 table = relation.to_arrow_table()
                 columns, shown = profile_relation(cur.from_arrow(table))
-            except duckdb.InterruptException:
+                nested = list_paths(relation) if kind == SourceKind.JSON else []
+            except (duckdb.InterruptException, duckdb.FatalException):
                 raise
             except duckdb.Error as exc:
-                raise InvalidSpecError(read_error_message(exc)) from exc
+                raise read_error(exc, read_path) from exc
         if kind != SourceKind.EXCEL:
             estimated = _estimate_rows(
                 source, shown, bool(detected.header) if kind != SourceKind.JSON else False
             )
-            if kind == SourceKind.JSON and shown == 1 and not options.json_path:
-                nested = [c.name for c in columns if c.type.endswith("[]")]
-                if nested:
-                    warnings.append(
-                        "This looks like a single JSON object. To import a list inside it, "
-                        f"set the JSON path to one of: {', '.join(nested)}."
-                    )
+            if kind == SourceKind.JSON and shown == 1 and not options.json_path and nested:
+                warnings.append(
+                    "This looks like a single JSON object. To import a list inside it, "
+                    f"set the JSON path to one of: {', '.join(nested)}."
+                )
     finally:
         if temp is not None:
             temp.unlink(missing_ok=True)
@@ -163,6 +166,27 @@ def preview(
         warnings=warnings,
     )
     return table, meta
+
+
+def list_paths(relation: duckdb.DuckDBPyRelation, limit: int = 8) -> list[str]:
+    """Dotted paths to lists of records inside the relation's (struct) columns, for the
+    "set the JSON path" hint, e.g. ["data.items", "rows"]."""
+    found: list[str] = []
+
+    def walk(dtype: duckdb.sqltypes.DuckDBPyType, path: str) -> None:
+        if len(found) >= limit:
+            return
+        kind = dtype.id
+        if kind == "list":
+            found.append(path)
+        elif kind == "struct":
+            for name, child in dtype.children:
+                if isinstance(child, duckdb.sqltypes.DuckDBPyType):
+                    walk(child, f"{path}.{name}")
+
+    for name, dtype in zip(relation.columns, relation.types, strict=True):
+        walk(dtype, name)
+    return found
 
 
 def _detect(
