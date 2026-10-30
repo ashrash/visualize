@@ -266,6 +266,75 @@ describe("jobs store", () => {
     });
   });
 
+  describe("cleanup details", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.mocked(deleteStaged).mockReset().mockResolvedValue(undefined);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("retries a 409 from DELETE staged once after a few seconds, then gives up quietly", async () => {
+      const { ApiError } = await import("../api/client");
+      vi.mocked(deleteStaged).mockRejectedValue(new ApiError("busy", 409));
+      beginStagedCleanup("stg-409");
+      closeStagedWizard("stg-409");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(deleteStaged).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3100);
+      expect(deleteStaged).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(deleteStaged).toHaveBeenCalledTimes(2); // no endless retries
+    });
+
+    it("does not retry a 404", async () => {
+      const { ApiError } = await import("../api/client");
+      vi.mocked(deleteStaged).mockRejectedValue(new ApiError("gone", 404));
+      beginStagedCleanup("stg-404");
+      closeStagedWizard("stg-404");
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(deleteStaged).toHaveBeenCalledTimes(1);
+    });
+
+    it("closing waits for a start that is still in flight, then registers its job", async () => {
+      let respond: (j: Job) => void = () => undefined;
+      const pending = new Promise<Job>((resolve) => {
+        respond = resolve;
+      });
+      beginStagedCleanup("stg-wait");
+      const j = job();
+      void startLocalJob(
+        () => pending,
+        (started) => addStagedJob("stg-wait", started),
+        "stg-wait",
+      );
+      closeStagedWizard("stg-wait");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(deleteStaged).not.toHaveBeenCalled();
+      respond(j);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(deleteStaged).not.toHaveBeenCalled(); // the job is now the one holding it
+      useJobsStore.getState().track(j);
+      followers.at(-1)?.handlers.onJob({ ...j, status: "cancelled", seq: 3 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(deleteStaged).toHaveBeenCalledWith("stg-wait");
+    });
+
+    it("forgets the persisted job entry once the attach decision is made", async () => {
+      const j = job();
+      markLocalJob(j.id);
+      expect(Object.keys(JSON.parse(sessionStorage.getItem("viz.localJobs") ?? "{}"))).toContain(
+        j.id,
+      );
+      useJobsStore.getState().track(j);
+      followers.at(-1)?.handlers.onJob(done(j.id, "d-forget"));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(useProjectStore.getState().project?.datasetIds).toEqual(["d-forget"]);
+      expect(
+        Object.keys(JSON.parse(sessionStorage.getItem("viz.localJobs") ?? "{}")),
+      ).not.toContain(j.id);
+    });
+  });
+
   describe("a lost stream", () => {
     beforeEach(() => {
       vi.useFakeTimers();
@@ -304,6 +373,30 @@ describe("jobs store", () => {
       expect(onSettled).toHaveBeenCalledWith(
         expect.objectContaining({ status: "failed", error: "Lost connection to the job" }),
       );
+    });
+
+    it("shares one poll per job across followers", async () => {
+      const j = job();
+      const a = vi.fn();
+      const b = vi.fn();
+      useJobsStore.getState().track(j, a);
+      useJobsStore.getState().trackId(j.id, b);
+      for (const f of followers) f.handlers.onError?.("Lost connection to the job");
+      vi.mocked(getJob).mockResolvedValue(done(j.id, "shared-ds"));
+      await vi.advanceTimersByTimeAsync(2100);
+      expect(getJob).toHaveBeenCalledTimes(1); // not once per follower
+      expect(a).toHaveBeenCalledWith(expect.objectContaining({ status: "succeeded" }));
+      expect(b).toHaveBeenCalledWith(expect.objectContaining({ status: "succeeded" }));
+    });
+
+    it("resetLocalJobs clears running poll timers", async () => {
+      const j = job();
+      useJobsStore.getState().track(j);
+      followers.at(-1)?.handlers.onError?.("Lost connection to the job");
+      resetLocalJobs();
+      vi.mocked(getJob).mockResolvedValue(done(j.id, "x"));
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(getJob).not.toHaveBeenCalled();
     });
 
     it("stops polling when the caller stops", async () => {

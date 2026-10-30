@@ -260,7 +260,7 @@ export function ImportWizardDialog({
   const storeJobs = useJobsStore((s) => s.jobs);
   const stagedRef = useRef<string | null>(null);
   const finished = useRef(false);
-  const startCtl = useRef<AbortController | null>(null);
+  const closedRef = useRef(false);
   // However the wizard goes away (close button, Escape, parent unmount), release its upload.
   useEffect(
     () => () => {
@@ -329,7 +329,9 @@ export function ImportWizardDialog({
 
   const close = (next: boolean) => {
     if (!next) {
-      startCtl.current?.abort(); // abandon import requests that have not returned a job yet
+      // Import requests already sent are NOT aborted: the server may accept them, and the user
+      // did press Import. They finish in the background (see `start`).
+      closedRef.current = true;
       // The jobs store deletes the staged upload once nothing is reading it any more: after
       // the last import settles, or right now if none was started.
       if (stagedRef.current) closeStagedWizard(stagedRef.current);
@@ -344,18 +346,20 @@ export function ImportWizardDialog({
   const start = async () => {
     if (state.phase !== "configure" || starting.current) return; // ignore double clicks
     starting.current = true;
-    startCtl.current = new AbortController();
-    const { signal } = startCtl.current;
+    // Captured now: the wizard (and its refs) may be gone before the responses arrive.
+    const stagedId = stagedRef.current;
+    const importName = state.name || "the file";
     try {
       // One staged upload serves every sheet: the imports run in parallel from the same id.
       const results = await Promise.allSettled(
         buildImportRequests(state).map(async ({ sheet, request }) => {
           // Recorded as ours, and registered with the staged upload, the moment the id is known.
           const job = await startLocalJob(
-            () => startImport(request, signal),
+            () => startImport(request),
             (started) => {
-              if (stagedRef.current) addStagedJob(stagedRef.current, started);
+              if (stagedId) addStagedJob(stagedId, started);
             },
+            stagedId ?? undefined,
           );
           return { sheet, job };
         }),
@@ -364,6 +368,16 @@ export function ImportWizardDialog({
       const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
       // Follow every job that did start, even if a sibling request failed.
       for (const { job } of started) useJobsStore.getState().track(job);
+      if (closedRef.current) {
+        // The wizard was closed while the request was in flight. The import is running anyway,
+        // so say so instead of letting a dataset appear out of nowhere.
+        if (started.length > 0) {
+          toast(`Import of ${importName} continues in the background`, {
+            description: "Progress is shown in the header.",
+          });
+        }
+        return;
+      }
       if (started.length === 0) {
         dispatch({ type: "importFailedToStart", message: describeImportError(failures[0]) });
         return;

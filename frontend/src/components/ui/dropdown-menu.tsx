@@ -3,6 +3,15 @@ import { DropdownMenu as MenuPrimitive } from "radix-ui";
 import type { ComponentProps } from "react";
 import { cn } from "./cn";
 
+/**
+ * Non-modal on purpose: a modal Radix menu marks the rest of the page aria-hidden while its
+ * controls stay focusable, which axe reports as aria-hidden-focus. Outside clicks, Escape and
+ * keyboard navigation inside the menu work the same.
+ */
+export function DropdownMenu(props: ComponentProps<typeof MenuPrimitive.Root>) {
+  return <MenuPrimitive.Root modal={false} {...props} />;
+}
+
 export function DropdownMenuCheckboxItem({
   className,
   children,
@@ -26,7 +35,6 @@ export function DropdownMenuCheckboxItem({
   );
 }
 
-export const DropdownMenu = MenuPrimitive.Root;
 export const DropdownMenuTrigger = MenuPrimitive.Trigger;
 
 export function DropdownMenuContent({

@@ -75,22 +75,29 @@ export function SaveIndicator() {
   const className = `flex items-center gap-1 text-sm ${tone}`;
   return (
     <>
-      {status === "conflict" ? (
-        <button
-          type="button"
-          data-status={status}
-          className={`${className} underline`}
-          title="Show options"
-          onClick={() => setConflictOpen(true)}
-        >
-          {body}
-        </button>
-      ) : (
-        <span data-status={status} title={message ?? undefined} className={className}>
-          {body}
-        </span>
-      )}
-      {/* Only failures are announced; routine saves stay silent. */}
+      {/* A polite status region with a stable name; [data-status] stays for tests. Failures are
+          announced by the alert below instead, so the region goes quiet for them. */}
+      <span
+        role="status"
+        aria-label="Save status"
+        aria-live={status === "error" || status === "conflict" ? "off" : "polite"}
+        data-status={status}
+        title={message ?? undefined}
+        className={className}
+      >
+        {status === "conflict" ? (
+          <button
+            type="button"
+            className="flex items-center gap-1 underline"
+            title="Show options"
+            onClick={() => setConflictOpen(true)}
+          >
+            {body}
+          </button>
+        ) : (
+          body
+        )}
+      </span>
       <span role="alert" className="sr-only">
         {status === "error" ? `Save failed. ${message ?? ""}` : null}
         {status === "conflict" ? "This project changed elsewhere and was not saved." : null}
@@ -146,8 +153,10 @@ export function ProjectMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="max-w-64" aria-label="Project menu">
+          <Button variant="ghost" className="max-w-64">
+            {/* The visible text comes first in the accessible name: "<name>, project menu". */}
             <span className="truncate font-medium">{project?.name ?? "Loading…"}</span>
+            <span className="sr-only">, project menu</span>
             <ChevronDown size={14} aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>

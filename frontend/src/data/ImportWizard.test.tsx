@@ -32,6 +32,7 @@ vi.mock("../app/queryClient", () => ({
 
 import { previewImport } from "../api/datasetRows";
 import { deleteStaged, stageFile, startImport } from "../api/datasets";
+import { useToastStore } from "../components/ui/toast";
 import { resetLocalJobs, useJobsStore } from "../state/jobs";
 import { useProjectStore } from "../state/projectStore";
 import { ImportWizardDialog } from "./ImportWizard";
@@ -232,5 +233,110 @@ describe("import wizard: back to options after a cancel or failure", () => {
 
     emit({ ...running, status: "cancelled", seq: 4 });
     await waitFor(() => expect(deleteStaged).toHaveBeenCalledWith("stg-1"));
+  });
+});
+
+describe("closing the wizard while requests are in flight (race409 scenarios)", () => {
+  const closeWizard = () =>
+    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0] as HTMLElement);
+  const deferred = <T,>() => {
+    let resolve: (value: T) => void = () => undefined;
+    let reject: (reason: unknown) => void = () => undefined;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+
+  it("A: close during the first preview aborts it and frees the upload", async () => {
+    let previewSignal: AbortSignal | undefined;
+    vi.mocked(previewImport).mockImplementation(((_request: unknown, signal?: AbortSignal) => {
+      previewSignal = signal;
+      return new Promise(() => undefined);
+    }) as never);
+    setup();
+    const input = document.querySelector<HTMLInputElement>("input[type=file]");
+    if (!input) throw new Error("no file input");
+    fireEvent.change(input, { target: { files: [new File(["a"], "sales.csv")] } });
+    await screen.findByLabelText("Dataset name");
+    await waitFor(() => expect(previewSignal).toBeTruthy());
+    closeWizard();
+    await waitFor(() => expect(deleteStaged).toHaveBeenCalledWith("stg-1"));
+    expect(previewSignal?.aborted).toBe(true);
+  });
+
+  it("B: close while POST /import is in flight lets the import finish, attach, and then frees the upload", async () => {
+    const reply = deferred<Job>();
+    vi.mocked(startImport).mockReturnValueOnce(reply.promise);
+    setup();
+    await chooseFileAndImport();
+    await waitFor(() => expect(startImport).toHaveBeenCalled());
+    closeWizard();
+    await new Promise((r) => setTimeout(r, 20));
+    // The request was not abandoned, and the upload is not deleted under it.
+    expect(vi.mocked(startImport).mock.calls[0]?.[1]).toBeUndefined();
+    expect(deleteStaged).not.toHaveBeenCalled();
+
+    const running = job();
+    reply.resolve(running);
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts.map((x) => x.title)).toContain(
+        "Import of sales continues in the background",
+      ),
+    );
+    expect(deleteStaged).not.toHaveBeenCalled(); // the job is running now
+    emit({
+      ...running,
+      status: "succeeded",
+      seq: 5,
+      result: { datasetId: "late-ds", version: 1, pipelineId: null, export: null, warnings: [] },
+    });
+    await waitFor(() => expect(deleteStaged).toHaveBeenCalledWith("stg-1"));
+    // It was started here, so it joins the project even though the dialog is gone.
+    expect(useProjectStore.getState().project?.datasetIds).toEqual(["late-ds"]);
+  });
+
+  it("B2: a rejected POST after close just frees the upload", async () => {
+    const reply = deferred<Job>();
+    vi.mocked(startImport).mockReturnValueOnce(reply.promise);
+    setup();
+    await chooseFileAndImport();
+    await waitFor(() => expect(startImport).toHaveBeenCalled());
+    closeWizard();
+    reply.reject(new Error("500"));
+    await waitFor(() => expect(deleteStaged).toHaveBeenCalledWith("stg-1"));
+  });
+
+  it("C: cancel then close frees the upload once the job is cancelled", async () => {
+    const running = job();
+    vi.mocked(startImport).mockResolvedValueOnce(running);
+    setup();
+    await chooseFileAndImport();
+    await screen.findByLabelText("Import progress");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    emit({ ...running, status: "cancelled", seq: 4 });
+    await screen.findByText("Import of sales was cancelled");
+    closeWizard();
+    await waitFor(() => expect(deleteStaged).toHaveBeenCalledWith("stg-1"));
+  });
+
+  it("D: change an option (new preview in flight) then close aborts it and frees the upload", async () => {
+    setup();
+    const input = document.querySelector<HTMLInputElement>("input[type=file]");
+    if (!input) throw new Error("no file input");
+    fireEvent.change(input, { target: { files: [new File(["a"], "sales.csv")] } });
+    await screen.findByLabelText("Dataset name");
+    await waitFor(() => expect(previewImport).toHaveBeenCalledTimes(1));
+    let secondSignal: AbortSignal | undefined;
+    vi.mocked(previewImport).mockImplementation(((_request: unknown, signal?: AbortSignal) => {
+      secondSignal = signal;
+      return new Promise(() => undefined);
+    }) as never);
+    fireEvent.change(screen.getByLabelText("Delimiter"), { target: { value: ";" } });
+    await waitFor(() => expect(secondSignal).toBeTruthy());
+    closeWizard();
+    await waitFor(() => expect(deleteStaged).toHaveBeenCalledWith("stg-1"));
+    expect(secondSignal?.aborted).toBe(true);
   });
 });
