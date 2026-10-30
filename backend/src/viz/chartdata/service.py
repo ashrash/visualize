@@ -1,64 +1,71 @@
-"""Chart data for aggregate plot types (Phase 0: the basic family).
+"""Chart-data dispatcher: ChartDataRequest -> reduced Arrow table (or StatResult) + meta.
 
-Binning, downsampling, sampling, pipelines as sources and caching arrive in Wave 1 (transform).
+1. Resolve the source (dataset or pipeline) and its filters to a Relation.
+2. Look up the response cache (data version + everything that changes data).
+3. Plot types with a server module (`viz.plots.get_plot`) run their stat via
+   `run_plot_stat`; the basic family takes the generic aggregate path (basic.py).
+4. Enforce the mark cap, normalize Arrow types for the browser, fill meta, cache.
 """
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 
 import pyarrow as pa
 from sqlalchemy.orm import Session
-from sqlglot import exp
 
-from viz.chartdata.sql import dimension_sql, measure_sql, parquet_source, where_sql
+from viz.chartdata.arrow import browser_table
+from viz.chartdata.basic import AGGREGATE_PLOTS, ORDERED, aggregate_chart, epoch_ms_domain
+from viz.chartdata.cache import CachedChart, cache_for, chart_key
+from viz.chartdata.context import ChartContext, ChartOutput
+from viz.chartdata.reduce import numeric_x, x_range_predicate
+from viz.chartdata.sql import alias, col, fn
 from viz.contracts import (
-    AggFn,
     ChartDataMeta,
     ChartDataRequest,
-    ColumnSemantic,
+    ChartSpec,
     Encoding,
-    PlotType,
     Reduction,
+    StatResult,
 )
 from viz.engine import Engine
 from viz.errors import InvalidSpecError, NotImplementedYetError
-from viz.ingest.catalog import get_dataset
+from viz.plots import get_plot, run_plot_stat
+from viz.plots.base import TableOutput
+from viz.stats.relation import Relation
 from viz.storage import LocalStorage
+from viz.transform import runtime
+from viz.transform.source import resolve_field, resolve_source
 
-AGGREGATE_PLOTS = frozenset(
-    {
-        PlotType.BAR,
-        PlotType.HORIZONTAL_BAR,
-        PlotType.GROUPED_BAR,
-        PlotType.STACKED_BAR,
-        PlotType.LINE,
-        PlotType.AREA,
-        PlotType.PIE,
-        PlotType.DONUT,
-    }
-)
-
-_AGG_LABELS = {
-    AggFn.COUNT: "Count",
-    AggFn.COUNT_DISTINCT: "Distinct count",
-    AggFn.SUM: "Sum",
-    AggFn.MEAN: "Mean",
-    AggFn.MEDIAN: "Median",
-    AggFn.MIN: "Min",
-    AggFn.MAX: "Max",
-    AggFn.STD: "Std dev",
-    AggFn.VAR: "Variance",
-}
+# Payloads above this get a warning (CLAUDE.md §6 budget: <= 5 MB per chart).
+PAYLOAD_WARN_BYTES = 5 * 2**20
 
 
-def _measure_label(encoding: Encoding) -> str:
-    if encoding.label:
-        return encoding.label
-    agg = encoding.agg or (AggFn.SUM if encoding.field else AggFn.COUNT)
-    if encoding.field is None:
-        return "Count"
-    return f"{_AGG_LABELS[agg]} of {encoding.field}"
+@dataclass(frozen=True)
+class ChartResult:
+    """Exactly one of `table` / `stat` is set."""
+
+    table: pa.Table | None
+    stat: StatResult | None
+    meta: ChartDataMeta
+
+
+def slot_key(request: ChartDataRequest) -> str:
+    return f"chart:{request.slot or request.spec.id}"
+
+
+def _resolve_encodings(spec: ChartSpec, relation: Relation) -> ChartSpec:
+    """Encodings with field names spelled as in the source (DuckDB is case-insensitive)."""
+    encodings: dict[str, list[Encoding]] = {}
+    for channel, items in spec.encodings.items():
+        encodings[channel] = [
+            e.model_copy(update={"field": resolve_field(relation.columns, e.field)})
+            if e.field is not None
+            else e
+            for e in items
+        ]
+    return spec.model_copy(update={"encodings": encodings})
 
 
 def chart_data(
@@ -68,85 +75,165 @@ def chart_data(
     request: ChartDataRequest,
     *,
     mark_cap: int,
-) -> tuple[pa.Table, ChartDataMeta]:
-    spec = request.spec
-    if spec.plot_type not in AGGREGATE_PLOTS:
-        raise NotImplementedYetError(f"plot type {spec.plot_type.value!r} is not implemented yet")
-    if spec.source.kind != "dataset":
-        raise NotImplementedYetError("pipelines as chart sources are not implemented yet")
+) -> ChartResult:
+    """Chart data for `request`.
 
-    version = get_dataset(db, spec.source.id).current()
-    known = {c.name: c for c in version.columns}
-
-    x_list = spec.encodings.get("x", [])
-    y_list = spec.encodings.get("y", [])
-    color_list = spec.encodings.get("color", [])
-    if len(x_list) != 1:
-        raise InvalidSpecError("this chart needs exactly one x encoding")
-    if not y_list:
-        y_list = [Encoding(agg=AggFn.COUNT)]
-    x = x_list[0]
-    color = color_list[0] if color_list else None
-
-    filters = [*spec.filters, *request.filters]
-    referenced = {e.field for e in (x, *y_list, *color_list) if e.field}
-    referenced |= {p.field for p in filters}
-    unknown = sorted(referenced - known.keys())
-    if unknown:
-        raise InvalidSpecError(f"unknown field(s): {', '.join(unknown)}")
-
-    selects: list[exp.Expr] = [exp.alias_(dimension_sql(x), "x", quoted=True)]
-    group_by: list[exp.Expr] = [exp.column("x", quoted=True)]
-    fields = {"x": x.label or x.field or "x"}
-    if color is not None:
-        selects.append(exp.alias_(dimension_sql(color), "color", quoted=True))
-        group_by.append(exp.column("color", quoted=True))
-        fields["color"] = color.label or color.field or "color"
-    for i, y in enumerate(y_list):
-        selects.append(exp.alias_(measure_sql(y), f"y{i}", quoted=True))
-        fields[f"y{i}"] = _measure_label(y)
-
-    query = exp.select(*selects).from_(parquet_source(storage.resolve(version.parquet_path)))
-    condition = where_sql(filters)
-    if condition is not None:
-        query = query.where(condition)
-    query = query.group_by(*group_by)
-
-    x_column = known[x.field] if x.field else None
-    x_is_ordered = x_column is not None and x_column.semantic in (
-        ColumnSemantic.TEMPORAL,
-        ColumnSemantic.QUANTITATIVE,
-    )
-    if x.sort == "desc":
-        query = query.order_by(exp.Ordered(this=exp.column("x", quoted=True), desc=True))
-    elif x.sort == "asc" or x_is_ordered:
-        query = query.order_by(exp.column("x", quoted=True))
-    else:
-        query = query.order_by(exp.Ordered(this=exp.column("y0", quoted=True), desc=True))
-
-    limit = max(1, mark_cap // len(y_list))
-    query = query.limit(limit + 1)
-
+    Call it inside a request scope (the endpoint uses `viz.engine.run_cancellable`): every
+    query, including plot modules' own queries through the Relation, then runs under the slot
+    key with the request's arrival ticket as its generation. A newer request in the same slot
+    supersedes this one, and a client disconnect cancels only this request's queries.
+    """
     started = time.perf_counter()
-    table = engine.query_arrow(query.sql(dialect="duckdb"), key=f"chart:{spec.id}")
-    elapsed_ms = (time.perf_counter() - started) * 1000
-
-    warnings: list[str] = []
-    if table.num_rows > limit:
-        table = table.slice(0, limit)
-        warnings.append(f"Showing the first {limit:,} groups; narrow the data with a filter.")
-
-    meta = ChartDataMeta(
-        rows_scanned=version.row_count,
-        rows_returned=table.num_rows,
-        reduction=Reduction.AGGREGATED,
-        method="group_by",
-        fields=fields,
-        cached=False,
-        ms=round(elapsed_ms, 2),
-        warnings=warnings,
-        rows_matched=None,
-        params={},
-        x_domain=None,
+    spec = request.spec
+    key = slot_key(request)
+    relation = resolve_source(
+        engine,
+        db,
+        storage,
+        spec.source,
+        request.pipelines,
+        [*spec.filters, *request.filters],
+        query_key=key,
     )
-    return table, meta
+    # TODO(transform): enqueue pending materializations of a pipeline source as jobs too
+    # (needs the job runner here); today POST /api/pipelines/materialize starts them.
+    cache = cache_for(engine)
+    cache_key = chart_key(relation.version_key, request, mark_cap)
+    hit = cache.get(cache_key)
+    if hit is not None:
+        meta = hit.meta.model_copy(
+            update={"cached": True, "ms": round((time.perf_counter() - started) * 1000, 2)}
+        )
+        return ChartResult(hit.table, hit.stat, meta)
+
+    spec = _resolve_encodings(spec, relation)
+    ctx = ChartContext(
+        spec=spec, relation=relation, viewport=request.viewport, mark_cap=mark_cap, key=key
+    )
+    definition = get_plot(spec.plot_type)
+    if definition is None:
+        if spec.plot_type not in AGGREGATE_PLOTS:
+            raise NotImplementedYetError(
+                f"plot type {spec.plot_type.value!r} is not implemented yet"
+            )
+        result = _finish_table(ctx, aggregate_chart(ctx), started)
+    else:
+        result = _run_plot_module(ctx, started)
+    cache.put(cache_key, CachedChart(result.table, result.stat, result.meta))
+    return result
+
+
+def _run_plot_module(ctx: ChartContext, started: float) -> ChartResult:
+    relation = ctx.relation
+    x_domain: tuple[float | str, float | str] | None = None
+    x_encodings = ctx.encodings("x")
+    x_field = x_encodings[0].field if x_encodings else None
+    if ctx.viewport.x_range is not None and x_field is not None:
+        column = ctx.column(x_field)
+        if column.semantic in ORDERED:
+            position = numeric_x(col(column.name), column.semantic)
+            domain = ctx.query(
+                relation.select(
+                    alias(fn("min", position), "lo"), alias(fn("max", position.copy()), "hi")
+                )
+            ).to_pylist()[0]
+            if domain["lo"] is not None:
+                x_domain = (float(domain["lo"]), float(domain["hi"]))
+            relation = relation.narrow(
+                x_range_predicate(
+                    col(column.name),
+                    column.semantic,
+                    ctx.viewport.x_range,
+                    duck_type=column.type,
+                )
+            )
+    ctx.check_current()
+    try:
+        output = run_plot_stat(
+            ctx.spec,
+            relation,
+            viewport=ctx.viewport,
+            mark_cap=ctx.mark_cap,
+            # data-core's process pool, for pure-Python work (bootstrap, force layouts, ...).
+            executor=ctx.relation.engine.pool,
+        )
+    except runtime.USER_ERRORS as exc:
+        raise InvalidSpecError(runtime.clean_error(exc)) from exc
+    if isinstance(output, StatResult):
+        meta = ChartDataMeta(
+            rows_scanned=relation.row_count if relation.row_count is not None else output.n,
+            rows_returned=output.n,
+            reduction=Reduction.SAMPLED if output.sampled else Reduction.AGGREGATED,
+            method=output.method,
+            fields={},
+            cached=False,
+            ms=round((time.perf_counter() - started) * 1000, 2),
+            warnings=list(output.warnings),
+            rows_matched=output.n_total if output.n_total is not None else output.n,
+            params={},
+            x_domain=x_domain,
+        )
+        return ChartResult(None, output, meta)
+    assert isinstance(output, TableOutput)
+    rows_matched = output.rows_matched
+    if rows_matched is None:
+        ctx.check_current()
+        try:
+            rows_matched = relation.count()
+        except runtime.USER_ERRORS as exc:  # e.g. a calc step's text-length guard
+            raise InvalidSpecError(runtime.clean_error(exc)) from exc
+    chart = ChartOutput(
+        table=output.table,
+        reduction=output.reduction,
+        method=output.method,
+        fields=dict(output.fields),
+        params=dict(output.params),
+        warnings=list(output.warnings),
+        rows_matched=rows_matched,
+        x_domain=x_domain,
+    )
+    if (
+        chart.x_domain is None
+        and "x" in output.table.column_names
+        and x_field is not None
+        and ctx.column(x_field).semantic in ORDERED
+    ):
+        chart.x_domain = epoch_ms_domain(output.table.column("x"))
+    return _finish_table(ctx, chart, started, rows_scanned=output.rows_scanned)
+
+
+def _finish_table(
+    ctx: ChartContext, chart: ChartOutput, started: float, *, rows_scanned: int | None = None
+) -> ChartResult:
+    table = chart.table
+    warnings = list(chart.warnings)
+    measure_columns = [n for n in table.column_names if n.startswith("y") and n[1:].isdigit()]
+    per_row = max(1, len(measure_columns))
+    limit = max(1, ctx.mark_cap // per_row)
+    if table.num_rows > limit:
+        # A plot module returned more marks than the cap allows; never ship them.
+        table = table.slice(0, limit)
+        warnings.append(f"Showing the first {limit:,} rows of a larger result.")
+        chart.params["truncatedGroups"] = True
+    table = browser_table(table)
+    if table.nbytes > PAYLOAD_WARN_BYTES:
+        warnings.append(f"This chart's data is {table.nbytes / 2**20:.1f} MB; consider a filter.")
+    scanned = rows_scanned
+    if scanned is None:
+        scanned = ctx.relation.row_count
+    if scanned is None:
+        scanned = chart.rows_matched or 0
+    meta = ChartDataMeta(
+        rows_scanned=scanned,
+        rows_returned=table.num_rows,
+        reduction=chart.reduction,
+        method=chart.method,
+        fields=chart.fields,
+        cached=False,
+        ms=round((time.perf_counter() - started) * 1000, 2),
+        warnings=warnings,
+        rows_matched=chart.rows_matched,
+        params=chart.params,
+        x_domain=chart.x_domain,
+    )
+    return ChartResult(table, None, meta)
