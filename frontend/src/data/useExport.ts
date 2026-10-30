@@ -19,8 +19,9 @@ export function handleExportSettled(job: Job): void {
   if (job.status === "succeeded" && file) {
     download(file.downloadUrl, file.fileName);
     const warnings = job.result?.warnings ?? [];
+    // A warning (e.g. the Excel row limit) must not vanish after five seconds.
     toast(`Exported ${file.fileName}`, {
-      variant: "success",
+      variant: warnings.length > 0 ? "warning" : "success",
       description:
         warnings.length > 0 ? warnings.join(" ") : `${file.rowCount.toLocaleString()} rows`,
     });

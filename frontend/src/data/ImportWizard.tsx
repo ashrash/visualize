@@ -3,7 +3,7 @@ import type { ColumnarResult } from "../api/arrow";
 import { previewImport } from "../api/datasetRows";
 import { cancelJob, deleteStaged, getDataset, stageFile, startImport } from "../api/datasets";
 import { isTerminal } from "../api/jobs";
-import type { Dataset, ImportPreviewMeta } from "../api/types";
+import type { Dataset, ImportPreviewMeta, Job } from "../api/types";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import { Field, Input } from "../components/ui/input";
@@ -104,6 +104,7 @@ function SelectStep({
 
 /** Live preview: re-runs (debounced) whenever the source, sheet or options change. */
 function usePreview(state: ConfigureState, dispatch: Dispatch) {
+  // The last good preview stays on screen while the next one loads.
   const [data, setData] = useState<ColumnarResult<ImportPreviewMeta> | null>(null);
   const request = JSON.stringify(buildPreviewRequest(state));
   useEffect(() => {
@@ -141,6 +142,7 @@ function ConfigureStep({
 }) {
   const data = usePreview(state, dispatch);
   const meta = state.preview.status === "ready" ? state.preview.meta : null;
+  const shownMeta = data?.meta ?? null;
   const source = state.source.kind === "staged" ? state.source.fileName : state.source.path;
   return (
     <div className="flex flex-col gap-3">
@@ -203,12 +205,12 @@ function ConfigureStep({
             {w}
           </p>
         ))}
-        {data && meta ? (
+        {data && shownMeta ? (
           <div className="h-56">
             <GridView
               gridKey={`preview:${JSON.stringify(buildPreviewRequest(state))}`}
               label="Import preview"
-              columns={meta.columns}
+              columns={shownMeta.columns}
               totalRows={data.rowCount}
               fetchPage={async ({ offset, limit }) => ({
                 ...data,
@@ -223,7 +225,7 @@ function ConfigureStep({
               sort={NO_SORT}
               filters={NO_FILTERS}
               controlsEnabled={false}
-              controlsTip="Sorting and filtering apply after import"
+              interactive={false}
             />
           </div>
         ) : null}
@@ -327,25 +329,28 @@ export function ImportWizardDialog({
     startCtl.current = new AbortController();
     const { signal } = startCtl.current;
     try {
-      const results = await Promise.allSettled(
-        buildImportRequests(state).map(async ({ sheet, request }, index) => {
-          // An import consumes its staged upload ("the uploaded file has expired"), so every
-          // sheet after the first stages its own copy of the file.
+      // An import currently consumes its staged upload, so each sheet after the first stages its
+      // own copy, one at a time. TODO(data-core): once a staged id can be imported repeatedly
+      // (and is deleted explicitly), stage once and import every sheet from the same id.
+      const results: PromiseSettledResult<{ sheet: string | null; job: Job }>[] = [];
+      for (const [index, { sheet, request }] of buildImportRequests(state).entries()) {
+        try {
           let body = request;
           if (index > 0 && request.stagedId && fileRef.current) {
             const copy = await stageFile(fileRef.current, signal);
             body = { ...request, stagedId: copy.stagedId };
           }
-          return { sheet, job: await startImport(body, signal) };
-        }),
-      );
+          const job = await startImport(body, signal);
+          markLocalJob(job.id); // before anything can settle it
+          results.push({ status: "fulfilled", value: { sheet, job } });
+        } catch (reason) {
+          results.push({ status: "rejected", reason });
+        }
+      }
       const started = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
       const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
       // Follow every job that did start, even if a sibling request failed.
-      for (const { job } of started) {
-        markLocalJob(job.id);
-        useJobsStore.getState().track(job);
-      }
+      for (const { job } of started) useJobsStore.getState().track(job);
       if (started.length === 0) {
         dispatch({ type: "importFailedToStart", message: describeImportError(failures[0]) });
         return;
@@ -367,6 +372,14 @@ export function ImportWizardDialog({
       <DialogContent
         title="Import data"
         className="w-[min(94vw,52rem)]"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          document
+            .querySelector<HTMLElement>(
+              "[role=dialog] [role=tab], [role=dialog] input, [role=dialog] select",
+            )
+            ?.focus();
+        }}
         description="Pick a file, check the preview, then import."
       >
         {state.phase === "select" ? (

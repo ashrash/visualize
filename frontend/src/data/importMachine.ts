@@ -135,10 +135,11 @@ export function wizardReducer(state: WizardState, event: WizardEvent): WizardSta
       );
       const problem = jobs.find((e) => e.job.status !== "succeeded");
       if (problem) {
-        const where = problem.sheet ? `Sheet "${problem.sheet}": ` : "";
+        const where =
+          problem.sheet && problem.job.status !== "cancelled" ? `Sheet "${problem.sheet}": ` : "";
         const why =
           problem.job.status === "cancelled"
-            ? "cancelled"
+            ? `Import of ${problem.sheet ?? state.config.name} was cancelled`
             : (problem.job.error ?? "the import failed");
         return {
           phase: "failed",
@@ -201,7 +202,8 @@ export function buildPreviewRequest(state: ConfigureState, limit = 1000): Import
     ...state.options,
     sheet: state.selectedSheets[0] ?? state.options.sheet,
   });
-  return { ...sourceFields(state.source), kind: state.fileKind, options, limit };
+  // `kind` is left to the server's detection; there is no way for the user to set it yet.
+  return { ...sourceFields(state.source), kind: null, options, limit };
 }
 
 /** One import request per selected sheet (each sheet becomes its own dataset), else one. */
@@ -212,7 +214,7 @@ export function buildImportRequests(
   const make = (sheet: string | null, label: string | null): ImportRequest => ({
     ...sourceFields(state.source),
     name: label,
-    kind: state.fileKind,
+    kind: null,
     options: cleanOptions({ ...state.options, sheet: sheet ?? state.options.sheet }),
   });
   if (state.selectedSheets.length <= 1) {
