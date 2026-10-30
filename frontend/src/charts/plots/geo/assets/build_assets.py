@@ -41,7 +41,7 @@ MISSING = "-99"
 def download(name: str, url: str, dest: Path) -> Path:
     path = dest / f"{name}.geojson"
     print(f"fetching {name}")
-    urllib.request.urlretrieve(url, path)  # noqa: S310 (a fixed, hardcoded github URL)
+    urllib.request.urlretrieve(url, path)
     return path
 
 
@@ -88,9 +88,7 @@ def simplify_geometry(geom: dict, epsilon: float, ndigits: int) -> dict:
         rings = [simplify_ring(r, epsilon, ndigits) for r in geom["coordinates"]]
         return {"type": kind, "coordinates": rings}
     if kind == "MultiPolygon":
-        polys = [
-            [simplify_ring(r, epsilon, ndigits) for r in poly] for poly in geom["coordinates"]
-        ]
+        polys = [[simplify_ring(r, epsilon, ndigits) for r in poly] for poly in geom["coordinates"]]
         return {"type": kind, "coordinates": polys}
     raise ValueError(f"unexpected geometry type {kind}")
 
@@ -108,6 +106,16 @@ def _clean(value: str | None) -> str:
 
 def build_countries(src_path: Path, epsilon: float, ndigits: int) -> dict:
     raw = json.loads(src_path.read_text(encoding="utf-8"))
+    # ISO_A2_EH ("including exceptions") is needed as a fallback for territories whose plain
+    # ISO_A2 is unusable (Taiwan's is "CN-TW"; Kosovo's is "-99"), but it also assigns the same
+    # code to secondary features that already have a different owner under plain ISO_A2 (e.g.
+    # Australia's outlying territories get "AU", the same as Australia itself). Collect every
+    # feature's own valid ISO_A2 first, so the EH fallback never overrides a real primary owner.
+    primary_iso2 = {
+        _clean(f["properties"].get("ISO_A2")).upper()
+        for f in raw["features"]
+        if _clean(f["properties"].get("ISO_A2"))
+    }
     features = []
     seen_codes: set[str] = set()
     for f in raw["features"]:
@@ -133,9 +141,16 @@ def build_countries(src_path: Path, epsilon: float, ndigits: int) -> dict:
             props.get("ABBREV"),
         }
         alt = sorted({n for n in names if n and n != MISSING})
-        # ISO_A2_EH (not plain ISO_A2): Taiwan's ISO_A2 is "CN-TW", not a usable 2-letter code,
-        # and ISO_A2_EH gives Kosovo "XK" instead of "-99".
-        iso2 = _clean(props.get("ISO_A2_EH")).upper()
+        # Prefer this feature's own ISO_A2. Fall back to ISO_A2_EH only when ISO_A2 is unusable
+        # (Taiwan's is "CN-TW", Kosovo's is "-99") and the EH code isn't already another
+        # feature's real primary ISO_A2 (Natural Earth's outlying-territory codes collide with
+        # their parent country's code under ISO_A2_EH, e.g. Australia's territories get "AU").
+        own_iso2 = _clean(props.get("ISO_A2")).upper()
+        if own_iso2 and len(own_iso2) == 2:
+            iso2 = own_iso2
+        else:
+            eh_iso2 = _clean(props.get("ISO_A2_EH")).upper()
+            iso2 = eh_iso2 if eh_iso2 and eh_iso2 not in primary_iso2 else ""
         geometry = simplify_geometry(f["geometry"], epsilon, ndigits)
         features.append(
             {
