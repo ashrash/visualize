@@ -33,9 +33,12 @@ items in their final report and the lead updates this file. Status values: `todo
   staged import + preview, Excel/JSON/encodings, refresh, rename/delete, server rows/values,
   materialized grid views, CSV/Excel export. Reviewer: approve with nits after one fix round.
   Perf (10M x 20): import 5.0 s; unsorted page ~20 ms; grid page during import max 78 ms; first
-  sorted page 190 ms cold (over the 150 ms budget, Wave 4). Follow-ups in progress: cp1252
-  fallback on mostly-UTF-8 files, generation counter guard, sticky conditional cancel,
-  request_scope in dependencies, upload parser edge cases, explicit memory-limit split.
+  sorted page 190 ms cold (over the 150 ms budget, Wave 4). Follow-up merged: shared encoding
+  choice for preview and import, generation counter guard, sticky conditional cancel,
+  RequestScopeMiddleware (wired in main.py), upload parser hardening, memory and spill split
+  across instances, staged uploads kept until deleted (hard-linked per import). Round 3 in
+  progress: revert accent folding in search (4x slower on free text; deferred to the Wave 4
+  search pass), S1 threshold in characters, cancel LRU fix.
 - 2026-10-30: platform follow-up merged (vizproj uses data-core's bundle registration and ref walker).
 - 2026-10-30: stats Wave 1 merged (bd5649f): shared kernels (sampling incl. stratified with group
   caps, quantiles, ECDF, histogram bins, Q-Q, KDE 1-D/2-D, OLS/LOWESS fits, bootstrap) and
