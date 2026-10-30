@@ -245,6 +245,14 @@ export interface components {
              * @default true
              */
             grid: boolean;
+            /** Position */
+            position?: ("start" | "end") | null;
+            /** Inverse */
+            inverse?: boolean | null;
+            /** Tickrotate */
+            tickRotate?: number | null;
+            /** Logbase */
+            logBase?: number | null;
         };
         /** Body_upload_dataset_api_datasets_upload_post */
         Body_upload_dataset_api_datasets_upload_post: {
@@ -381,6 +389,22 @@ export interface components {
             refLines?: components["schemas"]["RefLine"][];
             /** Templateid */
             templateId?: string | null;
+            /** Series */
+            series?: components["schemas"]["SeriesStyle"][];
+            /** Trendlines */
+            trendlines?: components["schemas"]["Trendline"][];
+            errorBars?: components["schemas"]["ErrorBars"] | null;
+            tooltip?: components["schemas"]["TooltipStyle"];
+            /** Fontfamily */
+            fontFamily?: string | null;
+            /** Fontsize */
+            fontSize?: number | null;
+            /** Smooth */
+            smooth?: boolean | null;
+            /** Areaopacity */
+            areaOpacity?: number | null;
+            /** Labelposition */
+            labelPosition?: ("auto" | "inside" | "outside" | "top" | "end") | null;
         };
         /**
          * ChartTemplate
@@ -588,6 +612,22 @@ export interface components {
             field: string;
             /** Value */
             value: string | number | boolean | null;
+        };
+        /** ErrorBars */
+        ErrorBars: {
+            /**
+             * Kind
+             * @default sd
+             * @enum {string}
+             */
+            kind: "sd" | "se" | "ci" | "fixed";
+            /**
+             * Level
+             * @default 0.95
+             */
+            level: number;
+            /** Value */
+            value?: number | null;
         };
         /** Fill */
         Fill: {
@@ -1169,6 +1209,29 @@ export interface components {
             /** Fields */
             fields: string[];
         };
+        /**
+         * SeriesStyle
+         * @description Per-series overrides, keyed by index into the y channel.
+         */
+        SeriesStyle: {
+            /** Index */
+            index: number;
+            /**
+             * Yaxis
+             * @default 0
+             */
+            yAxis: number;
+            /** Color */
+            color?: string | null;
+            /** Kind */
+            kind?: ("bar" | "line" | "area" | "scatter") | null;
+            /** Marker */
+            marker?: boolean | null;
+            /** Linewidth */
+            lineWidth?: number | null;
+            /** Linestyle */
+            lineStyle?: ("solid" | "dashed" | "dotted") | null;
+        };
         /** SortKey */
         SortKey: {
             /** Field */
@@ -1258,6 +1321,55 @@ export interface components {
          * @enum {string}
          */
         TimeUnit: "year" | "quarter" | "month" | "week" | "day" | "hour" | "minute";
+        /** TooltipStyle */
+        TooltipStyle: {
+            /**
+             * Show
+             * @default true
+             */
+            show: boolean;
+            /** Trigger */
+            trigger?: ("axis" | "item") | null;
+            /** Format */
+            format?: string | null;
+        };
+        /**
+         * Trendline
+         * @description A server-computed overlay fitted to one y series.
+         */
+        Trendline: {
+            /** @default linear */
+            kind: components["schemas"]["TrendlineKind"];
+            /**
+             * Series
+             * @default 0
+             */
+            series: number;
+            /**
+             * Degree
+             * @default 2
+             */
+            degree: number;
+            /** Window */
+            window?: number | null;
+            /** Cilevel */
+            ciLevel?: number | null;
+            /**
+             * Showequation
+             * @default false
+             */
+            showEquation: boolean;
+            /**
+             * Showr2
+             * @default false
+             */
+            showR2: boolean;
+        };
+        /**
+         * TrendlineKind
+         * @enum {string}
+         */
+        TrendlineKind: "linear" | "polynomial" | "exponential" | "logarithmic" | "power" | "loess" | "moving_average";
         /** UnionStep */
         UnionStep: {
             /** Id */
@@ -1372,6 +1484,43 @@ export interface components {
             ms: number;
             /** Warnings */
             warnings: string[];
+        };
+        /** ProjectDuplicate */
+        ProjectDuplicate: {
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+        };
+        /**
+         * ProjectImportResult
+         * @description Server-produced only, so every field is required.
+         */
+        ProjectImportResult: {
+            project: components["schemas"]["Project"];
+            /** Datasetsimported */
+            datasetsImported: string[];
+            /** Datasetsremapped */
+            datasetsRemapped: {
+                [key: string]: string;
+            };
+            /** Datasetsmissing */
+            datasetsMissing: string[];
+            /** Warnings */
+            warnings: string[];
+        };
+        /** ProjectRename */
+        ProjectRename: {
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+        };
+        /** ProjectRestore */
+        ProjectRestore: {
+            /** Revision */
+            revision: number;
         };
         /**
          * Reduction
