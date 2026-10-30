@@ -26,7 +26,8 @@ items in their final report and the lead updates this file. Status values: `todo
   UI for data-core/transform endpoints is behind flags in `frontend/src/api/features.ts`.
 - 2026-10-30: ui-charts merged (registry, MVP §4 applyStyle, §8 themes/formatting, primitives, Plots §1,
   chart export). Follow-ups before Wave 2: multi-grid detection, required `affectsData`, EChart
-  component replacement.
+  component replacement. All three merged (5a9a92f); charts screen wired by ui-data (e526497).
+  Lead browser smoke on integrated main: import, grid, charts, new chart, reload, dark: no errors.
 
 ## MVP.md
 
