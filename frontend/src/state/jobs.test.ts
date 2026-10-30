@@ -16,14 +16,15 @@ vi.mock("../api/jobs", async (original) => ({
 }));
 vi.mock("../api/datasets", () => ({
   getDataset: vi.fn(async (id: string) => ({ id, name: id })),
+  deleteStaged: vi.fn(async () => undefined),
 }));
 vi.mock("../app/queryClient", () => ({
   queryClient: { invalidateQueries: vi.fn(async () => undefined) },
 }));
 
-import { getDataset } from "../api/datasets";
+import { deleteStaged, getDataset } from "../api/datasets";
 import { queryClient } from "../app/queryClient";
-import { markLocalJob, useJobsStore } from "./jobs";
+import { cleanupStagedAfter, markLocalJob, useJobsStore } from "./jobs";
 import { useProjectStore } from "./projectStore";
 
 const project: Project = {
@@ -160,5 +161,41 @@ describe("jobs store", () => {
     useJobsStore.getState().merge(j);
     useJobsStore.getState().merge({ ...j, seq: 2, status: "queued" });
     expect(useJobsStore.getState().jobs[j.id]?.status).toBe("running");
+  });
+
+  describe("staged upload cleanup", () => {
+    beforeEach(() => vi.mocked(deleteStaged).mockClear());
+
+    it("deletes the staged upload only after the last import from it settles", async () => {
+      const a = job();
+      const b = job();
+      markLocalJob(a.id);
+      markLocalJob(b.id);
+      cleanupStagedAfter("stg1", [a.id, b.id]); // registered before tracking, as the wizard does
+      useJobsStore.getState().track(a);
+      useJobsStore.getState().track(b);
+      followers[0]?.handlers.onJob(done(a.id, "d1"));
+      await flush();
+      expect(deleteStaged).not.toHaveBeenCalled(); // b is still reading the file
+      followers[1]?.handlers.onJob(done(b.id, "d2"));
+      await flush();
+      expect(deleteStaged).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(deleteStaged).mock.calls[0]?.[0]).toBe("stg1");
+    });
+
+    it("also cleans up after a failed or cancelled import, and ignores a failing delete", async () => {
+      vi.mocked(deleteStaged).mockRejectedValueOnce(new Error("409 busy"));
+      const a = job();
+      cleanupStagedAfter("stg2", [a.id]);
+      useJobsStore.getState().track(a);
+      followers[0]?.handlers.onJob({ ...a, status: "cancelled", seq: 4 });
+      await flush();
+      expect(deleteStaged).toHaveBeenCalledWith("stg2");
+    });
+
+    it("deletes immediately when no import was started", () => {
+      cleanupStagedAfter("stg3", []);
+      expect(deleteStaged).toHaveBeenCalledWith("stg3");
+    });
   });
 });

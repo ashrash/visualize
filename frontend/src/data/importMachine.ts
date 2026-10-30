@@ -49,7 +49,14 @@ export type WizardState =
   | ConfigureState
   | { phase: "importing"; config: ConfigureState; jobs: JobEntry[] }
   | { phase: "done"; datasetIds: string[]; warnings: string[] }
-  | { phase: "failed"; message: string; config: ConfigureState; datasetIds: string[] };
+  | {
+      phase: "failed";
+      message: string;
+      /** The user cancelled: not an error, so it is shown in a neutral style. */
+      cancelled?: boolean;
+      config: ConfigureState;
+      datasetIds: string[];
+    };
 
 export type WizardEvent =
   | { type: "fileChosen"; fileName: string }
@@ -144,6 +151,7 @@ export function wizardReducer(state: WizardState, event: WizardEvent): WizardSta
         return {
           phase: "failed",
           message: `${where}${why}`,
+          cancelled: problem.job.status === "cancelled",
           config: state.config,
           datasetIds,
         };

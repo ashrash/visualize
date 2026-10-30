@@ -1,15 +1,15 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { ColumnarResult } from "../api/arrow";
 import { previewImport } from "../api/datasetRows";
-import { cancelJob, deleteStaged, getDataset, stageFile, startImport } from "../api/datasets";
+import { cancelJob, getDataset, stageFile, startImport } from "../api/datasets";
 import { isTerminal } from "../api/jobs";
-import type { Dataset, ImportPreviewMeta, Job } from "../api/types";
+import type { Dataset, ImportPreviewMeta } from "../api/types";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import { Field, Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "../components/ui/toast";
-import { markLocalJob, useJobsStore } from "../state/jobs";
+import { cleanupStagedAfter, deleteStagedQuietly, markLocalJob, useJobsStore } from "../state/jobs";
 import { GridView } from "./GridView";
 import { ImportOptionsForm } from "./ImportOptionsForm";
 import {
@@ -253,6 +253,8 @@ export function ImportWizardDialog({
   const [state, dispatch] = useReducer(wizardReducer, initialState);
   const storeJobs = useJobsStore((s) => s.jobs);
   const stagedRef = useRef<string | null>(null);
+  /** True once the jobs store owns deleting the staged upload (an import was started). */
+  const cleanupOwned = useRef(false);
   const finished = useRef(false);
   const startCtl = useRef<AbortController | null>(null);
 
@@ -311,11 +313,11 @@ export function ImportWizardDialog({
   const close = (next: boolean) => {
     if (!next) {
       startCtl.current?.abort(); // abandon import requests that have not returned a job yet
-      // Free the staged upload if it was never imported.
-      if (stagedRef.current && state.phase !== "done" && state.phase !== "importing") {
-        void deleteStaged(stagedRef.current).catch(() => undefined);
-      }
+      // Free the staged upload now unless imports are using it: then the jobs store deletes it
+      // after the last of them settles, even though this wizard is gone.
+      if (stagedRef.current && !cleanupOwned.current) deleteStagedQuietly(stagedRef.current);
       stagedRef.current = null;
+      cleanupOwned.current = false;
       finished.current = false;
       dispatch({ type: "reset" });
     }
@@ -329,26 +331,25 @@ export function ImportWizardDialog({
     startCtl.current = new AbortController();
     const { signal } = startCtl.current;
     try {
-      // An import currently consumes its staged upload, so each sheet after the first stages its
-      // own copy, one at a time. TODO(data-core): once a staged id can be imported repeatedly
-      // (and is deleted explicitly), stage once and import every sheet from the same id.
-      const results: PromiseSettledResult<{ sheet: string | null; job: Job }>[] = [];
-      for (const [index, { sheet, request }] of buildImportRequests(state).entries()) {
-        try {
-          let body = request;
-          if (index > 0 && request.stagedId && fileRef.current) {
-            const copy = await stageFile(fileRef.current, signal);
-            body = { ...request, stagedId: copy.stagedId };
-          }
-          const job = await startImport(body, signal);
+      // One staged upload serves every sheet: the imports run in parallel from the same id.
+      const results = await Promise.allSettled(
+        buildImportRequests(state).map(async ({ sheet, request }) => {
+          const job = await startImport(request, signal);
           markLocalJob(job.id); // before anything can settle it
-          results.push({ status: "fulfilled", value: { sheet, job } });
-        } catch (reason) {
-          results.push({ status: "rejected", reason });
-        }
-      }
+          return { sheet, job };
+        }),
+      );
       const started = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
       const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+      // The staged upload is deleted once every started import has settled (registered before
+      // tracking, because a tracked job can settle at once).
+      if (stagedRef.current && started.length > 0) {
+        cleanupStagedAfter(
+          stagedRef.current,
+          started.map((s) => s.job.id),
+        );
+        cleanupOwned.current = true;
+      }
       // Follow every job that did start, even if a sibling request failed.
       for (const { job } of started) useJobsStore.getState().track(job);
       if (started.length === 0) {
@@ -429,9 +430,15 @@ export function ImportWizardDialog({
         ) : null}
         {state.phase === "failed" ? (
           <div className="flex flex-col gap-3">
-            <p role="alert" className="text-sm text-danger">
-              {state.message}
-            </p>
+            {state.cancelled ? (
+              <p role="status" className="text-sm text-muted">
+                {state.message}
+              </p>
+            ) : (
+              <p role="alert" className="text-sm text-danger">
+                {state.message}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button onClick={() => close(false)}>Close</Button>
               <Button variant="primary" onClick={() => dispatch({ type: "back" })}>

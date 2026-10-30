@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getDataset } from "../api/datasets";
+import { deleteStaged, getDataset } from "../api/datasets";
 import { followJob, isTerminal } from "../api/jobs";
 import type { Job } from "../api/types";
 import { queryClient } from "../app/queryClient";
@@ -22,6 +22,31 @@ interface JobsState {
 }
 
 const settled = new Set<string>();
+/** Staged uploads waiting for their import jobs to settle before they are deleted. */
+const stagedCleanup = new Map<string, Set<string>>();
+
+/**
+ * Delete a staged upload once every import started from it has settled (even if the wizard that
+ * started them is long closed). Deleting while an import still reads it can fail with 409, hence
+ * the wait. Register before tracking the jobs. A missing (404) or busy (409) upload is not an
+ * error: the server expires staged files anyway.
+ */
+export function cleanupStagedAfter(stagedId: string, jobIds: string[]): void {
+  if (jobIds.length === 0) return void deleteStagedQuietly(stagedId);
+  stagedCleanup.set(stagedId, new Set(jobIds));
+}
+
+export function deleteStagedQuietly(stagedId: string): void {
+  void deleteStaged(stagedId).catch(() => undefined);
+}
+
+function jobSettledForCleanup(jobId: string): void {
+  for (const [stagedId, pending] of stagedCleanup) {
+    if (!pending.delete(jobId) || pending.size > 0) continue;
+    stagedCleanup.delete(stagedId);
+    deleteStagedQuietly(stagedId);
+  }
+}
 /** Jobs this tab started, with the project that was open at the time. */
 const startedHere = new Map<string, string | undefined>();
 
@@ -64,6 +89,7 @@ export const useJobsStore = create<JobsState>((set, get) => {
     if (!settled.has(job.id)) {
       settled.add(job.id);
       void settleDataJob(job);
+      jobSettledForCleanup(job.id);
     }
     onSettled?.(job);
   };

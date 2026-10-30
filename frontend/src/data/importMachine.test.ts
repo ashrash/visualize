@@ -266,7 +266,11 @@ describe("import wizard state machine", () => {
       { type: "importStarted", jobs: [{ sheet: null, job: job("j1", "running", 1) }] },
       { type: "jobUpdated", job: job("j1", "cancelled", 2) },
     ]);
-    expect(s).toMatchObject({ phase: "failed", message: "Import of a was cancelled" });
+    expect(s).toMatchObject({
+      phase: "failed",
+      message: "Import of a was cancelled",
+      cancelled: true,
+    });
   });
 
   it("failing to start an import returns to options with the message", () => {
