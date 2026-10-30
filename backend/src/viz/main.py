@@ -20,7 +20,7 @@ from viz import __version__
 from viz.api import api_router
 from viz.config import Settings, get_settings
 from viz.contracts import EXPORTED_MODELS
-from viz.engine import Engine
+from viz.engine import Engine, RequestScopeMiddleware
 from viz.errors import VizError
 from viz.ingest.catalog import sweep_orphans
 from viz.ingest.views import RowViews
@@ -76,6 +76,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
         separate_input_output_schemas=False,
     )
+    # Every request gets an engine owner and arrival ticket, so a newer request supersedes
+    # an older one on the same query key and a disconnect cancels only its own work.
+    app.add_middleware(RequestScopeMiddleware)
 
     @app.exception_handler(VizError)
     async def _viz_error(_request: Request, exc: VizError) -> JSONResponse:

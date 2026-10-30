@@ -1586,6 +1586,48 @@
           }
         }
       }
+    },
+    "/api/stats/describe": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Describe Fields",
+        "description": "Exact descriptive statistics; `values.summaries` is a list of FieldSummary.",
+        "operationId": "describe_fields_api_stats_describe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DescribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2937,6 +2979,102 @@
           "op"
         ],
         "title": "DedupeStep"
+      },
+      "DescribeRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Fields"
+          },
+          "groupBy": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "title": "Groupby"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "percentiles": {
+            "items": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Percentiles"
+          },
+          "includeOverall": {
+            "type": "boolean",
+            "title": "Includeoverall",
+            "default": true
+          },
+          "includeMode": {
+            "type": "boolean",
+            "title": "Includemode",
+            "default": true
+          },
+          "maxGroups": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Maxgroups",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "fields"
+        ],
+        "title": "DescribeRequest"
       },
       "DropMissingStep": {
         "properties": {
@@ -5734,6 +5872,61 @@
         "title": "StagedFile",
         "description": "An uploaded file waiting to be previewed and imported. Server-produced."
       },
+      "StatResult": {
+        "properties": {
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Values"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "sampled": {
+            "type": "boolean",
+            "title": "Sampled",
+            "default": false
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "nTotal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ntotal"
+          },
+          "nMissing": {
+            "type": "integer",
+            "title": "Nmissing",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "values",
+          "method",
+          "n"
+        ],
+        "title": "StatResult"
+      },
       "TextWidget": {
         "properties": {
           "kind": {
@@ -6290,102 +6483,6 @@
           "meta"
         ],
         "title": "ChartStatResponse",
-        "type": "object"
-      },
-      "DescribeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "source": {
-            "$ref": "#/components/schemas/SourceRef"
-          },
-          "pipelines": {
-            "items": {
-              "$ref": "#/components/schemas/Pipeline"
-            },
-            "title": "Pipelines",
-            "type": "array"
-          },
-          "fields": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 50,
-            "minItems": 1,
-            "title": "Fields",
-            "type": "array"
-          },
-          "groupBy": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 2,
-            "title": "Groupby",
-            "type": "array"
-          },
-          "filters": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "between_dates": "#/components/schemas/RangePredicate",
-                  "eq": "#/components/schemas/EqPredicate",
-                  "in": "#/components/schemas/InPredicate",
-                  "is_null": "#/components/schemas/IsNullPredicate",
-                  "not_in": "#/components/schemas/InPredicate",
-                  "range": "#/components/schemas/RangePredicate"
-                },
-                "propertyName": "op"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/InPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/EqPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/RangePredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/IsNullPredicate"
-                }
-              ]
-            },
-            "title": "Filters",
-            "type": "array"
-          },
-          "percentiles": {
-            "items": {
-              "maximum": 1,
-              "minimum": 0,
-              "type": "number"
-            },
-            "maxItems": 20,
-            "title": "Percentiles",
-            "type": "array"
-          },
-          "includeOverall": {
-            "default": true,
-            "title": "Includeoverall",
-            "type": "boolean"
-          },
-          "includeMode": {
-            "default": true,
-            "title": "Includemode",
-            "type": "boolean"
-          },
-          "maxGroups": {
-            "default": 50,
-            "maximum": 500,
-            "minimum": 1,
-            "title": "Maxgroups",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "source",
-          "fields"
-        ],
-        "title": "DescribeRequest",
         "type": "object"
       },
       "FieldSummary": {
@@ -7340,62 +7437,6 @@
           "semantic"
         ],
         "title": "SchemaField",
-        "type": "object"
-      },
-      "StatResult": {
-        "additionalProperties": false,
-        "properties": {
-          "values": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "title": "Values",
-            "type": "object"
-          },
-          "method": {
-            "title": "Method",
-            "type": "string"
-          },
-          "n": {
-            "title": "N",
-            "type": "integer"
-          },
-          "sampled": {
-            "default": false,
-            "title": "Sampled",
-            "type": "boolean"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Warnings",
-            "type": "array"
-          },
-          "nTotal": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Ntotal"
-          },
-          "nMissing": {
-            "default": 0,
-            "title": "Nmissing",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "values",
-          "method",
-          "n"
-        ],
-        "title": "StatResult",
         "type": "object"
       },
       "StepError": {

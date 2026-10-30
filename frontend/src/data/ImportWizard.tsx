@@ -328,10 +328,16 @@ export function ImportWizardDialog({
     const { signal } = startCtl.current;
     try {
       const results = await Promise.allSettled(
-        buildImportRequests(state).map(async ({ sheet, request }) => ({
-          sheet,
-          job: await startImport(request, signal),
-        })),
+        buildImportRequests(state).map(async ({ sheet, request }, index) => {
+          // An import consumes its staged upload ("the uploaded file has expired"), so every
+          // sheet after the first stages its own copy of the file.
+          let body = request;
+          if (index > 0 && request.stagedId && fileRef.current) {
+            const copy = await stageFile(fileRef.current, signal);
+            body = { ...request, stagedId: copy.stagedId };
+          }
+          return { sheet, job: await startImport(body, signal) };
+        }),
       );
       const started = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
       const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));

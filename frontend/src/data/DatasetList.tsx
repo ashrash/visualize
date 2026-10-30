@@ -1,4 +1,3 @@
-import { featureOn } from "../api/features";
 import type { Dataset } from "../api/types";
 import { DatasetActions } from "./DatasetActions";
 
@@ -42,9 +41,7 @@ export function DatasetList({ datasets, selectedId, onSelect, onDeleted }: Datas
                     </span>
                   ) : null}
                 </button>
-                {featureOn("datasetManagement") ? (
-                  <DatasetActions dataset={dataset} onDeleted={(id) => onDeleted?.(id)} />
-                ) : null}
+                <DatasetActions dataset={dataset} onDeleted={(id) => onDeleted?.(id)} />
               </li>
             );
           })}

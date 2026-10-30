@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { cancelJob, listActiveJobs } from "../api/datasets";
-import { featureOn } from "../api/features";
 import { isTerminal } from "../api/jobs";
 import { Button } from "../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
@@ -10,14 +9,12 @@ import { useJobsStore } from "../state/jobs";
 
 /** Header indicator for running jobs (imports, refreshes, exports, materializations). */
 export function JobsIndicator() {
-  const enabled = featureOn("stagedImport");
   const jobs = useJobsStore((s) => s.jobs);
   const merge = useJobsStore((s) => s.merge);
   const track = useJobsStore((s) => s.track);
   const active = useQuery({
     queryKey: ["jobs", "active"],
     queryFn: ({ signal }) => listActiveJobs(signal),
-    enabled,
     refetchInterval: 3000,
   });
 
@@ -30,7 +27,7 @@ export function JobsIndicator() {
   }, [active.data, merge, track]);
 
   const running = Object.values(jobs).filter((j) => !isTerminal(j.status));
-  if (!enabled || running.length === 0) return null;
+  if (running.length === 0) return null;
   return (
     <Popover>
       <PopoverTrigger asChild>

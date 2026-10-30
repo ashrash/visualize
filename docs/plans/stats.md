@@ -93,27 +93,38 @@ class StatResult(Contract):  # existing fields unchanged; add:
     # Rows dropped because a required field was null, NaN or +/-inf.
     n_missing: int = 0
 
+
 class Quantile(Contract):
     p: float
     value: float | str | None
 
+
 class FieldSummary(Contract):
     """One field within one group of a descriptive-statistics table (server-only: no defaults)."""
+
     field: str
     group: list[Scalar] | None  # aligned with DescribeRequest.group_by; None = overall row
     kind: Literal["numeric", "temporal", "categorical", "boolean"]
     count: int  # non-missing values
     missing: int  # null, plus NaN/+-inf for float columns
     distinct: int | None  # None when include_mode is false
-    mean: float | None; std: float | None; variance: float | None; sem: float | None  # split per line (E702)
-    sum: float | None; iqr: float | None
-    min: float | str | None; max: float | str | None  # str = ISO date/timestamp
-    median: float | str | None; q1: float | str | None; q3: float | str | None
+    mean: float | None
+    std: float | None
+    variance: float | None
+    sem: float | None  # split per line (E702)
+    sum: float | None
+    iqr: float | None
+    min: float | str | None
+    max: float | str | None  # str = ISO date/timestamp
+    median: float | str | None
+    q1: float | str | None
+    q3: float | str | None
     skewness: float | None  # adjusted Fisher-Pearson G1
     kurtosis: float | None  # excess, bias-corrected G2
     quantiles: list[Quantile]  # the requested percentiles
     modes: list[Scalar]
     mode_count: int | None
+
 
 class DescribeRequest(Contract):
     source: SourceRef
@@ -121,7 +132,8 @@ class DescribeRequest(Contract):
     group_by: list[str] = Field(default_factory=list, max_length=2)
     filters: list[Predicate] = Field(default_factory=list)
     percentiles: list[Annotated[float, Field(ge=0, le=1)]] = Field(
-        default_factory=lambda: [0.05, 0.95], max_length=20)
+        default_factory=lambda: [0.05, 0.95], max_length=20
+    )
     include_overall: bool = True
     include_mode: bool = True
     max_groups: int = Field(default=50, ge=1, le=500)
@@ -148,3 +160,6 @@ class DescribeRequest(Contract):
 - **transform:** build `Relation` (with pipelines) in chartdata and call `run_plot_stat`. Until then I import `where_sql`/`parquet_source` from `chartdata/sql.py`, read-only.
 - **data-core:** expose the process pool as a `concurrent.futures.Executor` (e.g. `app.state.process_pool`).
 - **lead:** should `/api/plots` publish each plot's channels and params JSON schema, so the frontend registry can't drift from backend validation?
+
+## 9. Handoff notes
+- Categorical modes come back as text for non-VARCHAR nominal columns (e.g. an integer id column marked nominal returns its modes as strings); numeric fields return numbers, booleans `true`/`false`, dates ISO-8601 text.
