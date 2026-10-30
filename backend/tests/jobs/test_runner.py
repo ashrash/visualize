@@ -43,7 +43,9 @@ def handler(ctx: JobContext, params: Params) -> JobResult:
 
 @pytest.fixture
 def jobs(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> Iterator[InProcessJobRunner]:
-    monkeypatch.setitem(runner._HANDLERS, JobKind.MATERIALIZE, runner._Registration(Params, handler))
+    monkeypatch.setitem(
+        runner._HANDLERS, JobKind.MATERIALIZE, runner._Registration(Params, handler)
+    )
     yield client.app.state.jobs  # type: ignore[attr-defined]
 
 
@@ -110,7 +112,7 @@ def test_finished_jobs_are_pruned(jobs: InProcessJobRunner) -> None:
 
 
 def test_http_endpoints_and_sse(client: TestClient, jobs: InProcessJobRunner) -> None:
-    job_id = submit(jobs, "ok", )
+    job_id = submit(jobs, "ok")
     events: list[dict[str, Any]] = []
     with client.stream("GET", f"/api/jobs/{job_id}/events") as response:
         assert response.status_code == 200
@@ -134,6 +136,7 @@ def test_http_endpoints_and_sse(client: TestClient, jobs: InProcessJobRunner) ->
     assert client.get("/api/jobs?active=true").json() == []
     assert client.post(f"/api/jobs/{job_id}/cancel").json()["status"] == "succeeded"
     assert client.get("/api/jobs/nope").status_code == 404
+    assert client.get("/api/jobs/nope/events").status_code == 404
 
 
 def test_close_cancels_running_jobs(jobs: InProcessJobRunner) -> None:

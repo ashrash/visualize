@@ -253,7 +253,11 @@ def get_rows(
     dataset = catalog.get_dataset(db, dataset_id)
     request = RowsRequest(offset=offset, limit=limit)
     table, meta = rows_page(
-        engine, storage, dataset, request, max_limit=settings.grid_page_max,
+        engine,
+        storage,
+        dataset,
+        request,
+        max_limit=settings.grid_page_max,
         key=rows_key(dataset_id, request),
     )
     return Response(ipc_bytes(table, meta), media_type=ARROW_STREAM_MEDIA_TYPE)

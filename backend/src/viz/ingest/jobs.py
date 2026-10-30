@@ -112,7 +112,9 @@ def run_refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
     with ctx.cursor(progress=(0.3, 0.9)) as cur:
         version = write_version(cur, ctx.storage, source, dataset.id, number)
     ctx.progress(0.95, "Saving")
-    warnings = schema_changes(dataset.current().columns, version.columns) if dataset.versions else []
+    warnings = (
+        schema_changes(dataset.current().columns, version.columns) if dataset.versions else []
+    )
     with ctx.session() as db:
         latest = catalog.get_dataset(db, dataset.id)  # re-read: a rename may have happened
         source_update: dict[str, object] = {"options": source.options, "kind": source.kind}

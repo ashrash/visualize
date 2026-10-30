@@ -299,9 +299,7 @@ def _unnest_path(relation: duckdb.DuckDBPyRelation, json_path: str) -> duckdb.Du
         )
     target: exp.Expr = exp.column(keys[0], quoted=True)
     for key in keys[1:]:
-        target = exp.Anonymous(
-            this="struct_extract", expressions=[target, exp.Literal.string(key)]
-        )
+        target = exp.Anonymous(this="struct_extract", expressions=[target, exp.Literal.string(key)])
     inner = exp.select(exp.alias_(exp.Unnest(expressions=[target]), "__rec", quoted=True)).from_(
         "__src"
     )

@@ -8,6 +8,7 @@ SQS worker (a `QueueJobRunner` implementing `JobRunner`): never close over live 
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import time
@@ -16,7 +17,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol
 
 import anyio
 import duckdb
@@ -31,7 +32,6 @@ from viz.storage import LocalStorage
 
 log = logging.getLogger(__name__)
 
-P = TypeVar("P", bound=BaseModel)
 JobHandler = Callable[["JobContext", Any], JobResult]
 
 TERMINAL = frozenset({JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED})
@@ -52,7 +52,7 @@ class _Registration:
 _HANDLERS: dict[JobKind, _Registration] = {}
 
 
-def job_handler(kind: JobKind, params: type[P]) -> Callable[[JobHandler], JobHandler]:
+def job_handler[P: BaseModel](kind: JobKind, params: type[P]) -> Callable[[JobHandler], JobHandler]:
     """Register `fn(ctx, params) -> JobResult` as the handler for `kind`."""
 
     def register(fn: JobHandler) -> JobHandler:
@@ -285,7 +285,10 @@ class InProcessJobRunner:
         last_seq = -1
         last_sent = time.monotonic()
         while True:
-            job = self.get(job_id)
+            try:
+                job = self.get(job_id)
+            except NotFoundError:  # pruned while watched
+                return
             if job.seq != last_seq:
                 last_seq = job.seq
                 last_sent = time.monotonic()
@@ -309,10 +312,9 @@ class InProcessJobRunner:
         deadline = time.monotonic() + timeout_s
         for state in states:
             if state.future is not None and not state.future.done():
-                try:
+                # Shutting down: the outcome is already recorded on the job.
+                with contextlib.suppress(Exception):
                     state.future.result(timeout=max(0.0, deadline - time.monotonic()))
-                except Exception:  # noqa: BLE001 - shutting down; outcome already recorded
-                    pass
 
     # -- internals ----------------------------------------------------------------------
 

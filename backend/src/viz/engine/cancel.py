@@ -8,14 +8,12 @@ threadpool while the request is polled for a disconnect, which interrupts the qu
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, TypeVar
+from typing import Protocol
 
 import anyio
 from anyio.to_thread import run_sync
 
 from viz.engine.duckdb_engine import Engine
-
-T = TypeVar("T")
 
 POLL_INTERVAL_S = 0.1
 
@@ -24,7 +22,7 @@ class _Disconnectable(Protocol):
     async def is_disconnected(self) -> bool: ...
 
 
-async def run_cancellable(
+async def run_cancellable[T](
     request: _Disconnectable, engine: Engine, key: str, fn: Callable[[], T]
 ) -> T:
     """Run `fn` (which queries under `key`) in a thread; interrupt `key` if the client leaves."""

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import multiprocessing
 import os
 import threading
@@ -34,13 +35,11 @@ def _init_worker(blas_threads: int, modules: tuple[str, ...]) -> None:
         os.environ[name] = str(blas_threads)
     import importlib
 
-    from threadpoolctl import threadpool_limits
+    from threadpoolctl import threadpool_limits  # type: ignore[import-untyped]
 
     for module in modules:
-        try:
+        with contextlib.suppress(ImportError):  # optional module missing
             importlib.import_module(module)
-        except ImportError:  # pragma: no cover - optional module missing
-            pass
     threadpool_limits(limits=blas_threads)
 
 
@@ -114,9 +113,7 @@ class ProcessPool(Executor):
         if executor is not None:
             executor.shutdown(wait=wait, cancel_futures=cancel_futures)
 
-    def run(
-        self, fn: Callable[..., T], *args: object, timeout_s: float | None = None
-    ) -> T:
+    def run(self, fn: Callable[..., T], *args: object, timeout_s: float | None = None) -> T:
         """Run `fn(*args)` in a worker and block for the result. Call from a worker thread."""
         future = self.submit(fn, *args)
         try:

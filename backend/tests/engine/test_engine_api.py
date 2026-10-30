@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import math
 import threading
 import time
@@ -34,7 +35,7 @@ def run_in_thread(fn: object) -> tuple[threading.Thread, list[BaseException]]:
     def target() -> None:
         try:
             fn()  # type: ignore[operator]
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             errors.append(exc)
 
     thread = threading.Thread(target=target)
@@ -44,9 +45,7 @@ def run_in_thread(fn: object) -> tuple[threading.Thread, list[BaseException]]:
 
 @pytest.fixture
 def small_engine(tmp_path: Path) -> Iterator[Engine]:
-    eng = Engine(
-        temp_dir=tmp_path / "t", max_concurrent_queries=1, query_timeout_s=0.5, cache_mb=1
-    )
+    eng = Engine(temp_dir=tmp_path / "t", max_concurrent_queries=1, query_timeout_s=0.5, cache_mb=1)
     yield eng
     eng.close()
 
@@ -116,10 +115,8 @@ def test_slots_are_capped(small_engine: Engine) -> None:
     thread, _ = run_in_thread(lambda: small_engine.query_arrow(SLOW_SQL))
     time.sleep(0.1)
     started = time.monotonic()
-    try:
+    with contextlib.suppress(EngineBusyError):
         small_engine.query_arrow("SELECT 1")
-    except EngineBusyError:
-        pass
     # The single slot was held by the slow query until its 0.5 s timeout.
     assert time.monotonic() - started >= 0.25
     thread.join(10)

@@ -54,7 +54,7 @@ def workbook(sheets: dict[str, list[list[object]]]) -> bytes:
 def test_preview_detects_and_import_honours_options(
     client: TestClient, stage: Stage, run_import: RunImport
 ) -> None:
-    content = "city;price;when\nPune;1,5;2024-01-02\nOslo;NA;2024-02-03\n".encode()
+    content = b"city;price;when\nPune;1,5;2024-01-02\nOslo;NA;2024-02-03\n"
     staged = stage("prices.csv", content)
     assert staged["kind"] == "csv" and staged["sheets"] == []
 
@@ -80,9 +80,7 @@ def test_preview_detects_and_import_honours_options(
     assert page.column("price").to_pylist() == [1.5, None]
 
 
-def test_preview_is_capped_and_estimates_rows(
-    client: TestClient, stage: Stage
-) -> None:
+def test_preview_is_capped_and_estimates_rows(client: TestClient, stage: Stage) -> None:
     lines = ["a,b"] + [f"{i},row{i:05d}" for i in range(5000)]
     staged = stage("many.csv", ("\n".join(lines) + "\n").encode())
     table, meta = preview(client, stagedId=staged["stagedId"])
@@ -139,7 +137,9 @@ def test_non_utf8_is_detected_and_transcoded(
     assert dataset["versions"][0]["options"]["encoding"] == "cp1252"
 
 
-def test_utf8_bom_and_messy_headers(client: TestClient, stage: Stage, run_import: RunImport) -> None:
+def test_utf8_bom_and_messy_headers(
+    client: TestClient, stage: Stage, run_import: RunImport
+) -> None:
     content = "﻿ id , ,name\n1,2,a\n".encode()
     dataset = run_import(stagedId=stage("bom.csv", content)["stagedId"])
     names = [c["name"] for c in dataset["versions"][0]["columns"]]
@@ -163,7 +163,9 @@ def test_type_sniffing_rejects_mismatched_files(client: TestClient) -> None:
 # -- JSON ---------------------------------------------------------------------------------------
 
 
-def test_json_array_ndjson_and_path(client: TestClient, stage: Stage, run_import: RunImport) -> None:
+def test_json_array_ndjson_and_path(
+    client: TestClient, stage: Stage, run_import: RunImport
+) -> None:
     array = json.dumps([{"a": 1, "b": "x"}, {"a": 2, "b": None}]).encode()
     staged = stage("arr.json", array)
     _, meta = preview(client, stagedId=staged["stagedId"])
@@ -229,7 +231,6 @@ def test_excel_sheets_selection_and_header_row(
     assert dataset["source"]["kind"] == "excel"
     page, _ = rows(client, dataset["id"])
     assert page.column("amount").to_pylist() == [10.5, 3.0]
-
 
 
 # -- path imports, refresh ------------------------------------------------------------------------
@@ -315,7 +316,7 @@ def test_path_import_can_be_disabled(client: TestClient, write: Write) -> None:
     assert response.status_code == 422
 
 
-# -- rename, delete, bundle --------------------------------------------------------------------------
+# -- rename, delete, bundle ----------------------------------------------------------------
 
 
 def test_rename_and_delete(client: TestClient, stage: Stage, run_import: RunImport) -> None:

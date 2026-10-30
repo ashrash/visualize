@@ -36,10 +36,15 @@ def test_sort_with_nulls_last_and_first(client: TestClient, sales_dataset: dict[
         columns=["region", "units"],
     )
     assert table.column_names == ["region", "units"]
-    assert table.to_pylist()[:2] == [{"region": "East", "units": 1}, {"region": "North", "units": 5}]
+    assert table.to_pylist()[:2] == [
+        {"region": "East", "units": 1},
+        {"region": "North", "units": 5},
+    ]
 
 
-def test_each_predicate_and_filtered_total(client: TestClient, sales_dataset: dict[str, Any]) -> None:
+def test_each_predicate_and_filtered_total(
+    client: TestClient, sales_dataset: dict[str, Any]
+) -> None:
     ds = sales_dataset["id"]
     cases: list[tuple[dict[str, Any], int]] = [
         ({"op": "in", "field": "region", "values": ["North", "East"]}, 4),
@@ -47,7 +52,15 @@ def test_each_predicate_and_filtered_total(client: TestClient, sales_dataset: di
         ({"op": "eq", "field": "product", "value": "Gizmo"}, 2),
         ({"op": "range", "field": "sales", "min": 50, "max": 120.5}, 3),
         ({"op": "range", "field": "sales", "min": 50, "max": 120.5, "includeMax": False}, 2),
-        ({"op": "between_dates", "field": "order_date", "min": "2024-02-01", "max": "2024-02-28"}, 2),
+        (
+            {
+                "op": "between_dates",
+                "field": "order_date",
+                "min": "2024-02-01",
+                "max": "2024-02-28",
+            },
+            2,
+        ),
         ({"op": "is_null", "field": "sales"}, 1),
         ({"op": "is_null", "field": "sales", "isNull": False}, 5),
     ]

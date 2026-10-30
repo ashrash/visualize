@@ -136,7 +136,7 @@ def rows_key(dataset_id: str, request: RowsRequest) -> str:
 
 def to_scalar(value: object) -> Scalar:
     if value is None or isinstance(value, str | bool | int | float):
-        return value  # type: ignore[return-value]
+        return value
     if isinstance(value, decimal.Decimal):
         return float(value)
     if isinstance(value, dt.datetime | dt.date | dt.time):
@@ -186,6 +186,7 @@ def column_values(
     rows = result.table.to_pylist()
     truncated = len(rows) > request.limit
     values = [
-        ValueCount(value=to_scalar(r["value"]), count=int(r["count"])) for r in rows[: request.limit]
+        ValueCount(value=to_scalar(r["value"]), count=int(r["count"]))
+        for r in rows[: request.limit]
     ]
     return ColumnValues(field=request.field, values=values, truncated=truncated)

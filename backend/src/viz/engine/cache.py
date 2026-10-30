@@ -57,7 +57,9 @@ class ResultCache:
 
     def __init__(self, max_bytes: int) -> None:
         self.max_bytes = max_bytes
-        self._lru: LRUCache[str, _Entry] = LRUCache(maxsize=max(1, max_bytes), getsizeof=_entry_size)
+        self._lru: LRUCache[str, _Entry] = LRUCache(
+            maxsize=max(1, max_bytes), getsizeof=_entry_size
+        )
         self._lock = threading.Lock()
 
     def get(
@@ -95,7 +97,7 @@ class ResultCache:
         """Return `(value, hit)`. `nbytes` sizes a computed value for the byte budget."""
         found = self.get(versions, key, params)
         if found is not None:
-            return found, True  # type: ignore[no-any-return]
+            return found, True
         value = compute()
         self.put(versions, key, value, nbytes=nbytes(value), params=params)
         return value, False
@@ -103,7 +105,9 @@ class ResultCache:
     def evict(self, prefix: str) -> int:
         """Drop entries with any version token starting with `prefix` (e.g. "ds:<id>@")."""
         with self._lock:
-            doomed = [k for k, e in self._lru.items() if any(v.startswith(prefix) for v in e.versions)]
+            doomed = [
+                k for k, e in self._lru.items() if any(v.startswith(prefix) for v in e.versions)
+            ]
             for k in doomed:
                 del self._lru[k]
         return len(doomed)

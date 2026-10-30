@@ -36,10 +36,17 @@ def cancel_job(job_id: str, jobs: JobsDep) -> Job:
     return jobs.cancel(job_id)
 
 
+def _existing_job(job_id: str, jobs: JobsDep) -> str:
+    """Runs before the stream starts, so an unknown id is a plain 404."""
+    jobs.get(job_id)
+    return job_id
+
+
 @router.get("/{job_id}/events", response_class=EventSourceResponse)
-async def job_events(job_id: str, jobs: JobsDep) -> AsyncIterator[ServerSentEvent]:
+async def job_events(
+    job_id: Annotated[str, Depends(_existing_job)], jobs: JobsDep
+) -> AsyncIterator[ServerSentEvent]:
     """`event: job` with the full Job JSON on every change; closes after the final state."""
-    jobs.get(job_id)  # 404 before the stream starts
     async for job in jobs.watch(job_id):
         if job is None:
             yield ServerSentEvent(comment="ping")

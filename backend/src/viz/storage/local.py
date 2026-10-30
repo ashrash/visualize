@@ -1,11 +1,11 @@
 """Local data dir layout. The only module that knows where files live (S3 comes later).
 
-    sources/<datasetId>/<file>        copies of imported originals
-    sources/_staged/<stagedId>/<file> uploads waiting for preview/import (expire)
-    datasets/<datasetId>/v<n>.parquet immutable dataset versions
-    derived/<key>.parquet             materialized pipeline steps (transform)
-    temp/                             DuckDB spill; temp/exports/<exportId>/<file> (expire)
-    assets/                           images and report assets
+sources/<datasetId>/<file>        copies of imported originals
+sources/_staged/<stagedId>/<file> uploads waiting for preview/import (expire)
+datasets/<datasetId>/v<n>.parquet immutable dataset versions
+derived/<key>.parquet             materialized pipeline steps (transform)
+temp/                             DuckDB spill; temp/exports/<exportId>/<file> (expire)
+assets/                           images and report assets
 """
 
 from __future__ import annotations
