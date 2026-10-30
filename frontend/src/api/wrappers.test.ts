@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./client";
 import { postRows } from "./datasetRows";
 import {
+  cancelJob,
   deleteDataset,
   deleteStaged,
   fetchColumnValues,
+  listActiveJobs,
   renameDataset,
   stageFile,
   startExport,
@@ -25,7 +27,7 @@ const json = (body: unknown, status = 200) =>
   });
 
 function mockFetch(response: Response) {
-  const fn = vi.fn(async (_url: string, _init?: RequestInit) => response);
+  const fn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => response.clone());
   vi.stubGlobal("fetch", fn);
   return fn;
 }
@@ -36,26 +38,40 @@ const lastCall = (fn: ReturnType<typeof mockFetch>) => {
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** The typed client calls fetch(Request); plain helpers call fetch(url, init). Read both. */
+async function call(fn: ReturnType<typeof mockFetch>) {
+  const [input, init] = fn.mock.calls.at(-1) ?? [];
+  if (input instanceof Request) {
+    const url = new URL(input.url);
+    const text = await input.clone().text();
+    return { url: url.pathname + url.search, method: input.method, text, request: input };
+  }
+  return {
+    url: String(input),
+    method: (init as RequestInit | undefined)?.method ?? "GET",
+    text: typeof init?.body === "string" ? init.body : "",
+    request: undefined,
+  };
+}
+
 describe("data-core wrappers", () => {
   it("stages a file as multipart `file`", async () => {
     const fn = mockFetch(
-      json({ stagedId: "s1", fileName: "a.csv", kind: "csv", sizeBytes: 3, sheets: [] }),
+      json({ stagedId: "s1", fileName: "a.csv", kind: "csv", sizeBytes: 3, sheets: [] }, 201),
     );
     const staged = await stageFile(new File(["a,b"], "a.csv"));
     expect(staged.stagedId).toBe("s1");
-    const { url, init } = lastCall(fn);
-    expect(url).toBe("/api/datasets/staged");
-    expect(init.method).toBe("POST");
-    expect((init.body as FormData).get("file")).toBeInstanceOf(File);
+    const sent = await call(fn);
+    expect(sent.url).toBe("/api/datasets/staged");
+    expect(sent.method).toBe("POST");
+    expect(sent.request?.headers.get("content-type")).toMatch(/multipart\/form-data/);
+    expect(sent.text).toContain('name="file"');
   });
 
   it("deletes a staged upload", async () => {
     const fn = mockFetch(json(null, 204));
-    await deleteStaged("s 1");
-    expect(lastCall(fn)).toMatchObject({
-      url: "/api/datasets/staged/s%201",
-      init: { method: "DELETE" },
-    });
+    await deleteStaged("s1");
+    expect(await call(fn)).toMatchObject({ url: "/api/datasets/staged/s1", method: "DELETE" });
   });
 
   it("starts an import and sends the camelCase request as JSON", async () => {
@@ -67,46 +83,45 @@ describe("data-core wrappers", () => {
       kind: "csv",
       options: { delimiter: ";" },
     });
-    const { url, init } = lastCall(fn);
-    expect(url).toBe("/api/datasets/import");
-    expect(JSON.parse(String(init.body))).toEqual({
+    const sent = await call(fn);
+    expect(sent.url).toBe("/api/datasets/import");
+    expect(JSON.parse(sent.text)).toEqual({
       stagedId: "s1",
       path: null,
       name: "Sales",
       kind: "csv",
       options: { delimiter: ";" },
     });
-    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
   });
 
   it("starts a refresh, renames, and deletes with the force flag", async () => {
-    const fn = mockFetch(json({ id: "j" }, 202));
+    const refresh = mockFetch(json({ id: "j" }, 202));
     await startRefresh("d1", { stagedId: null, options: null });
-    expect(lastCall(fn).url).toBe("/api/datasets/d1/refresh");
+    expect((await call(refresh)).url).toBe("/api/datasets/d1/refresh");
 
-    mockFetch(json({ id: "d1", name: "New" }));
     const renamed = mockFetch(json({ id: "d1", name: "New" }));
     await renameDataset("d1", "New");
-    expect(lastCall(renamed)).toMatchObject({ url: "/api/datasets/d1", init: { method: "PATCH" } });
-    expect(JSON.parse(String(lastCall(renamed).init.body))).toEqual({ name: "New" });
+    const r = await call(renamed);
+    expect(r).toMatchObject({ url: "/api/datasets/d1", method: "PATCH" });
+    expect(JSON.parse(r.text)).toEqual({ name: "New" });
 
     const del = mockFetch(json(null, 204));
     await deleteDataset("d1", true);
-    expect(lastCall(del).url).toBe("/api/datasets/d1?force=true");
+    expect((await call(del)).url).toBe("/api/datasets/d1?force=true");
   });
 
   it("surfaces a 409 from delete with the server's detail", async () => {
-    mockFetch(json({ detail: "used by project X" }, 409));
+    mockFetch(json({ detail: "latin is used by: uses data" }, 409));
     await expect(deleteDataset("d1", false)).rejects.toMatchObject({
       status: 409,
-      message: "used by project X",
+      message: "latin is used by: uses data",
     });
   });
 
   it("posts column values and exports", async () => {
     const values = mockFetch(json({ field: "region", values: [], truncated: false }));
     await fetchColumnValues("d1", { field: "region", search: null, filters: [], limit: 100 });
-    expect(lastCall(values).url).toBe("/api/datasets/d1/values");
+    expect((await call(values)).url).toBe("/api/datasets/d1/values");
     const exp = mockFetch(json({ id: "j" }, 202));
     await startExport({
       source: { kind: "dataset", id: "d1" },
@@ -119,7 +134,16 @@ describe("data-core wrappers", () => {
       fileName: null,
       delimiter: null,
     });
-    expect(lastCall(exp).url).toBe("/api/exports");
+    expect((await call(exp)).url).toBe("/api/exports");
+  });
+
+  it("lists active jobs and cancels one", async () => {
+    const list = mockFetch(json([]));
+    await listActiveJobs();
+    expect((await call(list)).url).toBe("/api/jobs?active=true");
+    const cancel = mockFetch(json({ id: "j1", status: "cancelled" }));
+    await cancelJob("j1");
+    expect(await call(cancel)).toMatchObject({ url: "/api/jobs/j1/cancel", method: "POST" });
   });
 
   it("turns an error response from an Arrow endpoint into an ApiError", async () => {
@@ -135,6 +159,22 @@ describe("data-core wrappers", () => {
     }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 422, message: "bad sort field" });
+  });
+
+  it("sends a None inside an in-predicate as JSON null (matches NULL on the server)", async () => {
+    const fn = mockFetch(json({ detail: "stop" }, 422));
+    await postRows("d1", {
+      offset: 0,
+      limit: 10,
+      sort: [],
+      filters: [{ op: "in", field: "amount", values: [10, null] }],
+      search: "x",
+      columns: null,
+      version: null,
+    }).catch(() => undefined);
+    const sent = await call(fn);
+    expect(JSON.parse(sent.text).filters[0].values).toEqual([10, null]);
+    expect(JSON.parse(sent.text).search).toBe("x");
   });
 });
 

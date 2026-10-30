@@ -1,5 +1,5 @@
 import { ApiError } from "../api/client";
-import type { ImportFromPathRequest, ImportOptions, Predicate, SourceKind } from "../api/types";
+import type { ImportOptions } from "../api/types";
 
 /** Drop unset, empty and NaN options so the server auto-detects those. */
 export function cleanOptions(options: ImportOptions): ImportOptions {
@@ -12,61 +12,6 @@ export function cleanOptions(options: ImportOptions): ImportOptions {
     out.headerRow = options.headerRow;
   }
   return out;
-}
-
-export function hasOptions(options: ImportOptions): boolean {
-  return Object.keys(cleanOptions(options)).length > 0;
-}
-
-export function buildImportPathBody(
-  path: string,
-  options: ImportOptions,
-  extra: { name?: string; kind?: SourceKind } = {},
-): ImportFromPathRequest {
-  const body: ImportFromPathRequest = { path: path.trim(), options: cleanOptions(options) };
-  if (extra.name?.trim()) body.name = extra.name.trim();
-  if (extra.kind) body.kind = extra.kind;
-  return body;
-}
-
-/**
- * Upload form. TODO(data-core): the upload endpoint ignores import options today. Proposed
- * contract: an optional form field `options` holding the ImportOptions JSON (camelCase), plus
- * optional `kind`. The field is sent only when non-empty so today's server is unaffected.
- */
-export function buildUploadForm(file: File, options: ImportOptions, name?: string): FormData {
-  const form = new FormData();
-  form.append("file", file);
-  if (name?.trim()) form.append("name", name.trim());
-  const cleaned = cleanOptions(options);
-  if (Object.keys(cleaned).length > 0) form.append("options", JSON.stringify(cleaned));
-  return form;
-}
-
-export interface SortSpec {
-  field: string;
-  descending: boolean;
-}
-
-/**
- * The one place that turns grid state into a rows request.
- * TODO(data-core): the rows endpoint accepts only offset/limit today. Proposed contract:
- * `sort=<field>:<asc|desc>` (repeatable, in priority order) and `filters=<JSON Predicate[]>`.
- */
-export function buildRowsQuery(params: {
-  offset: number;
-  limit: number;
-  sort?: SortSpec[];
-  filters?: Predicate[];
-}): URLSearchParams {
-  const query = new URLSearchParams({ offset: String(params.offset), limit: String(params.limit) });
-  for (const s of params.sort ?? []) {
-    query.append("sort", `${s.field}:${s.descending ? "desc" : "asc"}`);
-  }
-  if (params.filters && params.filters.length > 0) {
-    query.set("filters", JSON.stringify(params.filters));
-  }
-  return query;
 }
 
 /** User-facing text for an import failure; the server's `detail` is kept when present. */

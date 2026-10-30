@@ -2,7 +2,13 @@ import createClient from "openapi-fetch";
 import type { paths } from "./schema";
 
 /** Typed JSON client generated from the backend's OpenAPI schema (`npm run gen:api`). */
-export const api = createClient<paths>({ baseUrl: "" });
+// An absolute origin, because Request (used by the client) cannot parse a relative URL outside a
+// browser document, e.g. in tests. In the browser this is the same origin as before.
+export const api = createClient<paths>({
+  baseUrl: typeof location === "undefined" ? "" : location.origin,
+  // Look fetch up per call (not once at import) so tests can stub it.
+  fetch: (request) => fetch(request),
+});
 
 export class ApiError extends Error {
   constructor(
