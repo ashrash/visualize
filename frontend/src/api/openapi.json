@@ -91,27 +91,36 @@
             }
           }
         }
-      }
-    },
-    "/api/datasets/upload": {
-      "post": {
+      },
+      "patch": {
         "tags": [
           "datasets"
         ],
-        "summary": "Upload Dataset",
-        "operationId": "upload_dataset_api_datasets_upload_post",
+        "summary": "Update Dataset",
+        "operationId": "update_dataset_api_datasets__dataset_id__patch",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset Id"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
-            "multipart/form-data": {
+            "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_dataset_api_datasets_upload_post"
+                "$ref": "#/components/schemas/DatasetUpdate"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -132,6 +141,315 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Delete Dataset",
+        "description": "Delete a dataset: files first (all or nothing; 409 if Windows reports them in use),\nthen the catalog row.",
+        "operationId": "delete_dataset_api_datasets__dataset_id__delete",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/staged": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Stage File",
+        "description": "Upload a file (multipart field `file`) for preview and import. The body is streamed to\ndisk; files over `max_upload_mb` are refused from `Content-Length` before reading.",
+        "operationId": "stage_file_api_datasets_staged_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagedFile"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/staged/{staged_id}": {
+      "delete": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Delete Staged",
+        "operationId": "delete_staged_api_datasets_staged__staged_id__delete",
+        "parameters": [
+          {
+            "name": "staged_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Staged Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/preview": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Preview Import",
+        "description": "First rows with the given options; meta (ImportPreviewMeta) has what was detected.",
+        "operationId": "preview_import_api_datasets_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Arrow IPC",
+            "content": {
+              "application/vnd.apache.arrow.stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/import": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Import Dataset",
+        "operationId": "import_dataset_api_datasets_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/{dataset_id}/refresh": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Refresh Dataset",
+        "description": "Re-read the original file (or a re-upload) as a new version; old versions stay.",
+        "operationId": "refresh_dataset_api_datasets__dataset_id__refresh_post",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/upload": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Upload Dataset",
+        "description": "One-shot upload + import that waits for the job. The wizard uses staged + import.\nForm fields: `file`, optional `name`, `kind`, `options` (ImportOptions as JSON).",
+        "operationId": "upload_dataset_api_datasets_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "csv",
+                      "tsv",
+                      "excel",
+                      "json"
+                    ]
+                  },
+                  "options": {
+                    "type": "string",
+                    "description": "ImportOptions as JSON"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/datasets/import-path": {
@@ -140,6 +458,7 @@
           "datasets"
         ],
         "summary": "Import From Path",
+        "description": "One-shot import from a local path that waits for the job.",
         "operationId": "import_from_path_api_datasets_import_path_post",
         "requestBody": {
           "content": {
@@ -181,6 +500,7 @@
           "datasets"
         ],
         "summary": "Get Rows",
+        "description": "Unsorted, unfiltered pages (kept for compatibility; the grid uses POST).",
         "operationId": "get_rows_api_datasets__dataset_id__rows_get",
         "parameters": [
           {
@@ -220,6 +540,376 @@
             "description": "Arrow IPC",
             "content": {
               "application/vnd.apache.arrow.stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Query Rows",
+        "description": "A grid page with sort, filters, search and a column subset. Meta: RowsPageMeta.",
+        "operationId": "query_rows_api_datasets__dataset_id__rows_post",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Arrow IPC",
+            "content": {
+              "application/vnd.apache.arrow.stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/{dataset_id}/values": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Query Values",
+        "description": "Distinct values of one column with counts (most frequent first), for filter lists.",
+        "operationId": "query_values_api_datasets__dataset_id__values_post",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ColumnValuesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColumnValues"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List Jobs",
+        "operationId": "list_jobs_api_jobs_get",
+        "parameters": [
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Active"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Job"
+                  },
+                  "title": "Response List Jobs Api Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Get Job",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Cancel Job",
+        "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/events": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Job Events",
+        "description": "`event: job` with the full Job JSON on every change; closes after the final state.",
+        "operationId": "job_events_api_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/event-stream": {
+                "itemSchema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "string"
+                    },
+                    "event": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "retry": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/exports": {
+      "post": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "Start Export",
+        "description": "Export a source (with filters, sort and a column subset) as CSV or Excel.\nThe finished job's `result.export.downloadUrl` serves the file until it expires.",
+        "operationId": "start_export_api_exports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/exports/{export_id}/download": {
+      "get": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "Download Export",
+        "operationId": "download_export_api_exports__export_id__download_get",
+        "parameters": [
+          {
+            "name": "export_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Export Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/csv; charset=utf-8": {},
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
             }
           },
           "422": {
@@ -1171,31 +1861,6 @@
         ],
         "title": "Body_import_project_api_projects_import_post"
       },
-      "Body_upload_dataset_api_datasets_upload_post": {
-        "properties": {
-          "file": {
-            "type": "string",
-            "contentMediaType": "application/octet-stream",
-            "title": "File"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "file"
-        ],
-        "title": "Body_upload_dataset_api_datasets_upload_post"
-      },
       "CalcStep": {
         "properties": {
           "id": {
@@ -1824,6 +2489,97 @@
         ],
         "title": "ColumnSemantic"
       },
+      "ColumnValues": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCount"
+            },
+            "type": "array",
+            "title": "Values"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "values",
+          "truncated"
+        ],
+        "title": "ColumnValues",
+        "description": "Distinct values with counts, for filter dropdowns. Server-produced."
+      },
+      "ColumnValuesRequest": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 100
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field"
+        ],
+        "title": "ColumnValuesRequest"
+      },
       "Dashboard": {
         "properties": {
           "id": {
@@ -2040,6 +2796,24 @@
           "fileName"
         ],
         "title": "DatasetSource"
+      },
+      "DatasetUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DatasetUpdate"
       },
       "DatasetVersion": {
         "properties": {
@@ -2367,6 +3141,168 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ErrorBars"
+      },
+      "ExportFile": {
+        "properties": {
+          "exportId": {
+            "type": "string",
+            "title": "Exportid"
+          },
+          "fileName": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "title": "Sizebytes"
+          },
+          "rowCount": {
+            "type": "integer",
+            "title": "Rowcount"
+          },
+          "downloadUrl": {
+            "type": "string",
+            "title": "Downloadurl"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expiresat"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "exportId",
+          "fileName",
+          "format",
+          "sizeBytes",
+          "rowCount",
+          "downloadUrl",
+          "expiresAt"
+        ],
+        "title": "ExportFile",
+        "description": "Server-produced."
+      },
+      "ExportFormat": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "xlsx"
+        ],
+        "title": "ExportFormat"
+      },
+      "ExportRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "type": "array",
+            "title": "Sort"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "fileName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "delimiter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delimiter"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "format"
+        ],
+        "title": "ExportRequest"
       },
       "Fill": {
         "properties": {
@@ -2934,6 +3870,108 @@
         "title": "ImportOptions",
         "description": "Overrides for auto-detection. Leave a field unset to let the reader detect it."
       },
+      "ImportPreviewRequest": {
+        "properties": {
+          "stagedId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stagedid"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "options": {
+            "$ref": "#/components/schemas/ImportOptions"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 1000
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ImportPreviewRequest"
+      },
+      "ImportRequest": {
+        "properties": {
+          "stagedId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stagedid"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "options": {
+            "$ref": "#/components/schemas/ImportOptions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ImportRequest"
+      },
       "InPredicate": {
         "properties": {
           "op": {
@@ -3071,6 +4109,204 @@
           "id"
         ],
         "title": "ItemRef"
+      },
+      "Job": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "status",
+          "progress",
+          "message",
+          "seq",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "error",
+          "result"
+        ],
+        "title": "Job",
+        "description": "Server-produced. Each SSE event carries a full snapshot."
+      },
+      "JobKind": {
+        "type": "string",
+        "enum": [
+          "import",
+          "refresh",
+          "materialize",
+          "export"
+        ],
+        "title": "JobKind"
+      },
+      "JobResult": {
+        "properties": {
+          "datasetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datasetid"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "pipelineId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipelineid"
+          },
+          "export": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportFile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetId",
+          "version",
+          "pipelineId",
+          "export",
+          "warnings"
+        ],
+        "title": "JobResult",
+        "description": "Server-produced."
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStatus"
       },
       "JoinKey": {
         "properties": {
@@ -4081,6 +5317,34 @@
         ],
         "title": "RefLine"
       },
+      "RefreshRequest": {
+        "properties": {
+          "stagedId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stagedid"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RefreshRequest"
+      },
       "RenameStep": {
         "properties": {
           "id": {
@@ -4118,6 +5382,99 @@
           "mapping"
         ],
         "title": "RenameStep"
+      },
+      "RowsRequest": {
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 200
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "type": "array",
+            "title": "Sort"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RowsRequest"
       },
       "SelectStep": {
         "properties": {
@@ -4339,6 +5696,43 @@
         ],
         "title": "SourceRef",
         "description": "Points at the data a chart, pipeline step or widget reads."
+      },
+      "StagedFile": {
+        "properties": {
+          "stagedId": {
+            "type": "string",
+            "title": "Stagedid"
+          },
+          "fileName": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "title": "Sizebytes"
+          },
+          "sheets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sheets"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stagedId",
+          "fileName",
+          "kind",
+          "sizeBytes",
+          "sheets"
+        ],
+        "title": "StagedFile",
+        "description": "An uploaded file waiting to be previewed and imported. Server-produced."
       },
       "TextWidget": {
         "properties": {
@@ -4675,6 +6069,41 @@
         ],
         "title": "ValidationError"
       },
+      "ValueCount": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "ValueCount"
+      },
       "Viewport": {
         "properties": {
           "widthPx": {
@@ -4863,117 +6292,6 @@
         "title": "ChartStatResponse",
         "type": "object"
       },
-      "ColumnValues": {
-        "additionalProperties": false,
-        "description": "Distinct values with counts, for filter dropdowns. Server-produced.",
-        "properties": {
-          "field": {
-            "title": "Field",
-            "type": "string"
-          },
-          "values": {
-            "items": {
-              "$ref": "#/components/schemas/ValueCount"
-            },
-            "title": "Values",
-            "type": "array"
-          },
-          "truncated": {
-            "title": "Truncated",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "field",
-          "values",
-          "truncated"
-        ],
-        "title": "ColumnValues",
-        "type": "object"
-      },
-      "ColumnValuesRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "field": {
-            "title": "Field",
-            "type": "string"
-          },
-          "search": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Search"
-          },
-          "filters": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "between_dates": "#/components/schemas/RangePredicate",
-                  "eq": "#/components/schemas/EqPredicate",
-                  "in": "#/components/schemas/InPredicate",
-                  "is_null": "#/components/schemas/IsNullPredicate",
-                  "not_in": "#/components/schemas/InPredicate",
-                  "range": "#/components/schemas/RangePredicate"
-                },
-                "propertyName": "op"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/InPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/EqPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/RangePredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/IsNullPredicate"
-                }
-              ]
-            },
-            "title": "Filters",
-            "type": "array"
-          },
-          "limit": {
-            "default": 100,
-            "maximum": 1000,
-            "minimum": 1,
-            "title": "Limit",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "field"
-        ],
-        "title": "ColumnValuesRequest",
-        "type": "object"
-      },
-      "DatasetUpdate": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Name"
-          }
-        },
-        "title": "DatasetUpdate",
-        "type": "object"
-      },
       "DescribeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5068,172 +6386,6 @@
           "fields"
         ],
         "title": "DescribeRequest",
-        "type": "object"
-      },
-      "ExportFile": {
-        "additionalProperties": false,
-        "description": "Server-produced.",
-        "properties": {
-          "exportId": {
-            "title": "Exportid",
-            "type": "string"
-          },
-          "fileName": {
-            "title": "Filename",
-            "type": "string"
-          },
-          "format": {
-            "$ref": "#/components/schemas/ExportFormat"
-          },
-          "sizeBytes": {
-            "title": "Sizebytes",
-            "type": "integer"
-          },
-          "rowCount": {
-            "title": "Rowcount",
-            "type": "integer"
-          },
-          "downloadUrl": {
-            "title": "Downloadurl",
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "title": "Expiresat",
-            "type": "string"
-          }
-        },
-        "required": [
-          "exportId",
-          "fileName",
-          "format",
-          "sizeBytes",
-          "rowCount",
-          "downloadUrl",
-          "expiresAt"
-        ],
-        "title": "ExportFile",
-        "type": "object"
-      },
-      "ExportFormat": {
-        "enum": [
-          "csv",
-          "xlsx"
-        ],
-        "title": "ExportFormat",
-        "type": "string"
-      },
-      "ExportRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "source": {
-            "$ref": "#/components/schemas/SourceRef"
-          },
-          "format": {
-            "$ref": "#/components/schemas/ExportFormat"
-          },
-          "pipelines": {
-            "items": {
-              "$ref": "#/components/schemas/Pipeline"
-            },
-            "title": "Pipelines",
-            "type": "array"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Version"
-          },
-          "filters": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "between_dates": "#/components/schemas/RangePredicate",
-                  "eq": "#/components/schemas/EqPredicate",
-                  "in": "#/components/schemas/InPredicate",
-                  "is_null": "#/components/schemas/IsNullPredicate",
-                  "not_in": "#/components/schemas/InPredicate",
-                  "range": "#/components/schemas/RangePredicate"
-                },
-                "propertyName": "op"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/InPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/EqPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/RangePredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/IsNullPredicate"
-                }
-              ]
-            },
-            "title": "Filters",
-            "type": "array"
-          },
-          "sort": {
-            "items": {
-              "$ref": "#/components/schemas/SortKey"
-            },
-            "title": "Sort",
-            "type": "array"
-          },
-          "columns": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Columns"
-          },
-          "fileName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Filename"
-          },
-          "delimiter": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Delimiter"
-          }
-        },
-        "required": [
-          "source",
-          "format"
-        ],
-        "title": "ExportRequest",
         "type": "object"
       },
       "FieldSummary": {
@@ -5710,313 +6862,6 @@
         "title": "ImportPreviewMeta",
         "type": "object"
       },
-      "ImportPreviewRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "stagedId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Stagedid"
-          },
-          "path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Path"
-          },
-          "kind": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceKind"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "options": {
-            "$ref": "#/components/schemas/ImportOptions"
-          },
-          "limit": {
-            "default": 1000,
-            "maximum": 1000,
-            "minimum": 1,
-            "title": "Limit",
-            "type": "integer"
-          }
-        },
-        "title": "ImportPreviewRequest",
-        "type": "object"
-      },
-      "ImportRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "stagedId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Stagedid"
-          },
-          "path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Path"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Name"
-          },
-          "kind": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceKind"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "options": {
-            "$ref": "#/components/schemas/ImportOptions"
-          }
-        },
-        "title": "ImportRequest",
-        "type": "object"
-      },
-      "Job": {
-        "additionalProperties": false,
-        "description": "Server-produced. Each SSE event carries a full snapshot.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/JobKind"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/JobStatus"
-          },
-          "progress": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Progress"
-          },
-          "message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message"
-          },
-          "seq": {
-            "title": "Seq",
-            "type": "integer"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "title": "Createdat",
-            "type": "string"
-          },
-          "startedAt": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Startedat"
-          },
-          "finishedAt": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finishedat"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "result": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/JobResult"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "title",
-          "status",
-          "progress",
-          "message",
-          "seq",
-          "createdAt",
-          "startedAt",
-          "finishedAt",
-          "error",
-          "result"
-        ],
-        "title": "Job",
-        "type": "object"
-      },
-      "JobKind": {
-        "enum": [
-          "import",
-          "refresh",
-          "materialize",
-          "export"
-        ],
-        "title": "JobKind",
-        "type": "string"
-      },
-      "JobResult": {
-        "additionalProperties": false,
-        "description": "Server-produced.",
-        "properties": {
-          "datasetId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Datasetid"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version"
-          },
-          "pipelineId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pipelineid"
-          },
-          "export": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ExportFile"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Warnings",
-            "type": "array"
-          }
-        },
-        "required": [
-          "datasetId",
-          "version",
-          "pipelineId",
-          "export",
-          "warnings"
-        ],
-        "title": "JobResult",
-        "type": "object"
-      },
-      "JobStatus": {
-        "enum": [
-          "queued",
-          "running",
-          "succeeded",
-          "failed",
-          "cancelled"
-        ],
-        "title": "JobStatus",
-        "type": "string"
-      },
       "MaterializeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -6426,36 +7271,6 @@
         "title": "Reduction",
         "type": "string"
       },
-      "RefreshRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "stagedId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Stagedid"
-          },
-          "options": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ImportOptions"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          }
-        },
-        "title": "RefreshRequest",
-        "type": "object"
-      },
       "RowsPageMeta": {
         "additionalProperties": false,
         "properties": {
@@ -6504,102 +7319,6 @@
         "title": "RowsPageMeta",
         "type": "object"
       },
-      "RowsRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "offset": {
-            "default": 0,
-            "minimum": 0,
-            "title": "Offset",
-            "type": "integer"
-          },
-          "limit": {
-            "default": 200,
-            "minimum": 1,
-            "title": "Limit",
-            "type": "integer"
-          },
-          "sort": {
-            "items": {
-              "$ref": "#/components/schemas/SortKey"
-            },
-            "title": "Sort",
-            "type": "array"
-          },
-          "filters": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "between_dates": "#/components/schemas/RangePredicate",
-                  "eq": "#/components/schemas/EqPredicate",
-                  "in": "#/components/schemas/InPredicate",
-                  "is_null": "#/components/schemas/IsNullPredicate",
-                  "not_in": "#/components/schemas/InPredicate",
-                  "range": "#/components/schemas/RangePredicate"
-                },
-                "propertyName": "op"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/InPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/EqPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/RangePredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/IsNullPredicate"
-                }
-              ]
-            },
-            "title": "Filters",
-            "type": "array"
-          },
-          "search": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Search"
-          },
-          "columns": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Columns"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Version"
-          }
-        },
-        "title": "RowsRequest",
-        "type": "object"
-      },
       "SchemaField": {
         "additionalProperties": false,
         "properties": {
@@ -6621,43 +7340,6 @@
           "semantic"
         ],
         "title": "SchemaField",
-        "type": "object"
-      },
-      "StagedFile": {
-        "additionalProperties": false,
-        "description": "An uploaded file waiting to be previewed and imported. Server-produced.",
-        "properties": {
-          "stagedId": {
-            "title": "Stagedid",
-            "type": "string"
-          },
-          "fileName": {
-            "title": "Filename",
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/SourceKind"
-          },
-          "sizeBytes": {
-            "title": "Sizebytes",
-            "type": "integer"
-          },
-          "sheets": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Sheets",
-            "type": "array"
-          }
-        },
-        "required": [
-          "stagedId",
-          "fileName",
-          "kind",
-          "sizeBytes",
-          "sheets"
-        ],
-        "title": "StagedFile",
         "type": "object"
       },
       "StatResult": {
@@ -6819,41 +7501,6 @@
           "materialized"
         ],
         "title": "StepSchema",
-        "type": "object"
-      },
-      "ValueCount": {
-        "additionalProperties": false,
-        "properties": {
-          "value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Value"
-          },
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "value",
-          "count"
-        ],
-        "title": "ValueCount",
         "type": "object"
       }
     }
