@@ -193,27 +193,28 @@
           "datasets"
         ],
         "summary": "Stage File",
-        "description": "Upload a file (multipart field `file`) for preview and import. The body is streamed to\ndisk; files over `max_upload_mb` are refused from `Content-Length` before reading.",
+        "description": "Upload a file (multipart field `file`) for preview and import. The body is streamed to\ndisk; files over `max_upload_mb` are refused from `Content-Length` before reading.\nUnknown extensions (and files without one) are 415 unless `kind` is given; `.txt` is\nread as CSV. A `kind` given here is remembered, so preview and import needn't repeat it.",
         "operationId": "stage_file_api_datasets_staged_post",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
-                  }
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SourceKind"
                 },
-                "type": "object",
-                "required": [
-                  "file"
-                ]
-              }
-            }
-          },
-          "required": true
-        },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "File type, for a file whose extension isn't recognised",
+              "title": "Kind"
+            },
+            "description": "File type, for a file whose extension isn't recognised"
+          }
+        ],
         "responses": {
           "201": {
             "description": "Successful Response",
@@ -221,6 +222,35 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StagedFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
                 }
               }
             }
@@ -234,6 +264,7 @@
           "datasets"
         ],
         "summary": "Delete Staged",
+        "description": "Delete an upload. 409 while an import or refresh is still reading it.",
         "operationId": "delete_staged_api_datasets_staged__staged_id__delete",
         "parameters": [
           {

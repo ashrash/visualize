@@ -74,6 +74,8 @@ export interface paths {
          * Stage File
          * @description Upload a file (multipart field `file`) for preview and import. The body is streamed to
          *     disk; files over `max_upload_mb` are refused from `Content-Length` before reading.
+         *     Unknown extensions (and files without one) are 415 unless `kind` is given; `.txt` is
+         *     read as CSV. A `kind` given here is remembered, so preview and import needn't repeat it.
          */
         post: operations["stage_file_api_datasets_staged_post"];
         delete?: never;
@@ -92,7 +94,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete Staged */
+        /**
+         * Delete Staged
+         * @description Delete an upload. 409 while an import or refresh is still reading it.
+         */
         delete: operations["delete_staged_api_datasets_staged__staged_id__delete"];
         options?: never;
         head?: never;
@@ -2766,7 +2771,10 @@ export interface operations {
     };
     stage_file_api_datasets_staged_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description File type, for a file whose extension isn't recognised */
+                kind?: components["schemas"]["SourceKind"] | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2787,6 +2795,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StagedFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
