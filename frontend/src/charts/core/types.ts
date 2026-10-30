@@ -126,6 +126,8 @@ export interface OverlayResult {
   kind: TrendlineKind | "regression";
   /** Index into the y channel. */
   series: number;
+  /** The color/facet value this overlay belongs to, when the series is split by color or facet. */
+  group: string | null;
   x: number[];
   y: number[];
   lo: number[] | null;

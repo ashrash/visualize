@@ -228,6 +228,7 @@ describe("applyStyle details", () => {
     const overlay = (series: number) => ({
       kind: "linear" as const,
       series,
+      group: null,
       x,
       y: [1, 2],
       lo: [0, 1],

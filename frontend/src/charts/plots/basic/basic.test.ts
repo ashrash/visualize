@@ -250,6 +250,7 @@ describe("line and area", () => {
     const overlay: OverlayResult = {
       kind: "linear",
       series: 0,
+      group: null,
       x: time.columns.x as number[],
       y: [1, 2, 3],
       lo: [0.5, 1.5, 2.5],

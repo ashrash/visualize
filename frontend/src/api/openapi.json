@@ -5203,6 +5203,17 @@
             "type": "integer",
             "title": "Series"
           },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
           "x": {
             "items": {
               "type": "number"

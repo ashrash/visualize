@@ -1757,6 +1757,8 @@ export interface components {
             kind: components["schemas"]["TrendlineKind"];
             /** Series */
             series: number;
+            /** Group */
+            group?: string | null;
             /** X */
             x: number[];
             /** Y */

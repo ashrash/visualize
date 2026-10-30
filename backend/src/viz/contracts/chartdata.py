@@ -90,6 +90,10 @@ class OverlayResult(Contract):
     kind: TrendlineKind
     # Index into the y channel (ChartStyle.trendlines[].series).
     series: int
+    # The color/facet value this overlay belongs to, when the base series is split by a color or
+    # facet encoding (e.g. one regression line per group, one KDE ridge per category). None when
+    # the overlay applies to the whole (ungrouped) series.
+    group: str | None = None
     # Temporal x travels as epoch milliseconds.
     x: list[float]
     y: list[float]
