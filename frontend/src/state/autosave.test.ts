@@ -100,9 +100,27 @@ describe("autosaver", () => {
     edit();
     release();
     await vi.advanceTimersByTimeAsync(0);
-    // The flush that was saving keeps going until nothing is left, without a second debounce.
+    // The timer path saves once; the edit made meanwhile gets its own debounce window.
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(statuses.at(-1)).toBe("unsaved");
+    await vi.advanceTimersByTimeAsync(2100);
     expect(save).toHaveBeenCalledTimes(2);
     expect(statuses.at(-1)).toBe("saved");
+  });
+
+  it("does not turn steady typing on a slow link into back-to-back saves", async () => {
+    const save = vi.fn(() => new Promise<void>((resolve) => setTimeout(resolve, 300)));
+    const { saver, edit } = setup(save);
+    // Type every 150 ms for 10 s, then stop.
+    for (let t = 0; t < 10_000; t += 150) {
+      edit();
+      await vi.advanceTimersByTimeAsync(150);
+    }
+    await vi.advanceTimersByTimeAsync(10_000);
+    // One debounce window is 2 s, so at most ~1 save per window over the 20 s run.
+    expect(save.mock.calls.length).toBeLessThanOrEqual(10);
+    expect(save.mock.calls.length).toBeGreaterThanOrEqual(1);
+    void saver;
   });
 
   describe("flush", () => {

@@ -74,6 +74,19 @@ describe("projectStore", () => {
     expect(past()).toBe(0);
   });
 
+  it("an edit right after undo clears redo instead of being coalesced away", () => {
+    rename("A");
+    pause();
+    rename("B");
+    undo();
+    expect(state().project?.name).toBe("A");
+    rename("C"); // well inside the coalescing window of the undo
+    expect(state().project?.name).toBe("C");
+    expect(useProjectStore.temporal.getState().futureStates).toHaveLength(0);
+    undo();
+    expect(state().project?.name).toBe("A");
+  });
+
   it("keeps the confirmed revision across undo", () => {
     rename("A");
     state().markSaved({ ...base(), revision: 4 }, state().project ?? undefined);
