@@ -182,13 +182,17 @@ describe("plot-type switch (S6)", () => {
     });
   });
 
-  it("does not leak a pie's default value labels into the next plot", () => {
+  it("resets value labels only when the target plot has no labels section (N1)", () => {
     const pie = getPlot("pie");
     const bar = getPlot("bar");
     if (!pie || !bar) throw new Error("missing");
     const asPie = applyPlotDefaults(makeSpec(), pie);
     expect(asPie.style?.showLabels).toBe(true);
-    expect(applyPlotDefaults(asPie, bar).style?.showLabels).toBe(false);
+    // A plot with the labels section keeps the user's choice.
+    expect(applyPlotDefaults(asPie, bar).style?.showLabels).toBe(true);
+    // A plot without it cannot show or hide them, so they are cleared.
+    const noLabels = { ...bar, styleSections: bar.styleSections.filter((s) => s !== "labels") };
+    expect(applyPlotDefaults(asPie, noLabels).style?.showLabels).toBe(false);
   });
 
   it("keeps settings the target plot supports", () => {
@@ -316,6 +320,7 @@ describe("spec helpers", () => {
       paramsSchema: [
         {
           name: "mode",
+          affectsData: false,
           type: "select",
           label: "Mode",
           default: "a",
@@ -326,6 +331,7 @@ describe("spec helpers", () => {
         },
         {
           name: "extra",
+          affectsData: false,
           type: "boolean",
           label: "Extra",
           default: false,
@@ -333,6 +339,7 @@ describe("spec helpers", () => {
         },
         {
           name: "grouped",
+          affectsData: false,
           type: "boolean",
           label: "G",
           default: false,

@@ -63,6 +63,7 @@ export function cartesianChannels(
 export const BAR_PARAMS: ParamSchema[] = [
   {
     name: "barWidth",
+    affectsData: false,
     type: "number",
     label: "Bar width (%)",
     min: 10,
@@ -72,6 +73,7 @@ export const BAR_PARAMS: ParamSchema[] = [
   },
   {
     name: "barGap",
+    affectsData: false,
     type: "number",
     label: "Gap between grouped bars (%)",
     min: 0,
@@ -89,6 +91,7 @@ export const BAR_PARAMS: ParamSchema[] = [
 export const LINE_PARAMS: ParamSchema[] = [
   {
     name: "step",
+    affectsData: false,
     type: "select",
     label: "Line shape",
     default: "none",
@@ -99,7 +102,13 @@ export const LINE_PARAMS: ParamSchema[] = [
       { value: "end", label: "Step (end)" },
     ],
   },
-  { name: "connectNulls", type: "boolean", label: "Connect across gaps", default: false },
+  {
+    name: "connectNulls",
+    affectsData: false,
+    type: "boolean",
+    label: "Connect across gaps",
+    default: false,
+  },
 ];
 
 function normalizePercent(series: { values: (number | null)[] }[]): void {
@@ -228,13 +237,22 @@ export function hasMeasureAndCategory(
  */
 export function cartesianWarnings(spec: ChartSpec, data: ChartData): string[] {
   const style = resolveStyle(spec);
-  const logged = style.yAxes.some((a) => a.scale === "log");
-  if (!logged) return [];
+  const logY = style.yAxes.some((a) => a.scale === "log");
+  const logX = style.xAxis.scale === "log";
+  if (!logY && !logX) return [];
+  const cd = cartesianSeries(data);
   let omitted = 0;
-  for (const s of cartesianSeries(data).series) {
-    const axis = style.series.find((x) => x.index === s.yIndex)?.yAxis ?? 0;
-    if (style.yAxes[axis]?.scale !== "log") continue;
-    for (const v of s.values) if (v !== null && v <= 0) omitted += 1;
+  if (logY) {
+    for (const s of cd.series) {
+      const axis = style.series.find((x) => x.index === s.yIndex)?.yAxis ?? 0;
+      if (style.yAxes[axis]?.scale !== "log") continue;
+      for (const v of s.values) if (v !== null && v <= 0) omitted += 1;
+    }
+  }
+  if (logX) {
+    // Each x value is one point per series; count the points that cannot be placed.
+    const bad = cd.xs.filter((x) => typeof x === "number" && x <= 0).length;
+    omitted += bad * Math.max(1, cd.series.length);
   }
   return omitted > 0
     ? [

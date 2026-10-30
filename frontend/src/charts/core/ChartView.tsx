@@ -221,7 +221,13 @@ export function ChartView({ spec, filters, pipelines, toolbar = true }: ChartVie
   }
   if (!data || !option) return framed(<Notice>Loading…</Notice>);
   if (!data.stat && data.rowCount === 0) {
-    return framed(<Notice>No data to show: no rows match this chart's fields and filters.</Notice>);
+    // Server warnings often explain why (a dropped group, a failed cast): show them here too.
+    return framed(
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-sm text-muted">
+        <p>No data to show: no rows match this chart's fields and filters.</p>
+        {data.meta.warnings.length > 0 ? <p role="status">{data.meta.warnings.join(" ")}</p> : null}
+      </div>,
+    );
   }
 
   const { meta } = data;

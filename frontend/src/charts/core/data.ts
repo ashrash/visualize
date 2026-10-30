@@ -1,7 +1,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { toColumns } from "../../api/arrow";
 import { ApiError } from "../../api/client";
 import { postJson } from "../../api/http";
-import { postArrow } from "../../api/httpArrow";
+import { postArrowOrJson } from "../../api/httpArrow";
 import type { components } from "../../api/schema";
 import type { ChartDataMeta, ChartDataRequest, ChartSpec, Predicate } from "../../api/types";
 import { getPlot } from "./registry";
@@ -18,26 +19,26 @@ export function isSuperseded(error: unknown): boolean {
 }
 
 /**
- * POST /api/charts/data. Tabular plots answer with an Arrow stream; stat-transform plots
- * (`statOnly`) answer with JSON `{result, meta}`, returned as an empty table carrying `stat`.
- * The caller knows which from the registry, so each path goes through the shared `src/api`
- * helpers (and picks up auth headers when those arrive).
- * TODO(ui-data): switch to `postArrowOrJson` once src/api has it, and drop the statOnly flag.
+ * POST /api/charts/data. Tabular plots answer with an Arrow stream; stat-transform plots answer
+ * with JSON `{result, meta}` (returned as an empty table carrying `stat`). The response content
+ * type decides, so no plot needs to declare which it is.
  */
 export async function fetchChartData(
   request: ChartDataRequest,
   signal?: AbortSignal,
-  options: { statOnly?: boolean } = {},
 ): Promise<ChartData> {
-  if (options.statOnly) {
-    const body = await postJson<ChartDataRequest, ChartStatResponse>(
-      "/api/charts/data",
-      request,
-      signal,
-    );
-    return { columns: {}, kinds: {}, rowCount: 0, meta: body.meta, stat: body.result };
+  const response = await postArrowOrJson<ChartStatResponse>("/api/charts/data", request, signal);
+  if (response.kind === "json") {
+    return {
+      columns: {},
+      kinds: {},
+      rowCount: 0,
+      meta: response.body.meta,
+      stat: response.body.result,
+    };
   }
-  return postArrow<ChartDataRequest, ChartDataMeta>("/api/charts/data", request, signal);
+  if (!response.meta) throw new Error("The chart data response has no metadata.");
+  return { ...toColumns(response.table), meta: response.meta as ChartDataMeta };
 }
 
 /**
@@ -145,7 +146,6 @@ export function useChartData(
   options: ChartQueryOptions = {},
 ) {
   const pipelines = usedPipelines(spec.source, options.pipelines);
-  const statOnly = getPlot(spec.plotType)?.statOnly === true;
   return useQuery({
     queryKey: [
       "chart-data",
@@ -155,7 +155,7 @@ export function useChartData(
       pipelines.length > 0 ? pipelines : null,
     ],
     queryFn: ({ signal }) =>
-      fetchChartData(buildRequest(spec, filters, options, pipelines), signal, { statOnly }),
+      fetchChartData(buildRequest(spec, filters, options, pipelines), signal),
     placeholderData: keepPreviousData,
     enabled,
     // A superseded request (409) means a newer one is already running: retry a couple of times

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import openapi from "../../api/openapi.json";
 import { getPlot, listPlots } from "./registry";
+import type { PlotEntry } from "./types";
 import { validateEntry } from "./validate";
 
 const plotTypes: string[] = openapi.components.schemas.PlotType.enum;
@@ -44,9 +45,18 @@ describe("validateEntry", () => {
     const broken = {
       ...base,
       paramsSchema: [
-        { name: "a", type: "number" as const, label: "A", min: 0, max: 1, default: 5 },
+        {
+          name: "a",
+          affectsData: false,
+          type: "number" as const,
+          label: "A",
+          min: 0,
+          max: 1,
+          default: 5,
+        },
         {
           name: "b",
+          // no affectsData: a Wave 2 plot that forgets it
           type: "boolean" as const,
           label: "B",
           default: false,
@@ -55,7 +65,7 @@ describe("validateEntry", () => {
       ],
       defaults: { params: { a: 2, zzz: 1 } },
     };
-    const problems = validateEntry(broken);
+    const problems = validateEntry(broken as unknown as PlotEntry);
     expect(problems.join("\n")).toContain('showIf references unknown "nope"');
     expect(problems.join("\n")).toContain('param "a" default does not match');
     expect(problems.join("\n")).toContain('unknown param "zzz"');

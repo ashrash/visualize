@@ -48,6 +48,13 @@ export function validateEntry(entry: PlotEntry): string[] {
     problems.push(`${where} declares no channels`);
   }
   for (const param of entry.paramsSchema) {
+    // Required by the type, but plot modules can be loose (casts, JS): check at runtime too, so a
+    // `bins` param that never re-queries cannot ship.
+    if (typeof (param as { affectsData?: unknown }).affectsData !== "boolean") {
+      problems.push(
+        `${where} param "${param.name}" must set affectsData (true if the server needs it for the chart data, else false)`,
+      );
+    }
     const conds = param.showIf ? (Array.isArray(param.showIf) ? param.showIf : [param.showIf]) : [];
     for (const { param: ref } of conds) {
       if (!paramNames.includes(ref) && !channelNames.includes(ref)) {

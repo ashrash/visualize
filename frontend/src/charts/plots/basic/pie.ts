@@ -157,6 +157,7 @@ function pieEntry(donut: boolean): PlotEntry {
     paramsSchema: [
       {
         name: "labelMode",
+        affectsData: false,
         type: "select",
         label: "Slice labels show",
         default: "percent",
@@ -166,9 +167,16 @@ function pieEntry(donut: boolean): PlotEntry {
           { value: "name", label: "Name only" },
         ],
       },
-      { name: "sortSlices", type: "boolean", label: "Sort slices by size", default: true },
+      {
+        name: "sortSlices",
+        affectsData: false,
+        type: "boolean",
+        label: "Sort slices by size",
+        default: true,
+      },
       {
         name: "maxSlices",
+        affectsData: false,
         type: "int",
         label: "Max slices (rest grouped as Other)",
         min: 2,
@@ -179,6 +187,7 @@ function pieEntry(donut: boolean): PlotEntry {
         ? ([
             {
               name: "innerRadius",
+              affectsData: false,
               type: "number",
               label: "Hole size (%)",
               min: 10,
@@ -186,7 +195,13 @@ function pieEntry(donut: boolean): PlotEntry {
               step: 5,
               default: 55,
             },
-            { name: "showTotal", type: "boolean", label: "Show total in the hole", default: true },
+            {
+              name: "showTotal",
+              affectsData: false,
+              type: "boolean",
+              label: "Show total in the hole",
+              default: true,
+            },
           ] as PlotEntry["paramsSchema"])
         : []),
     ],

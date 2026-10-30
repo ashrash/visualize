@@ -18,7 +18,22 @@ vi.mock("./registry", () => ({
 
 const postArrow = vi.fn();
 const postJson = vi.fn();
-vi.mock("../../api/httpArrow", () => ({ postArrow: (...a: unknown[]) => postArrow(...a) }));
+vi.mock("../../api/httpArrow", () => ({
+  postArrowOrJson: (...a: unknown[]) => postArrow(...a),
+}));
+// The Arrow table is faked as the ChartData itself; toColumns just reads it back.
+vi.mock("../../api/arrow", () => ({
+  toColumns: (t: { columns: unknown; kinds: unknown; rowCount: number }) => ({
+    columns: t.columns,
+    kinds: t.kinds,
+    rowCount: t.rowCount,
+  }),
+}));
+const arrow = (data: ReturnType<typeof makeData>) => ({
+  kind: "arrow",
+  table: data,
+  meta: data.meta,
+});
 vi.mock("../../api/http", () => ({ postJson: (...a: unknown[]) => postJson(...a) }));
 
 import { dataIdentity, fetchOverlays, useChartData, usedPipelines } from "./data";
@@ -103,10 +118,22 @@ describe("useChartData", () => {
   it("retries a superseded (409) request instead of sticking on Loading (S9)", async () => {
     postArrow
       .mockRejectedValueOnce(new ApiError("superseded", 409))
-      .mockResolvedValueOnce(makeData({ x: ["a"], y0: [1] }));
+      .mockResolvedValueOnce(arrow(makeData({ x: ["a"], y0: [1] })));
     const { result } = renderHook(() => useChartData(makeSpec()), { wrapper });
     await waitFor(() => expect(result.current.data?.rowCount).toBe(1), { timeout: 3000 });
     expect(postArrow).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a stat-transform (JSON) response as an empty table carrying `stat`, with no plot flag", async () => {
+    const meta = makeData({ x: [] }).meta;
+    postArrow.mockResolvedValue({
+      kind: "json",
+      body: { result: { values: { q1: 1 }, method: "m", n: 3, sampled: false }, meta },
+    });
+    const { result } = renderHook(() => useChartData(makeSpec({ plotType: "box" })), { wrapper });
+    await waitFor(() => expect(result.current.data?.stat?.values).toEqual({ q1: 1 }));
+    expect(result.current.data?.rowCount).toBe(0);
+    expect(result.current.data?.meta).toBe(meta);
   });
 
   it("does not retry real errors (422 shows its message)", async () => {
@@ -117,7 +144,7 @@ describe("useChartData", () => {
   });
 
   it("sends the viewport with the zoom range and only the used pipelines", async () => {
-    postArrow.mockResolvedValue(makeData({ x: ["a"], y0: [1] }));
+    postArrow.mockResolvedValue(arrow(makeData({ x: ["a"], y0: [1] })));
     const spec = makeSpec({ source: { kind: "pipeline", id: "a" } });
     const pipelines = [
       { id: "a", name: "a", source: { kind: "dataset", id: "d" }, steps: [] },

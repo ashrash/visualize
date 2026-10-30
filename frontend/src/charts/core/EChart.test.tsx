@@ -12,7 +12,24 @@ const chart = {
   dispose: vi.fn(),
 };
 
-vi.mock("./echarts", () => ({ echarts: { init: vi.fn(() => chart) } }));
+// The real list of component main types is exercised in render.test.ts; here a stand-in.
+const COMPONENTS = [
+  "series",
+  "title",
+  "legend",
+  "tooltip",
+  "dataZoom",
+  "xAxis",
+  "yAxis",
+  "grid",
+  "aria",
+];
+vi.mock("./echarts", () => ({
+  echarts: {
+    init: vi.fn(() => chart),
+    ComponentModel: { hasClass: (type: string) => COMPONENTS.includes(type) },
+  },
+}));
 
 import { EChart, visibleRange } from "./EChart";
 
@@ -113,7 +130,7 @@ describe("EChart", () => {
     // dataZoom is not replaced: that is what preserves the user's zoom.
     // Only component types in use (now or before) are listed: unregistered ones would throw.
     expect(second.replaceMerge).toEqual(expect.arrayContaining(["series", "title", "legend"]));
-    expect(second.replaceMerge).not.toContain("polar");
+    expect(second.replaceMerge).not.toContain("color"); // not a component
     expect(second.replaceMerge).not.toContain("dataZoom");
     rerender(<EChart option={{ title: { text: "c" } }} resetKey="k2" />);
     expect(chart.setOption.mock.calls[2]?.[1]).toEqual({ notMerge: true });

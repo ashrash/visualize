@@ -68,27 +68,31 @@ export function visibleRange(chart: ECharts): XRange | null | undefined {
   return typeof a === "number" && typeof b === "number" ? [a, b] : undefined;
 }
 
-// Components that are replaced (not merged) on a same-chart update, so removed titles, legends
-// and series disappear. dataZoom is deliberately merged: it holds the user's zoom.
-const REPLACED = [
-  "series",
-  "xAxis",
-  "yAxis",
-  "grid",
-  "title",
-  "legend",
-  "visualMap",
-  "graphic",
-  "polar",
-  "angleAxis",
-  "radiusAxis",
-  "radar",
-  "geo",
-  "parallel",
-  "parallelAxis",
-  "singleAxis",
-  "calendar",
-];
+// Components that are merged, never replaced, on a same-chart update because they hold state the
+// user built up: dataZoom is the zoom (replaced only when its shape changes, see below); brush is
+// the selection. EVERYTHING else present in the old or the new option is replaced, so a removed
+// title, legend, tooltip formatter, dataset, matrix, timeline or toolbox cannot linger and plot
+// agents never need to edit this file for a new component type.
+const KEEP_STATE = ["dataZoom", "brush"];
+
+/**
+ * The component types to pass as `replaceMerge` on a same-chart update: every component present
+ * in the old or the new option, except state-holding ones (`KEEP_STATE`; dataZoom is included
+ * when `zoomChanged`).
+ */
+export function replaceMergeTypes(previous: object, next: object, zoomChanged: boolean): string[] {
+  const present = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  return [...present].filter(
+    (key) =>
+      isComponentType(key) && (!KEEP_STATE.includes(key) || (key === "dataZoom" && zoomChanged)),
+  );
+}
+
+/** Whether an option key is an ECharts component main type (and so valid in replaceMerge). */
+function isComponentType(key: string): boolean {
+  const model = echarts.ComponentModel as unknown as { hasClass?(type: string): boolean };
+  return model.hasClass?.(key) === true;
+}
 
 /** What kind of zoom controls an option has (types and axes), ignoring the zoom position. */
 function dataZoomShape(dataZoom: unknown): string {
@@ -185,16 +189,13 @@ export function EChart({
     if (rebuild) {
       chart.setOption(withAria, { notMerge: true });
     } else {
-      // replaceMerge only accepts registered component types. Those in use (now or before) are
-      // registered by definition, so restrict the list to them ("polar" etc. would throw).
-      const present = new Set([...Object.keys(chart.getOption()), ...Object.keys(withAria)]);
+      // replaceMerge only accepts component main types: keep to option keys that are one.
+      const replaced = replaceMergeTypes(chart.getOption(), withAria, zoomChanged);
       chart.setOption(carryLegendSelection(chart, withAria), {
         notMerge: false,
         // dataZoom holds the user's zoom, so it is only replaced when its shape changes
         // (a slider appears or goes away), not on every update.
-        replaceMerge: [...REPLACED, ...(zoomChanged ? ["dataZoom"] : [])].filter((type) =>
-          present.has(type),
-        ),
+        replaceMerge: replaced,
       });
     }
   }, [option, theme, ariaLabel, resetKey]);

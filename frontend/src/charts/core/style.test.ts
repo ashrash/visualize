@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChartSpec } from "../../api/types";
-import { applyStyle, dropNonPositive } from "./style";
+import { applyStyle, dropNonPositive, dropNonPositiveX, hasSeveralGrids } from "./style";
 import { makeSpec, makeTheme } from "./testing";
 
 // biome-ignore lint/suspicious/noExplicitAny: tests probe deep into the ECharts option
@@ -91,6 +91,92 @@ describe("applyStyle with several grids (S4)", () => {
     ) as Opt;
     expect(out.grid).toBe(grid);
     expect(out.yAxis.type).toBe("log");
+  });
+});
+
+describe("multi-grid detection (W1)", () => {
+  const line = (): Opt => ({
+    xAxis: { type: "category", data: ["a", "b", "c"] },
+    yAxis: { type: "value" },
+    series: [{ type: "line", name: "v", data: [10, 0, -5] }],
+  });
+
+  it("a single grid passed as a one-element array stays fully managed", () => {
+    const option = { ...line(), grid: [{ left: 10 }] };
+    const out = applyStyle(
+      option,
+      makeSpec(style({ title: "T", yAxes: [{ grid: true, scale: "log" }] })),
+      theme,
+    ) as Opt;
+    expect(hasSeveralGrids(option)).toBe(false);
+    expect(out.yAxis.type).toBe("log"); // log scale applied
+    expect(out.series[0].data).toEqual([10, null, null]); // non-positive dropped
+    expect(out.grid.top).toBeGreaterThan(30); // title inset applied
+    expect(Array.isArray(out.grid)).toBe(false);
+  });
+
+  it("one grid with x axes on both top and bottom keeps its title inset and managed axes", () => {
+    const option = {
+      ...line(),
+      xAxis: [
+        { type: "category", data: ["a", "b", "c"] },
+        { type: "category", data: ["a", "b", "c"], position: "top", gridIndex: 0 },
+      ],
+    };
+    const out = applyStyle(option, makeSpec(style({ title: "T", subtitle: "S" })), theme) as Opt;
+    expect(hasSeveralGrids(option)).toBe(false);
+    expect(out.grid.top).toBeGreaterThan(40); // title and subtitle space reserved
+    expect(out.xAxis).toHaveLength(2);
+    expect(out.xAxis[0].nameLocation).toBe("middle"); // managed
+    expect(out.xAxis[1].position).toBe("top"); // second axis passes through
+    expect(out.xAxis[1].axisLabel.color).toBe(theme.textMuted);
+  });
+
+  it("detects real multi-grid by grid count or distinct gridIndex", () => {
+    expect(hasSeveralGrids({ grid: [{}, {}], xAxis: {}, yAxis: {} })).toBe(true);
+    expect(
+      hasSeveralGrids({
+        xAxis: [{ gridIndex: 0 }, { gridIndex: 1 }],
+        yAxis: [{ gridIndex: 0 }, { gridIndex: 1 }],
+      }),
+    ).toBe(true);
+    expect(hasSeveralGrids({ xAxis: [{}, {}], yAxis: {} })).toBe(false);
+    expect(hasSeveralGrids({ grid: { left: 1 }, xAxis: {}, yAxis: {} })).toBe(false);
+  });
+});
+
+describe("log x axis (nit)", () => {
+  it("drops points whose x is zero or negative", () => {
+    const out = applyStyle(
+      {
+        xAxis: { type: "log" },
+        yAxis: { type: "value" },
+        series: [
+          {
+            type: "line",
+            name: "v",
+            data: [
+              [0, 1],
+              [-2, 2],
+              [10, 3],
+              [100, 4],
+            ],
+          },
+        ],
+      },
+      makeSpec(),
+      theme,
+    ) as Opt;
+    expect(out.series[0].data).toEqual([
+      [10, 3],
+      [100, 4],
+    ]);
+    expect(
+      dropNonPositiveX([
+        [0, 1],
+        [5, 2],
+      ]),
+    ).toEqual([[5, 2]]);
   });
 });
 
