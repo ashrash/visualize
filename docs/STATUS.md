@@ -53,6 +53,11 @@ items in their final report and the lead updates this file. Status values: `todo
   cancel or failure, poll fallback for lost job streams, wizard focus and tab stops. Next batch in
   progress: close-while-starting race, axe findings (Project menu name, aria-hidden focus), save
   indicator role.
+- 2026-10-30: transform merged after 4 review rounds: pipeline compiler (15 steps), formula allowlist
+  with per-step growth bound (64 KiB text guard, nested outputs refused), inspect/preview/formula
+  check/materialize jobs, chart-data protocol (aggregate, 2-D/hex bins, M4/MinMaxLTTB, caps,
+  supersede via engine tickets), overlays. 10M p50: bar 55-63 ms, monthly line 44-56 ms, raw
+  timestamp M4 line ~250 ms (over 300 ms under heavy load; qa bench + Wave 4).
 - 2026-10-30: qa Wave 1 in review: samples for every Plots.md family, 10M generator, bench.py over
   HTTP for every §6 budget, Playwright e2e (73 tests + @large 10M grid), axe, contract-drift check,
   CI matrix (Windows, macOS arm64, macOS Intel). Full 10M bench (idle): import 8.2 s; grid pages
@@ -77,19 +82,19 @@ items in their final report and the lead updates this file. Status values: `todo
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Data filtering | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Sorting | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Grouping | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Aggregation | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Missing value handling | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Duplicate removal | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Data type conversion | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Column selection | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Calculated columns | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Custom formulas | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Join and merge datasets | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Pivot and unpivot | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
-| Data normalization | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Data filtering | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Sorting | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Grouping | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Aggregation | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Missing value handling | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Duplicate removal | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Data type conversion | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Column selection | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Calculated columns | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Custom formulas | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Join and merge datasets | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Pivot and unpivot | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
+| Data normalization | transform · ui-data | partial | Backend done: compiler, inspect, preview at any step, formula check (allowlist, growth bounds), materialize jobs. Editor wiring to the API: ui-data in progress (`pipelineApi`). |
 
 ### 3. Chart & Visualization Types
 
@@ -112,7 +117,7 @@ Tracked per plot under Plots.md below.
 | Line styles and thickness | ui-charts | done | Generated config panel + applyStyle (basic plots). |
 | Error bars | ui-charts | partial | SD/SE/CI/fixed rendered (incl. with color). Server bounds: transform branch in review. |
 | Trendlines | ui-charts | partial | Rendering + config done. Server fits (/api/charts/overlays): transform branch in review. |
-| Regression lines | ui-charts | partial | As trendlines; server fit kernels merged (stats); overlays endpoint: transform in progress. |
+| Regression lines | ui-charts | partial | As trendlines; server fit kernels merged (stats); overlays endpoint merged (OLS/LOESS with bands). |
 | Confidence intervals | ui-charts | partial | CI band primitive done; server bands via overlays (in review). |
 | Tooltips | ui-charts | done | Formatted axis/item tooltips. |
 | Reference lines | ui-charts | done | Generated config panel + applyStyle (basic plots). |
