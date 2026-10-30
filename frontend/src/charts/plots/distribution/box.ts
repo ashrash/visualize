@@ -58,7 +58,10 @@ export const box: PlotEntry = definePlot({
     const boxData = xs.map((_, i) => [lo[i], q1[i], median[i], q3[i], hi[i]]);
     const outliers = ((data.meta.params?.outliers as unknown as Outlier[] | undefined) ?? []).map(
       (o) => {
-        const index = o.x === undefined ? 0 : xs.indexOf(String(o.x));
+        // Match on the raw value (not a stringified one): categories can be null, a number or
+        // a boolean, and `String(o.x)` would never equal those in `xs`, silently drawing every
+        // such outlier on the first category instead.
+        const index = o.x === undefined ? 0 : (xs as unknown[]).indexOf(o.x);
         return [Math.max(0, index), o.value];
       },
     );

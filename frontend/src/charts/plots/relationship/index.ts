@@ -9,10 +9,12 @@ import { pair } from "./pair";
 import { regression, residual } from "./regression";
 import { bubble, scatter } from "./scatter";
 
-// Registered once, here: the heatmap series, used by both correlation_heatmap and contour (see
-// contour.ts for why it does not use the official custom-contour series). VisualMapComponent is
-// already registered by ui-charts, but `echarts.use` de-dupes, so listing it again here is
-// harmless and keeps this module self-contained.
+// Registered once, here: the native heatmap series (correlation_heatmap). Contour reuses the
+// shared `densityFallback` primitive's "custom" series instead (see contour.ts for why it does
+// not use the official custom-contour series), so it needs no series type of its own beyond the
+// `CustomChart` ui-charts already registers. VisualMapComponent is already registered by
+// ui-charts, but `echarts.use` de-dupes, so listing it again here is harmless and keeps this
+// module self-contained.
 echarts.use([HeatmapChart, VisualMapComponent]);
 
 // Plots.md §3: scatter, bubble, pair, correlation heatmap, correlogram, hexbin, contour,

@@ -19,6 +19,28 @@ const CHANNELS: ChannelSchema[] = [
 
 const PARAMS: ParamSchema[] = [];
 
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/** ECharts tooltip formatters return HTML that goes straight into innerHTML: a field/column
+ * name is user-controlled (it comes from the uploaded file's header), so it must be escaped
+ * before it is interpolated, or a crafted column name renders as markup/script on hover. */
+function escapeHtml(value: unknown): string {
+  return String(value).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
+}
+
+const pValueFmt = makeFormatter("number:3");
+
+/** p-values below 0.001 would otherwise round to "0.000", reading as "no significance". */
+function formatPValue(p: number): string {
+  return p < 0.001 ? "<0.001" : pValueFmt(p);
+}
+
 /** Grid that leaves room for a title/subtitle above and a horizontal visualMap legend below;
  * this plot manages its own layout (`axes: false`), so applyStyle's usual grid sizing doesn't
  * apply here. */
@@ -59,7 +81,7 @@ export const correlationHeatmap: PlotEntry = definePlot({
       tooltip: {
         trigger: "item",
         formatter: (p: { value: [number, number, number | null] }) =>
-          `${fieldOrder[p.value[1]]} × ${fieldOrder[p.value[0]]}: ${
+          `${escapeHtml(fieldOrder[p.value[1]])} × ${escapeHtml(fieldOrder[p.value[0]])}: ${
             p.value[2] === null ? "n/a" : fmt(p.value[2])
           }`,
       },
@@ -132,8 +154,8 @@ export const correlogram: PlotEntry = definePlot({
         trigger: "item",
         formatter: (p: { value: [number, number, number | null, number | null] }) => {
           const [, , r, pv] = p.value;
-          const sig = pv === null ? "" : `<br/>p ${fmt(pv)}`;
-          return `${fieldOrder[p.value[1]]} × ${fieldOrder[p.value[0]]}: ${
+          const sig = pv === null ? "" : `<br/>p ${formatPValue(pv)}`;
+          return `${escapeHtml(fieldOrder[p.value[1]])} × ${escapeHtml(fieldOrder[p.value[0]])}: ${
             r === null ? "n/a" : fmt(r)
           }${sig}`;
         },

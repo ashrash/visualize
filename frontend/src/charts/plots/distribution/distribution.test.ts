@@ -108,25 +108,117 @@ describe("box", () => {
     const outlierSeries = o.series.find((s: Opt) => s.type === "scatter");
     expect(outlierSeries.data).toEqual([[0, 100]]);
   });
+
+  it("matches an outlier's category by raw value, not by stringifying it", () => {
+    // A null, numeric or boolean category must match the real xs entry, not the first one:
+    // String(null) === "a".indexOf(...) kind of bugs silently mis-plot these.
+    const withNullCategory = makeData(
+      {
+        x: [null, "a"],
+        q1: [1, 10],
+        median: [2, 20],
+        q3: [3, 30],
+        lo: [0, 8],
+        hi: [4, 32],
+        n: [5, 6],
+      },
+      { x: "group" },
+      { meta: { params: { outliers: [{ x: "a", value: 100 }], truncatedOutliers: false } } },
+    );
+    const o = render("box", {}, withNullCategory);
+    const outlierSeries = o.series.find((s: Opt) => s.type === "scatter");
+    expect(outlierSeries.data).toEqual([[1, 100]]);
+  });
 });
 
 describe("violin", () => {
-  it("rescales values into the renderer's fixed [0, 10] sweep and labels the real values back", () => {
-    // Real data far outside [0, 10]: the official custom-violin series hard-codes its KDE sweep
-    // to that range, so values must be rescaled or the violin would render as an empty sliver.
-    const data = makeData(
-      { x: ["a", "a", "b"], y: [3000, 4000, 3500] },
-      { x: "species", y: "body_mass_g" },
-    );
+  // Does NOT use the official @echarts-x/custom-violin series: its KDE sweeps a hard-coded
+  // [0, 10] range regardless of the data's actual scale, clipping tails and drawing the wrong
+  // relative width for groups spanning a small fraction of that range. This draws the server's
+  // own per-group KDE (`kde_by_group`, same kernel as `density`) through a custom renderItem.
+  const categories = ["a", "b"];
+  const rows: [string, number, number, number][] = [
+    ["a", 0, 0, 10],
+    ["a", 1, 1, 10],
+    ["a", 2, 0, 10],
+    ["b", 0, 0, 5],
+    ["b", 1, 0.5, 5],
+    ["b", 2, 0, 5],
+  ];
+  const data = makeData(
+    {
+      x: rows.map((r) => r[0]),
+      y: rows.map((r) => r[1]),
+      density: rows.map((r) => r[2]),
+      n: rows.map((r) => r[3]),
+    },
+    { x: "species", y: "body_mass_g" },
+  );
+
+  // A faithful-enough stand-in for ECharts' custom-series `api`: `coord` places a category at
+  // `index * 100` and maps y linearly, `size([1, 0])` is a fixed category band width in px.
+  function mockApi(currentIndex: number) {
+    return {
+      value: (dim: number, idx = currentIndex) => rows[idx]?.[dim],
+      coord: ([cat, y]: [string, number]) => [categories.indexOf(cat) * 100, 300 - y * 50],
+      size: () => [80],
+      style: () => ({ fill: "blue" }),
+    };
+  }
+
+  it("draws one mirrored polygon per category, scaled to its own peak density", () => {
     const o = render("violin", {}, data);
-    const series = o.series[0];
-    expect(series.renderItem).toBe("violin");
-    for (const [, scaledY] of series.data as [number, number][]) {
-      expect(scaledY).toBeGreaterThanOrEqual(0);
-      expect(scaledY).toBeLessThanOrEqual(10);
-    }
-    expect(o.yAxis.axisLabel.formatter(0)).toBe("3,000");
-    expect(o.yAxis.axisLabel.formatter(10)).toBe("4,000");
+    const renderItem = o.series[0].renderItem as (p: Opt, a: Opt) => Opt | undefined;
+    const context: Opt = {};
+
+    // The first row of "a" (dataIndexInside 0) draws its whole polygon at once.
+    const shapeA = renderItem(
+      { context, dataInsideLength: rows.length, dataIndexInside: 0 },
+      mockApi(0),
+    );
+    expect(shapeA?.type).toBe("polygon");
+    const points = shapeA?.shape.points as number[][];
+    expect(points).toHaveLength(6); // 3 grid points, mirrored left + right
+    // The grid point with the peak density (y=1) reaches the full half-width (80 * 0.42).
+    expect(points[1]?.[0]).toBeCloseTo(0 - 80 * 0.42);
+    expect(points[4]?.[0]).toBeCloseTo(0 + 80 * 0.42);
+    // The zero-density ends collapse to the category's center line.
+    expect(points[0]?.[0]).toBeCloseTo(0);
+    expect(points[2]?.[0]).toBeCloseTo(0);
+
+    // Any other row of the same category draws nothing (already drawn).
+    const shapeRepeat = renderItem(
+      { context, dataInsideLength: rows.length, dataIndexInside: 1 },
+      mockApi(1),
+    );
+    expect(shapeRepeat).toBeUndefined();
+
+    // The first row of "b" draws its own, independently-scaled polygon.
+    const shapeB = renderItem(
+      { context, dataInsideLength: rows.length, dataIndexInside: 3 },
+      mockApi(3),
+    );
+    expect(shapeB?.type).toBe("polygon");
+    const pointsB = shapeB?.shape.points as number[][];
+    // "b"'s peak density also reaches the full half-width, even though it's half of "a"'s.
+    expect(pointsB[1]?.[0]).toBeCloseTo(100 - 80 * 0.42);
+  });
+
+  it("escapes the category name in the tooltip (stored XSS via a crafted column/category name)", () => {
+    const malicious = makeData(
+      {
+        x: ['<img src=x onerror="alert(1)">'],
+        y: [1],
+        density: [1],
+        n: [3],
+      },
+      { x: "species", y: "v" },
+    );
+    const o = render("violin", {}, malicious);
+    const formatter = o.series[0].tooltip.formatter as (p: Opt) => string;
+    const html = formatter({ value: ['<img src=x onerror="alert(1)">', 1, 1, 3] });
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
   });
 });
 

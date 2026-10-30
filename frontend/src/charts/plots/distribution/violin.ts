@@ -1,5 +1,5 @@
 import type { Column } from "../../../api/types";
-import { makeFormatter } from "../../core/format";
+import { maxOf } from "../../core/math";
 import type { Obj } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import { type ChannelSchema, definePlot, type ParamSchema, type PlotEntry } from "../../core/types";
@@ -25,23 +25,109 @@ const CHANNELS: ChannelSchema[] = [
 
 const PARAMS: ParamSchema[] = [
   {
+    name: "bandwidth",
+    affectsData: true,
+    type: "select",
+    label: "Bandwidth rule",
+    default: "silverman",
+    options: [
+      { value: "silverman", label: "Silverman" },
+      { value: "scott", label: "Scott" },
+    ],
+  },
+  {
+    name: "adjust",
+    affectsData: true,
+    type: "number",
+    label: "Bandwidth adjustment",
+    min: 0.1,
+    max: 5,
+    step: 0.1,
+    default: 1,
+  },
+  {
+    name: "gridSize",
+    affectsData: true,
+    type: "int",
+    label: "Curve resolution",
+    min: 16,
+    max: 2048,
+    default: 200,
+  },
+  {
     name: "maxGroups",
     affectsData: true,
     type: "int",
     label: "Max groups",
     min: 1,
-    max: 200,
-    default: 50,
+    max: 100,
+    default: 20,
   },
 ];
 
-// The official @echarts-x/custom-violin renderer computes its own kernel density estimate from
-// the raw (category, value) points, but its KDE sweeps a *hard-coded* y range of [0, 10]
-// (see node_modules/@echarts-x/custom-violin/dist/violin.esm.mjs): it evaluates the density at
-// 0..10 regardless of the data's actual scale. Real fields (body_mass_g, income, ...) would
-// render as an empty sliver. We work around this by linearly rescaling y into [0, 10] before
-// handing it to the series, and mapping the axis labels and tooltip back to the original units.
-const VIOLIN_RANGE = 10;
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/** ECharts tooltip/label formatters return HTML that goes straight into innerHTML: any raw
+ * category value (a column name, free-text group label, …) must be escaped before it is
+ * interpolated, or a crafted value renders as markup/script on hover. */
+function escapeHtml(value: unknown): string {
+  return String(value).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
+}
+
+interface RenderApi {
+  value(dim: number, dataIndex?: number): number | string;
+  coord(point: (number | string)[]): number[];
+  size(point: number[]): number[];
+  style(): Record<string, unknown>;
+}
+
+interface CustomParams {
+  context: { groups?: Map<string, { firstIndex: number; ys: number[]; ds: number[]; n: number }> };
+  dataInsideLength: number;
+  dataIndexInside: number;
+}
+
+/** One polygon per category, traced through the server's KDE curve (mirrored left/right),
+ * scaled to the category's own peak density (so every violin reaches the same half-width). */
+function renderItem(params: CustomParams, api: RenderApi): Obj | undefined {
+  if (!params.context.groups) {
+    const groups = new Map<string, { firstIndex: number; ys: number[]; ds: number[]; n: number }>();
+    for (let i = 0; i < params.dataInsideLength; i++) {
+      const cat = String(api.value(0, i));
+      let group = groups.get(cat);
+      if (!group) {
+        group = { firstIndex: i, ys: [], ds: [], n: Number(api.value(3, i)) || 0 };
+        groups.set(cat, group);
+      }
+      group.ys.push(Number(api.value(1, i)));
+      group.ds.push(Number(api.value(2, i)));
+    }
+    params.context.groups = groups;
+  }
+  const cat = String(api.value(0));
+  const group = params.context.groups.get(cat);
+  // Only the first row of each category's curve draws (it draws the whole polygon at once);
+  // every other row of that category renders nothing.
+  if (!group || group.firstIndex !== params.dataIndexInside) return undefined;
+
+  const maxDensity = maxOf(group.ds, 1e-12);
+  const halfWidth = (api.size([1, 0])[0] ?? 40) * 0.42;
+  const left: number[][] = [];
+  const right: number[][] = [];
+  for (let i = 0; i < group.ys.length; i++) {
+    const [cx = 0, cy = 0] = api.coord([cat, group.ys[i] as number]);
+    const w = ((group.ds[i] as number) / maxDensity) * halfWidth;
+    left.push([cx - w, cy]);
+    right.push([cx + w, cy]);
+  }
+  return { type: "polygon", shape: { points: [...left, ...right.reverse()] }, style: api.style() };
+}
 
 export const violin: PlotEntry = definePlot({
   key: "violin",
@@ -55,42 +141,24 @@ export const violin: PlotEntry = definePlot({
   render(spec, data, theme, ctx) {
     const xs = (data.columns.x ?? []) as string[];
     const ys = (data.columns.y ?? []) as number[];
+    const densities = (data.columns.density ?? []) as number[];
+    const ns = (data.columns.n ?? []) as number[];
     const categories = [...new Set(xs)];
-    const categoryIndex = new Map(categories.map((c, i) => [c, i]));
-    const fmt = makeFormatter(spec.style?.numberFormat ?? "auto", ctx?.locale);
+    const seriesData = xs.map((x, i) => [x, ys[i], densities[i], ns[i]]);
 
-    const finite = ys.filter((y) => typeof y === "number" && Number.isFinite(y));
-    const dataMin = finite.length ? Math.min(...finite) : 0;
-    const dataMax = finite.length ? Math.max(...finite) : 1;
-    const span = dataMax - dataMin || 1;
-    const scale = (y: number) => ((y - dataMin) / span) * VIOLIN_RANGE;
-    const unscale = (v: number) => dataMin + (v / VIOLIN_RANGE) * span;
-
-    const points = xs.map((x, i) => [categoryIndex.get(x) ?? 0, scale(ys[i] as number)]);
     const option: Obj = {
-      xAxis: {
-        type: "category",
-        data: categories,
-        name: data.meta.fields.x,
-        boundaryGap: true,
-      },
-      yAxis: {
-        type: "value",
-        min: 0,
-        max: VIOLIN_RANGE,
-        name: data.meta.fields.y,
-        axisLabel: { formatter: (v: number) => fmt(unscale(v)) },
-      },
+      xAxis: { type: "category", data: categories, name: data.meta.fields.x, boundaryGap: true },
+      yAxis: { type: "value", name: data.meta.fields.y },
       series: [
         {
           type: "custom",
-          renderItem: "violin",
           name: data.meta.fields.y ?? "Distribution",
-          data: points,
-          itemPayload: { areaOpacity: 0.6, bandWidthScale: 0.9, binCount: 100 },
+          data: seriesData,
+          encode: { x: 0, y: 1, tooltip: [0, 3] },
+          renderItem,
           tooltip: {
-            formatter: (p: { value: [number, number] }) =>
-              `${categories[p.value[0]] ?? ""}: ${fmt(unscale(p.value[1]))}`,
+            formatter: (p: { value: [string, number, number, number] }) =>
+              `${escapeHtml(p.value[0])} (n=${escapeHtml(p.value[3])})`,
           },
         },
       ],

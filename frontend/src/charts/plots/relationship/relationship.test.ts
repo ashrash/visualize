@@ -76,6 +76,19 @@ describe("pair plot", () => {
     expect(types.filter((t: string) => t === "bar")).toHaveLength(2);
     expect(types.filter((t: string) => t === "scatter")).toHaveLength(2);
   });
+
+  it("labels row 0's y axis on its diagonal cell too, not just the off-diagonal one", () => {
+    const data = makeData(
+      { dimension0: [1, 2, 3], dimension1: [3, 2, 1] },
+      { dimension0: "bill_length_mm", dimension1: "bill_depth_mm" },
+    );
+    const o = render("pair", {}, data);
+    // Grid cells are row-major: [0,0] diagonal, [0,1] off-diagonal, [1,0] off-diagonal, [1,1]
+    // diagonal. Column 0 (cells 0 and 2) should carry dimension0's label on both its cells;
+    // previously the diagonal cell (0) had no `name` at all.
+    expect(o.yAxis[0].name).toBe("bill_length_mm");
+    expect(o.yAxis[2].name).toBe("bill_depth_mm");
+  });
 });
 
 describe("correlation heatmap", () => {
@@ -95,6 +108,18 @@ describe("correlation heatmap", () => {
     expect(o.visualMap.min).toBe(-1);
     expect(o.visualMap.max).toBe(1);
   });
+
+  it("escapes a crafted field/category name in the tooltip (stored XSS)", () => {
+    const malicious = '<img src=x onerror="alert(1)">';
+    const data = makeData(
+      { x: [malicious, malicious], y: [malicious, malicious], value: [1, 1] },
+      { x: "Field", y: "Field", value: "r" },
+    );
+    const o = render("correlation_heatmap", {}, data);
+    const html = o.tooltip.formatter({ value: [0, 0, 1] });
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  });
 });
 
 describe("correlogram", () => {
@@ -107,6 +132,28 @@ describe("correlogram", () => {
     const sizes = o.series[0].data.map((d: Opt) => d.symbolSize);
     expect(sizes[0]).toBeGreaterThan(sizes[1]);
   });
+
+  it("escapes a crafted field/category name in the tooltip (stored XSS)", () => {
+    const malicious = "<script>alert(1)</script>";
+    const data = makeData(
+      { x: [malicious], y: [malicious], value: [1], n: [10], p: [0.001] },
+      { x: "Field", y: "Field", value: "r" },
+    );
+    const o = render("correlogram", {}, data);
+    const html = o.tooltip.formatter({ value: [0, 0, 1, 0.001] });
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("shows a small p-value as '<0.001' rather than rounding it to 0.000", () => {
+    const data = makeData(
+      { x: ["a"], y: ["b"], value: [0.9], n: [100], p: [0.0000001] },
+      { x: "Field", y: "Field", value: "r" },
+    );
+    const o = render("correlogram", {}, data);
+    const html = o.tooltip.formatter({ value: [0, 0, 0.9, 0.0000001] });
+    expect(html).toContain("<0.001");
+  });
 });
 
 describe("hexbin", () => {
@@ -116,31 +163,54 @@ describe("hexbin", () => {
     expect(o.series[0].type).toBe("custom");
     expect(o.visualMap.max).toBe(10);
   });
+
+  it("sizes hexagons from the server's xPerPx/yPerPx via api.coord, not a fixed pixel radius", () => {
+    const data = makeData(
+      { x: [0], y: [0], count: [1] },
+      { x: "a", y: "b" },
+      { meta: { params: { radiusPx: 10, xPerPx: 2, yPerPx: 5 } } },
+    );
+    const o = render("hexbin", {}, data);
+    // A mock api: coord() just scales data-space points by a fixed factor, standing in for
+    // whatever the chart's actual (possibly nice-rounded, margin-shrunk) axis scale is.
+    const coordCalls: number[][] = [];
+    const api = {
+      value: (dim: number) => [0, 0][dim],
+      coord: (p: number[]) => {
+        coordCalls.push(p);
+        return [(p[0] ?? 0) * 3, (p[1] ?? 0) * 3];
+      },
+      style: () => ({}),
+    };
+    const shape = o.series[0].renderItem({}, api);
+    expect(shape.shape.points).toHaveLength(6);
+    // Each vertex offset is radiusPx * xPerPx/yPerPx in data space (not a fixed pixel radius
+    // applied after conversion): the first vertex is at angle -30deg, so dx = 10*2*cos(-30deg).
+    const [first] = coordCalls;
+    expect(first?.[0]).toBeCloseTo(10 * 2 * Math.cos((-30 * Math.PI) / 180));
+    expect(first?.[1]).toBeCloseTo(10 * 5 * Math.sin((-30 * Math.PI) / 180));
+  });
 });
 
 describe("contour", () => {
-  // Does NOT use the official @echarts-x/custom-contour series: it transitively imports the
-  // full (non-tree-shaken) "echarts" package, which breaks CLAUDE.md's bundle-size rule and was
-  // observed to break charts/core/render.test.ts's unregistered-component check as a side
-  // effect. See the comment in contour.ts.
-  it("bins the raw points into a heatmap, with counts summing to the point count", () => {
+  // Does NOT use the official @echarts-x/custom-contour series (see contour.ts/relationship.py
+  // for why), and is not true isoline contouring either: the server now always returns a
+  // `bin2d` density grid (the same shape scatter/bubble fall back to over their mark cap), and
+  // the renderer reuses the shared `densityFallback` primitive directly.
+  it("draws the server's bin2d grid via densityFallback", () => {
     const data = makeData(
-      { x: [1, 1.1, 1.2, 5, 5.1], y: [1, 1.1, 1.2, 5, 5.1] },
-      { x: "a", y: "b" },
+      { x_lo: [0, 1], x_hi: [1, 2], y_lo: [0, 1], y_hi: [1, 2], count: [3, 7] },
+      { x_lo: "a", x_hi: "a", y_lo: "b", y_hi: "b", count: "Count" },
+      { meta: { reduction: "binned" } },
     );
-    const o = render("contour", { params: { grid: 4 } }, data);
-    const heat = o.series.find((s: Opt) => s.type === "heatmap");
-    expect(heat).toBeDefined();
-    const total = heat.data.reduce((sum: number, [, , c]: number[]) => sum + (c ?? 0), 0);
-    expect(total).toBe(5);
-    expect(o.xAxis.data).toHaveLength(4);
-    expect(o.series.some((s: Opt) => s.name === "Points")).toBe(false);
-  });
-
-  it("shows a points layer when showPoints is true", () => {
-    const data = makeData({ x: [1, 2], y: [1, 2] }, { x: "a", y: "b" });
-    const o = render("contour", { params: { showPoints: true } }, data);
-    expect(o.series.some((s: Opt) => s.name === "Points")).toBe(true);
+    const o = render("contour", {}, data);
+    expect(o.series).toHaveLength(1);
+    expect(o.series[0].type).toBe("custom");
+    expect(o.series[0].data).toEqual([
+      [0, 1, 0, 1, 3],
+      [1, 2, 1, 2, 7],
+    ]);
+    expect(o.visualMap).toBeDefined();
   });
 });
 
@@ -171,6 +241,11 @@ describe("regression", () => {
     const trend = o.series.find((s: Opt) => s.type === "line" && s.lineStyle?.type === "dashed");
     expect(trend).toBeDefined();
   });
+
+  it("accepts a temporal x (the backend fits NUMERIC_OR_TIME for regression)", () => {
+    const xChannel = byKey("regression").encodingsSchema.find((c) => c.name === "x");
+    expect(xChannel?.accepts).toContain("temporal");
+  });
 });
 
 describe("residual", () => {
@@ -195,5 +270,10 @@ describe("residual", () => {
       series: 0,
       ciLevel: 0.95,
     });
+  });
+
+  it("does not accept a temporal x (the backend's residual fit is quantitative-only)", () => {
+    const xChannel = byKey("residual").encodingsSchema.find((c) => c.name === "x");
+    expect(xChannel?.accepts).toEqual(["quantitative"]);
   });
 });

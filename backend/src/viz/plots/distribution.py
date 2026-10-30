@@ -145,6 +145,9 @@ def frequency_polygon(req: PlotRequest) -> TableOutput:
 
 
 class DensityParams(PlotParams):
+    # NOTE: "scott" here is `viz.stats.kde`'s rule, which is R's bw.nrd (1.06 * spread *
+    # n^(-1/5), spread = min(sd, IQR/1.34)), not SciPy's own Scott factor (n^(-1/5) * sd alone);
+    # the two differ by a few percent. Both rules and "silverman" are documented in kde.py.
     bandwidth: Bandwidth = "silverman"
     adjust: float = Field(default=1.0, gt=0)
     grid_size: int = Field(default=512, ge=16, le=4096)
@@ -236,25 +239,40 @@ def box(req: PlotRequest) -> TableOutput:
         if capped.warning:
             warnings.append(capped.warning)
 
-    base_cols = [col(x_field)] if x_field else []
+    # `base` carries the category as a fixed "_cat" alias (so it works whether or not x_field is
+    # bound) and the value as "_v". Quartiles are computed once per *group*, in a small
+    # `grouped` CTE (quantile_cont over one row per group), then joined back onto every raw row:
+    # a GROUP BY + join is much cheaper than a window function recomputed over every row for both
+    # the summary and the outlier query (measured ~357ms vs ~607ms at 10M rows, grouped).
+    base_cols = [alias(col(x_field), "_cat")] if x_field else []
     base = target.select(*base_cols, alias(as_double(col(y_field)), "_v"))
     base_sql = _sql(base)
-    partition = f"PARTITION BY {_sql(col(x_field))}" if x_field else ""
-    quant_sql = (
-        f"SELECT *, "
-        f"quantile_cont(_v, 0.25) OVER ({partition}) AS _q1, "
-        f"quantile_cont(_v, 0.5) OVER ({partition}) AS _q2, "
-        f"quantile_cont(_v, 0.75) OVER ({partition}) AS _q3 "
-        f"FROM ({base_sql}) AS _b"
+    cat_select = "_cat, " if x_field else ""
+    group_by = "GROUP BY _cat" if x_field else ""
+    grouped_sql = (
+        f"SELECT {cat_select}quantile_cont(_v, [0.25, 0.5, 0.75]) AS _qs "
+        f"FROM ({base_sql}) AS _b {group_by}"
     )
-    group_select = f"{_sql(col(x_field))} AS x, " if x_field else ""
-    group_by = f"GROUP BY {_sql(col(x_field))}" if x_field else ""
+    # A plain CROSS JOIN takes no ON clause (there is exactly one group to join to); grouped
+    # joins use IS NOT DISTINCT FROM so a NULL category still joins to its own group's row.
+    join = (
+        "JOIN ({grouped}) AS _g ON _t._cat IS NOT DISTINCT FROM _g._cat"
+        if x_field
+        else "CROSS JOIN ({grouped}) AS _g"
+    ).format(grouped=grouped_sql)
+    joined_sql = (
+        f"SELECT {'_t._cat AS _cat, ' if x_field else ''}_t._v AS _v, "
+        "_g._qs[1] AS _q1, _g._qs[2] AS _q2, _g._qs[3] AS _q3 "
+        f"FROM ({base_sql}) AS _t {join}"
+    )
+    group_select = "_cat AS x, " if x_field else ""
     summary_sql = (
         f"SELECT {group_select}"
         "min(_q1) AS q1, min(_q2) AS median, min(_q3) AS q3, "
         "min(_v) FILTER (WHERE _v >= _q1 - 1.5 * (_q3 - _q1)) AS lo, "
         "max(_v) FILTER (WHERE _v <= _q3 + 1.5 * (_q3 - _q1)) AS hi, "
-        f"count(*) AS n FROM ({quant_sql}) AS _q {group_by}"
+        f"count(*) AS n FROM ({joined_sql}) AS _j "
+        f"{'GROUP BY _cat ORDER BY _cat' if x_field else ''}"
     )
     summary = target.arrow(summary_sql)
     if x_field:
@@ -263,11 +281,10 @@ def box(req: PlotRequest) -> TableOutput:
         parts = summary.to_pydict()
         table = pa.table({"x": ["All"] * summary.num_rows, **parts})
 
-    order_sql = f"{_sql(col(x_field))}, _v" if x_field else "_v"
     outlier_sql = (
-        f"SELECT {group_select}_v AS value FROM ({quant_sql}) AS _o "
+        f"SELECT {group_select}_v AS value FROM ({joined_sql}) AS _o "
         "WHERE _v < _q1 - 1.5 * (_q3 - _q1) OR _v > _q3 + 1.5 * (_q3 - _q1) "
-        f"ORDER BY {order_sql} LIMIT {params.max_outliers + 1}"
+        f"ORDER BY {'_cat, ' if x_field else ''}_v LIMIT {params.max_outliers + 1}"
     )
     outliers = target.arrow(outlier_sql)
     truncated = outliers.num_rows > params.max_outliers
@@ -295,7 +312,84 @@ def box(req: PlotRequest) -> TableOutput:
     )
 
 
-# ---------------------------------------------------------------- violin / strip / swarm
+# ---------------------------------------------------------------- violin
+
+
+class ViolinParams(PlotParams):
+    bandwidth: Bandwidth = "silverman"
+    adjust: float = Field(default=1.0, gt=0)
+    grid_size: int = Field(default=200, ge=16, le=2048)
+    max_groups: int = Field(default=20, ge=1, le=100)
+
+
+@register_plot(
+    PlotType.VIOLIN,
+    channels=[Channel("x", CATEGORICAL, min=0), Channel("y", QUANT)],
+    params=ViolinParams,
+)
+def violin(req: PlotRequest) -> TableOutput:
+    """Per-group KDE (CLAUDE.md §8: "S KDE per group"), drawn by our own custom renderItem.
+
+    Not the official `@echarts-x/custom-violin` series: that renderer computes its own KDE from
+    raw points in the browser with a bandwidth hard-coded to ~10% of a fixed [0, 10] sweep, which
+    draws a visually wrong shape (clipped tails, wrong relative width) for data outside that
+    range and for narrow groups. Reusing the server's `kde_by_group` (same kernel as `density`)
+    and a small custom renderItem (frontend) avoids that.
+    """
+    x_field = req.field("x")
+    y_field = req.field("y")
+    assert y_field is not None
+    params = req.params
+    assert isinstance(params, ViolinParams)
+    by = (x_field,) if x_field else ()
+    sample = reservoir_sample(
+        req.relation,
+        [y_field],
+        cap=KDE_CAP,
+        by=by,
+        total_cap=KDE_CAP,
+        max_groups=params.max_groups,
+    )
+    groups = (
+        np.asarray(sample.values(x_field), dtype=object)
+        if x_field
+        else np.array(["All"] * sample.n, dtype=object)
+    )
+    grouped = kde_by_group(
+        sample.column(y_field),
+        groups,
+        bw=params.bandwidth,
+        adjust=params.adjust,
+        grid_size=params.grid_size,
+        common_grid=True,
+    )
+    xs: list[object] = []
+    ys: list[float] = []
+    densities: list[float] = []
+    ns: list[int] = []
+    for curve in grouped.curves:
+        xs.extend([curve.key] * len(curve.curve.x))
+        ys.extend(curve.curve.x.tolist())
+        densities.extend(curve.curve.density.tolist())
+        ns.extend([curve.n] * len(curve.curve.x))
+    table = pa.table({"x": xs, "y": ys, "density": densities, "n": ns})
+    return TableOutput(
+        table=table,
+        reduction=Reduction.SAMPLED if sample.sampled else Reduction.NONE,
+        method="kde",
+        fields={
+            "x": _label(req, "x") if x_field else "Category",
+            "y": _label(req, "y"),
+            "density": "Density",
+        },
+        params={},
+        warnings=[*grouped.warnings, *sample.notes()],
+        rows_scanned=sample.n_total,
+        rows_matched=sample.n_total,
+    )
+
+
+# ---------------------------------------------------------------- strip / swarm
 
 
 class PointsParams(PlotParams):
@@ -305,10 +399,8 @@ class PointsParams(PlotParams):
 def _points_table(req: PlotRequest) -> TableOutput:
     """Raw/reservoir-sampled (x, y) points, up to the chart's mark cap.
 
-    Shared by violin, strip and swarm: all three draw individual values per category, so none
-    of them need a server-side density or layout. Violin's renderer (the official
-    `@echarts-x/custom-violin` custom series) bins and shapes the violin from these raw points
-    itself; strip/swarm use ECharts' native scatter `jitter`.
+    Shared by strip and swarm (both draw individual values per category with ECharts' native
+    scatter `jitter`, so neither needs a server-side density or layout).
     """
     y_field = req.field("y")
     assert y_field is not None
@@ -337,15 +429,6 @@ def _points_table(req: PlotRequest) -> TableOutput:
         rows_scanned=sample.n_total,
         rows_matched=sample.n_total,
     )
-
-
-@register_plot(
-    PlotType.VIOLIN,
-    channels=[Channel("x", CATEGORICAL, min=0), Channel("y", QUANT)],
-    params=PointsParams,
-)
-def violin(req: PlotRequest) -> TableOutput:
-    return _points_table(req)
 
 
 @register_plot(

@@ -3,7 +3,29 @@ import type { Obj } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import { type ChannelSchema, definePlot, type ParamSchema, type PlotEntry } from "../../core/types";
 
-const CHANNELS: ChannelSchema[] = [
+const COLOR_CHANNEL: ChannelSchema = {
+  name: "color",
+  label: "Color by",
+  required: false,
+  multiple: false,
+  accepts: ["nominal", "ordinal"],
+  aggregate: false,
+};
+
+const Y_CHANNEL: ChannelSchema = {
+  name: "y",
+  label: "Y",
+  required: true,
+  multiple: false,
+  accepts: ["quantitative"],
+  aggregate: false,
+};
+
+// Regression's raw/sampled points can come from a temporal x (the backend accepts
+// NUMERIC_OR_TIME). Residual's backend fits/accepts a quantitative x only (plots/relationship.py
+// Channel("x", QUANT)); offering temporal there would let a user bind a date column and get a
+// 422 with no obvious reason why, so it gets its own, narrower channel list.
+const REGRESSION_CHANNELS: ChannelSchema[] = [
   {
     name: "x",
     label: "X",
@@ -12,22 +34,21 @@ const CHANNELS: ChannelSchema[] = [
     accepts: ["quantitative", "temporal"],
     aggregate: false,
   },
+  Y_CHANNEL,
+  COLOR_CHANNEL,
+];
+
+const RESIDUAL_CHANNELS: ChannelSchema[] = [
   {
-    name: "y",
-    label: "Y",
+    name: "x",
+    label: "X",
     required: true,
     multiple: false,
     accepts: ["quantitative"],
     aggregate: false,
   },
-  {
-    name: "color",
-    label: "Color by",
-    required: false,
-    multiple: false,
-    accepts: ["nominal", "ordinal"],
-    aggregate: false,
-  },
+  Y_CHANNEL,
+  COLOR_CHANNEL,
 ];
 
 const PARAMS: ParamSchema[] = [];
@@ -68,7 +89,7 @@ export const regression: PlotEntry = definePlot({
   label: "Regression plot",
   family: "relationship",
   description: "A scatter plot with a server-fitted trend line and confidence band.",
-  encodingsSchema: CHANNELS,
+  encodingsSchema: REGRESSION_CHANNELS,
   paramsSchema: PARAMS,
   styleSections: [
     "title",
@@ -108,7 +129,7 @@ export const residual: PlotEntry = definePlot({
   label: "Residual plot",
   family: "relationship",
   description: "Residuals from a linear fit against the fitted values; look for patterns.",
-  encodingsSchema: CHANNELS,
+  encodingsSchema: RESIDUAL_CHANNELS,
   paramsSchema: PARAMS,
   styleSections: ["title", "legend", "axes", "refLines", "tooltip", "numberFormat", "palette"],
   defaults: { style: { refLines: [{ axis: "y", value: 0, label: "0", lineStyle: "dashed" }] } },

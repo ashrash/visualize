@@ -111,6 +111,9 @@ export const pair: PlotEntry = definePlot({
             gridIndex: idx,
             type: "value",
             show: col === 0,
+            name: col === 0 ? labels[row] : undefined,
+            nameLocation: "middle",
+            nameGap: 36,
             axisLabel: { show: false },
             splitLine: { show: false },
           });

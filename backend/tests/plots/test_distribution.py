@@ -135,33 +135,74 @@ def test_box_by_group(table_relation: Any) -> None:
         {"v": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0], "g": ["a", "a", "a", "b", "b", "b"]}
     )
     out = _run(PlotType.BOX, rel, x=["g"], y=["v"])
-    by_group = {row["x"]: row for row in out.table.to_pylist()}
+    rows = out.table.to_pylist()
+    by_group = {row["x"]: row for row in rows}
     assert by_group["a"]["median"] == pytest.approx(2.0)
     assert by_group["b"]["median"] == pytest.approx(20.0)
+    # Deterministic category order (the summary query has an explicit ORDER BY).
+    assert [row["x"] for row in rows] == sorted(row["x"] for row in rows)
+
+
+def test_box_groups_null_category_separately_and_matches_outliers(table_relation: Any) -> None:
+    # A NULL group must be its own box (an inner JOIN without a NULL-safe condition would drop
+    # it entirely), and its outliers must carry the same (null) category as its summary row.
+    rel = table_relation(
+        {
+            "v": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 1000.0],
+            "g": [None, None, None, "a", "a", "a", "a", "a", "a"],
+        }
+    )
+    out = _run(PlotType.BOX, rel, x=["g"], y=["v"])
+    rows = {row["x"]: row for row in out.table.to_pylist()}
+    assert set(rows) == {None, "a"}
+    assert rows[None]["median"] == pytest.approx(2.0)
+    outliers = out.params["outliers"]
+    assert isinstance(outliers, list)
+    assert [o["x"] for o in outliers] == ["a"]
+
+
+def test_box_outlier_values_are_not_double_counted_with_two_groups(table_relation: Any) -> None:
+    # Regression check for the join-based rewrite: each group's fences must come from its own
+    # quartiles, not another group's.
+    rel = table_relation(
+        {"v": [1.0, 2.0, 3.0, 100.0, 200.0, 300.0], "g": ["a", "a", "a", "b", "b", "b"]}
+    )
+    out = _run(PlotType.BOX, rel, x=["g"], y=["v"])
+    assert out.params["outliers"] == []
 
 
 # ---------------------------------------------------------------- violin
 
 
-def test_violin_returns_raw_points_per_group(table_relation: Any) -> None:
-    # Violin's renderer (the official custom-violin series) bins raw points itself, so the
-    # server just ships a capped sample of (category, value) pairs, same as strip/swarm.
+def test_violin_kde_matches_kde_by_group_kernel(table_relation: Any) -> None:
     rng = np.random.default_rng(RNG_SEED)
     v = np.concatenate([rng.normal(size=60), rng.normal(5, size=60)])
     g = ["a"] * 60 + ["b"] * 60
     rel = table_relation({"v": v.tolist(), "g": g})
-    out = _run(PlotType.VIOLIN, rel, x=["g"], y=["v"], mark_cap=1000)
-    assert set(out.table.column_names) == {"x", "y"}
+    out = _run(PlotType.VIOLIN, rel, {"gridSize": 32}, x=["g"], y=["v"])
+    assert set(out.table.column_names) == {"x", "y", "density", "n"}
     assert set(out.table.column("x").to_pylist()) == {"a", "b"}
-    assert out.table.num_rows == 120
+    assert all(d >= 0 for d in out.table.column("density").to_pylist())
     assert out.reduction == Reduction.NONE
+
+    from viz.stats.kde import kde_by_group
+
+    expected = kde_by_group(v, np.array(g, dtype=object), grid_size=32, common_grid=True)
+    rows = out.table.to_pylist()
+    by_group: dict[object, list[float]] = {}
+    for row in rows:
+        by_group.setdefault(row["x"], []).append(row["density"])
+    for curve in expected.curves:
+        np.testing.assert_allclose(by_group[curve.key], curve.curve.density)
 
 
 def test_violin_over_cap_is_sampled(table_relation: Any) -> None:
-    rel = table_relation({"v": list(range(500)), "g": ["a"] * 500})
-    out = _run(PlotType.VIOLIN, rel, x=["g"], y=["v"], mark_cap=50)
+    from viz.stats.sampling import KDE_CAP
+
+    rel = table_relation({"v": list(range(KDE_CAP + 500)), "g": ["a"] * (KDE_CAP + 500)})
+    out = _run(PlotType.VIOLIN, rel, x=["g"], y=["v"])
     assert out.reduction == Reduction.SAMPLED
-    assert out.table.num_rows <= 50
+    assert out.table.column("n").to_pylist()[0] <= KDE_CAP
 
 
 # ---------------------------------------------------------------- strip / swarm

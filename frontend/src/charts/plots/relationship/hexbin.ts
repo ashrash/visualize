@@ -39,17 +39,35 @@ const PARAMS: ParamSchema[] = [
 ];
 
 interface RenderApi {
-  value(dim: number): number;
+  value(dim: number): number | string;
   coord(point: number[]): number[];
   style(): Record<string, unknown>;
 }
 
-/** A pointy-top regular hexagon's vertices, `radius` px from `[cx, cy]`. */
-function hexagonPoints(cx: number, cy: number, radius: number): number[][] {
+/**
+ * A pointy-top regular hexagon's vertices, laid out in *data* space (a `radiusPx`-by-`xPerPx`/
+ * `yPerPx` offset from the cell center) and mapped to pixels one vertex at a time via
+ * `api.coord`. The server lays its hex lattice out assuming a particular viewport size
+ * (`xPerPx`/`yPerPx`, in its response `params`); drawing an offset in screen pixels directly
+ * (a fixed `radiusPx` added to the already-converted center) would misalign and overlap once
+ * the real plot area (axis labels, the visualMap column, a title) differs from that assumption,
+ * which it almost always does. Routing the offset back through `api.coord` keeps the hexagon
+ * sized correctly in the chart's *current* coordinate mapping instead.
+ */
+function hexagonPoints(
+  dataX: number,
+  dataY: number,
+  radiusPx: number,
+  xPerPx: number,
+  yPerPx: number,
+  api: RenderApi,
+): number[][] {
   const points: number[][] = [];
   for (let i = 0; i < 6; i++) {
     const angle = (Math.PI / 180) * (60 * i - 30);
-    points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]);
+    const dx = radiusPx * xPerPx * Math.cos(angle);
+    const dy = radiusPx * yPerPx * Math.sin(angle);
+    points.push(api.coord([dataX + dx, dataY + dy]));
   }
   return points;
 }
@@ -67,7 +85,11 @@ export const hexbin: PlotEntry = definePlot({
     const xs = (data.columns.x ?? []) as number[];
     const ys = (data.columns.y ?? []) as number[];
     const count = (data.columns.count ?? []) as number[];
-    const radiusPx = Number(spec.params?.radiusPx ?? 18);
+    // Read the lattice params the server actually used (not the request's own copy of
+    // radiusPx), so the drawn hexagons match the lattice exactly.
+    const radiusPx = Number(data.meta.params?.radiusPx ?? spec.params?.radiusPx ?? 18);
+    const xPerPx = Number(data.meta.params?.xPerPx ?? 1) || 1;
+    const yPerPx = Number(data.meta.params?.yPerPx ?? 1) || 1;
     const t = resolveTheme(theme);
     const max = maxOf(count, 1);
 
@@ -94,10 +116,11 @@ export const hexbin: PlotEntry = definePlot({
           data: xs.map((x, i) => [x, ys[i], count[i]]),
           encode: { x: 0, y: 1, tooltip: 2 },
           renderItem(_params: unknown, api: RenderApi) {
-            const [cx = 0, cy = 0] = api.coord([api.value(0), api.value(1)]);
+            const x = Number(api.value(0));
+            const y = Number(api.value(1));
             return {
               type: "polygon",
-              shape: { points: hexagonPoints(cx, cy, radiusPx) },
+              shape: { points: hexagonPoints(x, y, radiusPx, xPerPx, yPerPx, api) },
               style: api.style(),
             };
           },
