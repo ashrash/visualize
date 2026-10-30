@@ -14,8 +14,8 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from viz.config import Settings
-from viz.contracts import Project, ProjectSummary, ProjectVersion, new_id
-from viz.contracts.migrations import CURRENT_SCHEMA_VERSION, NewerSchemaError, upgrade_project
+from viz.contracts import Project, ProjectSummary, ProjectVersion, migrations, new_id
+from viz.contracts.migrations import NewerSchemaError, upgrade_project
 from viz.errors import ConflictError, InvalidSpecError, NotFoundError
 from viz.meta.models import ProjectRow, ProjectVersionRow, as_utc, utcnow
 from viz.projects.validate import validate_project
@@ -65,15 +65,18 @@ def _cas_update(db: Session, row: ProjectRow, values: dict[str, Any]) -> None:
     The revision check in the WHERE clause makes check-and-write atomic, so two sessions
     that both read the same revision cannot both write.
     """
-    expected = row.revision
+    expected, row_id = row.revision, row.id
     result = db.execute(
         update(ProjectRow)
-        .where(ProjectRow.id == row.id, ProjectRow.revision == expected)
+        .where(ProjectRow.id == row_id, ProjectRow.revision == expected)
         .values(**values)
         .execution_options(synchronize_session=False)
     )
     if result.rowcount == 0:  # type: ignore[attr-defined]
         db.rollback()
+        db.expire_all()
+        if db.get(ProjectRow, row_id) is None:
+            raise NotFoundError(f"project {row_id} not found")
         raise ConflictError(f"project changed since revision {expected}; reload to continue")
 
 
@@ -114,7 +117,6 @@ def create_from_doc(db: Session, project: Project) -> Project:
         update={
             "id": new_id(),
             "revision": 0,
-            "schema_version": CURRENT_SCHEMA_VERSION,
             "created_at": now,
             "updated_at": now,
         }
@@ -188,7 +190,7 @@ def _write(
     saved = project.model_copy(
         update={
             "revision": row.revision + 1,
-            "schema_version": CURRENT_SCHEMA_VERSION,
+            "schema_version": migrations.CURRENT_SCHEMA_VERSION,
             "updated_at": now,
             "created_at": project.created_at or as_utc(row.created_at),
         }
@@ -264,7 +266,7 @@ def rename_project(db: Session, project_id: str, name: str, revision: int) -> Pr
     saved = project.model_copy(
         update={
             "revision": row.revision + 1,
-            "schema_version": CURRENT_SCHEMA_VERSION,
+            "schema_version": migrations.CURRENT_SCHEMA_VERSION,
             "updated_at": now,
         }
     )

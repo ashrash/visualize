@@ -266,6 +266,34 @@ def test_rejects_non_parquet_and_mismatched_data(
     assert len(list((settings.data_dir / "datasets").iterdir())) == 1
 
 
+def test_duplicate_manifest_id_and_wrong_column_type_rejected(
+    client: TestClient, sales_dataset: dict[str, Any], settings: Settings
+) -> None:
+    p = _project_with_chart(client, sales_dataset["id"])
+    data = _export(client, p["id"])
+
+    def dup_entry(name: str, content: bytes) -> tuple[str, bytes]:
+        if name == "manifest.json":
+            m = json.loads(content)
+            m["datasets"].append(m["datasets"][0])
+            return name, json.dumps(m).encode()
+        return name, content
+
+    assert _upload(client, _rewrite(data, dup_entry)).status_code == 422
+
+    def wrong_type(name: str, content: bytes) -> tuple[str, bytes]:
+        if name.endswith("dataset.json"):
+            d = json.loads(content)
+            for col in d["versions"][-1]["columns"]:
+                if col["name"] == "region":
+                    col["type"] = "BIGINT"  # the file holds strings
+            return name, json.dumps(d).encode()
+        return name, content
+
+    assert _upload(client, _rewrite(data, wrong_type)).status_code == 422
+    assert len(list((settings.data_dir / "datasets").iterdir())) == 1
+
+
 def test_failed_import_registers_nothing(
     client: TestClient, sales_dataset: dict[str, Any], settings: Settings
 ) -> None:
@@ -362,7 +390,7 @@ def test_old_schema_archive_is_upgraded(
     r = _upload(client, _zip({"manifest.json": manifest, "project.json": json.dumps(doc).encode()}))
     assert r.status_code == 201, r.text
     got = r.json()["project"]
-    assert got["name"] == "Old!" and got["revision"] == 0
+    assert got["name"] == "Old!" and got["revision"] == 0 and got["schemaVersion"] == 2
 
 
 def test_export_warns_when_data_file_missing(
