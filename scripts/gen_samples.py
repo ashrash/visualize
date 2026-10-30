@@ -433,8 +433,9 @@ def products_json(out: Path) -> None:
                 },
             }
         )
+    # newline="\n": Path.write_text would write CRLF on Windows and make --check platform-dependent.
     (out / "products.json").write_text(
-        json.dumps(records, indent=1, ensure_ascii=False) + "\n", encoding="utf-8"
+        json.dumps(records, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
     )
 
 
@@ -469,7 +470,7 @@ def events_ndjson(out: Path) -> None:
                 ensure_ascii=False,
             )
         )
-    (out / "events.ndjson").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (out / "events.ndjson").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def sales_hierarchy(out: Path) -> None:
