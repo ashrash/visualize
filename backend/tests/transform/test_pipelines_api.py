@@ -189,8 +189,8 @@ def test_text_length_guard_is_a_422_in_preview_and_chart(
     p = pipeline(sales_dataset["id"], steps)
     response = client.post("/api/pipelines/preview", json={"pipeline": p})
     assert response.status_code == 422
-    assert "longer than 1 MB" in response.json()["detail"]
-    assert "'s17'" in response.json()["detail"]  # "North" doubles past 1 MB at the 18th step
+    assert "longer than 64 KB" in response.json()["detail"]
+    assert "'s13'" in response.json()["detail"]  # "North" doubles past 64 KiB at the 14th step
     chart = {
         "spec": {
             "id": "c",
@@ -202,4 +202,4 @@ def test_text_length_guard_is_a_422_in_preview_and_chart(
     }
     response = client.post("/api/charts/data", json=chart)
     assert response.status_code == 422
-    assert "longer than 1 MB" in response.json()["detail"]
+    assert "longer than 64 KB" in response.json()["detail"]

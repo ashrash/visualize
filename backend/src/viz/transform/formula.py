@@ -15,6 +15,25 @@ hostile input:
 Excluded on purpose: nondeterministic functions (now, random, uuid; they would poison the
 cache), functions with unbounded output (repeat, range, lpad), list/struct/lambda functions,
 and every table, system or settings function (read_*, glob, getenv, query, current_setting).
+
+Size growth per formula (bytes out per byte in)
+-----------------------------------------------
+Let L be the longest text value a formula reads. Every allowlisted function's output is
+bounded by its inputs plus the formula's own literals, with three exceptions, all limited here:
+
+- `replace` / `regexp_replace` (at most MAX_GROWING_CALLS = 8 per formula, never nested in each
+  other, quoted pattern and replacement of at most MAX_REPLACE_LITERAL = 64 characters, at
+  most one column reference in the first argument). The worst is an empty pattern with the
+  'g' flag: one 64-byte replacement before every character, so 65 x L + 64 per call.
+- `concat_ws` repeats its separator once per argument, so the separator must be a literal.
+- `upper` / `lower` can grow UTF-8 by about 1.5x (e.g. U+0250 -> U+2C6F is 2 -> 3 bytes).
+
+With at most MAX_COLUMN_REFS = 100 column references, 8 of them inside replaces:
+    output <= (8 x 65 + 92) x 1.5 x L + (formula literals) = MAX_STEP_GROWTH x L + ~400 KB
+so MAX_STEP_GROWTH = 918. Formulas can't produce lists or structs (calc steps refuse them),
+and every text a step creates is checked against steps.MAX_CALC_TEXT_BYTES (64 KiB), so
+growth can't compound across chained steps and one step peaks below ~60 MB per value, far
+under DuckDB's 4 GiB string limit. `test_worst_case_formula_growth_is_bounded` asserts it.
 """
 
 from __future__ import annotations
@@ -117,8 +136,8 @@ FUNCTIONS: tuple[FunctionDoc, ...] = (
     _f(
         "concat_ws",
         "string",
-        "concat_ws(sep, a, b, ...)",
-        "Join strings with a separator",
+        "concat_ws('sep', a, b, ...)",
+        "Join strings with a quoted separator",
         "concat_ws('-', s, s)",
     ),
     _f("contains", "string", "contains(s, part)", "True if s contains part", "contains(s, 'a')"),
@@ -515,9 +534,20 @@ def _check_shape(tree: exp.Expr) -> None:
 _GROWING: tuple[type[exp.Expr], ...] = (exp.Replace, exp.RegexpReplace)
 MAX_GROWING_CALLS = 8
 MAX_REPLACE_LITERAL = 64
+# See the module docstring: (8 x 65 + 92) x 1.5, rounded up.
+MAX_STEP_GROWTH = 918
 
 
 def _check_growth(tree: exp.Expr) -> None:
+    for node in tree.walk():
+        if isinstance(node, exp.ConcatWs):
+            separator = node.expressions[0] if node.expressions else None
+            if not (isinstance(separator, exp.Literal) and separator.is_string):
+                raise FormulaError("concat_ws() needs a quoted text separator")
+            if len(str(separator.this)) > MAX_REPLACE_LITERAL:
+                raise FormulaError(
+                    f"concat_ws() separators are limited to {MAX_REPLACE_LITERAL} characters"
+                )
     calls = [node for node in tree.walk() if isinstance(node, _GROWING)]
     if len(calls) > MAX_GROWING_CALLS:
         raise FormulaError(f"a formula can use replace at most {MAX_GROWING_CALLS} times")
@@ -526,6 +556,8 @@ def _check_growth(tree: exp.Expr) -> None:
         inner = call.args.get("this")
         if isinstance(inner, exp.Expr) and any(isinstance(node, _GROWING) for node in inner.walk()):
             raise FormulaError(f"{name}() can't be nested inside another replace")
+        if isinstance(inner, exp.Expr) and sum(1 for _ in inner.find_all(exp.Column)) > 1:
+            raise FormulaError(f"{name}() can work on at most one column at a time")
         for arg_name, arg in call.args.items():
             if arg_name == "this" or not isinstance(arg, exp.Expr):
                 continue

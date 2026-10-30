@@ -611,10 +611,10 @@ def test_materialization_key_changes_with_the_import(world: Any, pipe: Any) -> N
     ("expression", "steps", "crossing"),
     [
         # Review B4 residual: a calc step overwriting its own column compounds growth.
-        # Ids start at s0: 20 x 10^5 bytes > 1 MiB at the 5th step (s4).
-        ("replace(s, 'a', 'aaaaaaaaaa')", 8, 4),
-        # 20 x 2^16 bytes > 1 MiB at the 16th step (s15).
-        ("s || s", 26, 15),
+        # Ids start at s0: 20 x 10^4 bytes > 64 KiB at the 4th step (s3).
+        ("replace(s, 'a', 'aaaaaaaaaa')", 8, 3),
+        # 20 x 2^12 bytes > 64 KiB at the 12th step (s11).
+        ("s || s", 26, 11),
     ],
 )
 def test_chained_calc_growth_stops_at_one_megabyte(
@@ -631,13 +631,13 @@ def test_chained_calc_growth_stops_at_one_megabyte(
     compiled = world.compile(pipeline)
     assert compiled.ok  # binding is fine; the guard fires when the data is read
     started = time.perf_counter()
-    with pytest.raises(duckdb.InvalidInputException, match=rf"step 's{crossing}'.*1 MB"):
+    with pytest.raises(duckdb.InvalidInputException, match=rf"step 's{crossing}'.*64 KB"):
         world.rows(compiled)
     assert time.perf_counter() - started < 5
 
 
 def test_calc_text_guard_allows_large_legitimate_text(world: Any) -> None:
-    world.dataset("t", "SELECT repeat('a', 900000) AS s, 1.5 AS n")
+    world.dataset("t", "SELECT repeat('a', 60000) AS s, 1.5 AS n")
     compiled, rows = world.run(
         [
             {"op": "calc", "name": "t", "expression": "s || 'b'"},
@@ -645,13 +645,13 @@ def test_calc_text_guard_allows_large_legitimate_text(world: Any) -> None:
             {"op": "calc", "name": "flag", "expression": "length(t) > 5"},
         ]
     )
-    assert len(rows[0]["t"]) == 900_001 and rows[0]["m"] == 3.0 and rows[0]["flag"] is True
+    assert len(rows[0]["t"]) == 60_001 and rows[0]["m"] == 3.0 and rows[0]["flag"] is True
     types = {c.name: c.type for c in compiled.steps[-1].columns}
     # The guard keeps each calc column's natural type: the same as DuckDB gives unguarded.
     with world.engine.cursor() as cur:
         plain = cur.sql(
             "SELECT s || 'b' AS t, n * 2 AS m, length(s || 'b') > 5 AS flag"
-            " FROM (SELECT repeat('a', 900000) AS s, 1.5 AS n)"
+            " FROM (SELECT repeat('a', 60000) AS s, 1.5 AS n)"
         )
         expected = dict(zip(plain.columns, (str(t) for t in plain.types), strict=True))
     assert {k: types[k] for k in expected} == expected

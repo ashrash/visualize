@@ -265,7 +265,11 @@ def cast_step(step: CastStep, inp: StepInput) -> exp.Select:
             raise StepProblem(f"column {name!r} is cast twice", field=name)
         if item.format:
             inp.compiler.check_strptime_format(item.format)
-        replace[name] = cast_expression(col(name), item.to, item.format)
+        converted = cast_expression(col(name), item.to, item.format)
+        if item.to == DataType.STRING:
+            # e.g. a list column rendered as text: guarded like a calculated text column.
+            converted = text_guard(converted, "VARCHAR", f"column {name!r} (step {step.id!r})")
+        replace[name] = converted
     return exp.select(*_project(inp, replace)).from_(inp.source())
 
 
@@ -281,6 +285,8 @@ def fill_missing_step(step: FillMissingStep, inp: StepInput) -> exp.Select:
         if fill.strategy == FillStrategy.VALUE:
             if fill.value is None:
                 raise StepProblem("enter a value to fill with", field=name)
+            if isinstance(fill.value, str) and len(fill.value.encode()) > MAX_CALC_TEXT_BYTES:
+                raise StepProblem("the fill value is longer than 64 KB", field=name)
             replace[name] = exp.Coalesce(
                 this=column, expressions=[_type_cast(lit(fill.value), inp.schema(name).type)]
             )
@@ -338,27 +344,50 @@ def dedupe_step(step: DedupeStep, inp: StepInput) -> exp.Select:
     return query.qualify(exp.EQ(this=first, expression=lit(1)))
 
 
-# Longest text (or binary) value a calculated column may produce. A calc step can overwrite
-# its own column, so per-formula limits alone don't bound growth across a chain of steps
-# (8 chained replaces reached 10^9 characters); every text result is checked against this.
-MAX_CALC_TEXT_BYTES = 1_048_576
+# Longest text (or binary) value a step may create. A calc step can overwrite its own
+# column, so per-formula limits alone don't bound growth across a chain of steps (8 chained
+# replaces reached 10^9 characters); every text a step creates is checked against this. One
+# formula can grow its input at most formula.MAX_STEP_GROWTH times (see formula.py), so a
+# single step peaks below 64 KiB x 918 = ~60 MB per value before the check rejects it.
+MAX_CALC_TEXT_BYTES = 65_536
 _CALC = "__viz_calc"
+_NESTED = ("STRUCT", "MAP", "UNION")
+
+
+def is_nested_type(duck_type: str) -> bool:
+    """LIST (`T[]`), ARRAY (`T[n]`), STRUCT, MAP and UNION types."""
+    upper = duck_type.upper()
+    return upper.endswith("]") or upper.startswith(_NESTED)
+
+
+def text_guard(value: exp.Expr, duck_type: str, what: str) -> exp.Expr:
+    """`value`, or an error when the text (or binary) is longer than MAX_CALC_TEXT_BYTES.
+
+    Only exact VARCHAR and BLOB values are guarded (`VARCHAR[]` is a list and has no
+    length in bytes). error() is generated here only; it is not on the formula allowlist.
+    """
+    kind = duck_type.upper()
+    if kind not in ("VARCHAR", "BLOB"):
+        return value
+    size = fn("strlen" if kind == "VARCHAR" else "octet_length", value.copy())
+    too_long = exp.GT(this=size, expression=lit(MAX_CALC_TEXT_BYTES))
+    message = f"{what} is longer than 64 KB"
+    return exp.Case(ifs=[exp.If(this=too_long, true=fn("error", lit(message)))], default=value)
 
 
 def calc_step(step: CalcStep, inp: StepInput) -> exp.Select:
     name = _check_name(step.name, "the column name")
     expression = _formula(inp, step.expression)
     probe = inp.query_sql(exp.select(alias(expression.copy(), "v")).from_(inp.source()))
-    kind = inp.compiler.describe(probe)[0][1].upper()
-    value: exp.Expr = col(_CALC)
-    if kind.startswith("VARCHAR") or kind == "BLOB":
-        # error() is generated here only; it is not on the formula allowlist.
-        size = fn("strlen" if kind.startswith("VARCHAR") else "octet_length", col(_CALC))
-        message = f"calculated column {name!r} (step {step.id!r}) is longer than 1 MB"
-        too_long = exp.GT(this=size, expression=lit(MAX_CALC_TEXT_BYTES))
-        value = exp.Case(
-            ifs=[exp.If(this=too_long, true=fn("error", lit(message)))], default=col(_CALC)
+    kind = inp.compiler.describe(probe)[0][1]
+    bare = expression.unnest() if isinstance(expression, exp.Paren) else expression
+    if is_nested_type(kind) and not isinstance(bare, exp.Column):
+        # Lists and structs could grow without bound across chained steps (l = l || l).
+        raise StepProblem(
+            f"a calculated column can't produce a list or struct ({kind}); "
+            "copy such columns with a select or rename step"
         )
+    value = text_guard(col(_CALC), kind, f"calculated column {name!r} (step {step.id!r})")
     # The formula is computed once, in an inner projection; the guard reads its column.
     inner = exp.select(exp.Star(), alias(expression, _CALC)).from_(inp.source())
     lowered = {n.lower(): n for n in inp.names}

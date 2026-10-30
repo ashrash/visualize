@@ -172,8 +172,12 @@ def test_range_filter_matches_pandas(
 def test_zscore_matches_pandas(env: Env, frame: pd.DataFrame) -> None:
     out = env.run(frame, [{"op": "normalize", "fields": ["x"], "method": "zscore"}])
     std = frame["x"].std(ddof=1)
-    if pd.isna(std) or std == 0:
-        assert out["x"].isna().all()
+    mean = frame["x"].mean()
+    # A constant column has zero spread; rounding can leave either side with ~1e-16 instead of
+    # exactly 0 (x = [0.938] * 3: pandas ~1e-16, DuckDB 0 -> NULL). Treat that as zero.
+    if pd.isna(std) or std <= 1e-12 * (abs(mean) if not pd.isna(mean) else 0.0):
+        values = [v for v in out["x"].tolist() if v is not None and not math.isnan(v)]
+        assert all(math.isfinite(v) for v in values)  # NULL, or noise-level but finite
         return
     expected = (frame["x"] - frame["x"].mean()) / std
     got = out["x"].tolist()

@@ -15,6 +15,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from viz.contracts import JobKind, JobResult, Pipeline
+from viz.errors import InvalidSpecError
 from viz.jobs import JobContext, job_handler, job_result
 from viz.transform import runtime
 from viz.transform.source import make_compiler
@@ -45,7 +46,12 @@ def run_materialize(ctx: JobContext, params: MaterializeParams) -> JobResult:
             item = compiled.pending[0]
             ctx.progress(done / max(1, total), f"Materializing step {item.step_id}")
             if not item.path.is_file():
-                with ctx.cursor() as cur:
-                    runtime.write_parquet(cur, ctx.storage, item.sql, item.rel)
+                try:
+                    with ctx.cursor() as cur:
+                        runtime.write_parquet(cur, ctx.storage, item.sql, item.rel)
+                except runtime.USER_ERRORS as exc:
+                    # e.g. a text-length guard: the job fails with the readable message,
+                    # not as a crash with a traceback.
+                    raise InvalidSpecError(runtime.clean_error(exc)) from exc
             done += 1
     return job_result(pipeline_id=params.pipeline.id)
