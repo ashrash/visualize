@@ -8,8 +8,13 @@ interface DatasetListProps {
 
 export function DatasetList({ datasets, selectedId, onSelect }: DatasetListProps) {
   return (
-    <section className="flex flex-col gap-1">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Datasets</h2>
+    <section className="flex flex-col gap-1" aria-labelledby="datasets-heading">
+      <h2
+        id="datasets-heading"
+        className="text-xs font-semibold uppercase tracking-wide text-muted"
+      >
+        Datasets
+      </h2>
       {datasets.length === 0 ? (
         <p className="text-sm text-muted">No datasets yet. Import a file to start.</p>
       ) : (

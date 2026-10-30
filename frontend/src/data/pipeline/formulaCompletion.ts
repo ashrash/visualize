@@ -32,9 +32,7 @@ export function columnCompletionSource(columns: Column[]) {
     const from = word?.from ?? context.pos;
     return {
       from,
-      options: quoted
-        ? options.map((o) => ({ ...o, label: `"${o.label}` }))
-        : options,
+      options: quoted ? options.map((o) => ({ ...o, label: `"${o.label}` })) : options,
       validFor: quoted ? /^"[^"]*$/ : /^[A-Za-z0-9_]*$/,
     };
   };

@@ -31,7 +31,9 @@ export function DialogContent({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <DialogPrimitive.Title className="text-base font-semibold">{title}</DialogPrimitive.Title>
+            <DialogPrimitive.Title className="text-base font-semibold">
+              {title}
+            </DialogPrimitive.Title>
             {description ? (
               <DialogPrimitive.Description className="mt-0.5 text-sm text-muted">
                 {description}

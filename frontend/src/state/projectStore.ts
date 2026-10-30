@@ -11,8 +11,11 @@ interface ProjectState {
   load: (project: Project) => void;
   /** Apply an edit. Each edit is one undo step. */
   update: (edit: (project: Project) => Project) => void;
-  /** Adopt the revision of a successful save. */
-  markSaved: (saved: Project) => void;
+  /**
+   * Adopt the revision of a successful save. `sent` is the project object that was saved: if the
+   * user edited meanwhile, the store holds a newer object and stays dirty.
+   */
+  markSaved: (saved: Project, sent?: Project) => void;
 }
 
 export const useProjectStore = create<ProjectState>()(
@@ -27,20 +30,30 @@ export const useProjectStore = create<ProjectState>()(
       },
       update: (edit) =>
         set((state) => (state.project ? { project: edit(state.project), dirty: true } : state)),
-      markSaved: (saved) => set({ revision: saved.revision, dirty: false }),
+      markSaved: (saved, sent) =>
+        set((state) => ({
+          revision: saved.revision,
+          dirty: sent !== undefined && state.project !== sent,
+        })),
     }),
-    { partialize: (state) => ({ project: state.project }), limit: 100 },
+    {
+      partialize: (state) => ({ project: state.project }),
+      // Only a changed project is an undo step (dirty/revision updates are not).
+      equality: (past, current) => past.project === current.project,
+      limit: 100,
+    },
   ),
 );
 
+// Undo/redo mark the project dirty first so subscribers (autosave) see a dirty change.
 export function undo(): void {
-  useProjectStore.temporal.getState().undo();
   useProjectStore.setState({ dirty: true });
+  useProjectStore.temporal.getState().undo();
 }
 
 export function redo(): void {
-  useProjectStore.temporal.getState().redo();
   useProjectStore.setState({ dirty: true });
+  useProjectStore.temporal.getState().redo();
 }
 
 /** The project as it should be sent to the server (with the confirmed revision). */

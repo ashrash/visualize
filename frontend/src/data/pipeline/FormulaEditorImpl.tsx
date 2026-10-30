@@ -27,7 +27,11 @@ const theme = EditorView.theme({
     fontSize: "13px",
   },
   "&.cm-focused": { outline: "2px solid var(--viz-accent)", outlineOffset: "1px" },
-  ".cm-content": { fontFamily: "var(--viz-font-mono)", caretColor: "var(--viz-text)", padding: "6px 0" },
+  ".cm-content": {
+    fontFamily: "var(--viz-font-mono)",
+    caretColor: "var(--viz-text)",
+    padding: "6px 0",
+  },
   ".cm-cursor": { borderLeftColor: "var(--viz-text)" },
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
     backgroundColor: "var(--viz-surface-2)",

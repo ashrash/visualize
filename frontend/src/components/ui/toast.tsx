@@ -12,7 +12,9 @@ export interface ToastMessage {
 
 interface ToastStore {
   toasts: ToastMessage[];
-  push: (toast: Omit<ToastMessage, "id" | "variant"> & { variant?: ToastMessage["variant"] }) => void;
+  push: (
+    toast: Omit<ToastMessage, "id" | "variant"> & { variant?: ToastMessage["variant"] },
+  ) => void;
   dismiss: (id: number) => void;
 }
 

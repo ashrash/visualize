@@ -1,7 +1,8 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { api, unwrap } from "../api/client";
-import { projectForSave, redo, undo, useProjectStore } from "../state/projectStore";
+import { createProject, getProject, listProjects } from "../api/projects";
+import { autosaver, startAutosave } from "../state/autosave";
+import { redo, undo, useProjectStore } from "../state/projectStore";
 
 const LAST_PROJECT_KEY = "viz.lastProject";
 
@@ -21,55 +22,76 @@ function lastProject(): string | null {
   }
 }
 
-/** Load the last-opened project (or create one), and expose save. */
-export function useProjectSession() {
-  const load = useProjectStore((state) => state.load);
-  const markSaved = useProjectStore((state) => state.markSaved);
+/** Open a project: save pending edits to the current one first, then load and remember it. */
+export async function openProject(id: string, signal?: AbortSignal): Promise<void> {
+  await autosaver.flush(true);
+  const project = await getProject(id, signal);
+  useProjectStore.getState().load(project);
+  rememberProject(project.id);
+  autosaver.resume();
+}
 
-  const session = useQuery({
+/** Discard local edits and take the server's copy (used to resolve a 409 conflict). */
+export async function reloadCurrentProject(): Promise<void> {
+  const id = useProjectStore.getState().project?.id;
+  if (!id) return;
+  const project = await getProject(id);
+  useProjectStore.getState().load(project);
+  autosaver.resume();
+}
+
+export async function createAndOpenProject(name: string): Promise<void> {
+  await autosaver.flush(true);
+  const project = await createProject(name.trim() || "Untitled project");
+  useProjectStore.getState().load(project);
+  rememberProject(project.id);
+  autosaver.resume();
+}
+
+/** Load the last-opened project (or create one) once at startup. */
+export function useProjectBootstrap() {
+  return useQuery({
     queryKey: ["project-session"],
     staleTime: Number.POSITIVE_INFINITY,
-    queryFn: async () => {
-      const projects = unwrap(await api.GET("/api/projects"));
+    queryFn: async ({ signal }) => {
+      const projects = await listProjects(signal);
       const target = projects.find((p) => p.id === lastProject()) ?? projects[0];
       const project = target
-        ? unwrap(
-            await api.GET("/api/projects/{project_id}", {
-              params: { path: { project_id: target.id } },
-            }),
-          )
-        : unwrap(await api.POST("/api/projects", { body: { name: "My project" } }));
-      load(project);
+        ? await getProject(target.id, signal)
+        : await createProject("My project", signal);
+      useProjectStore.getState().load(project);
       rememberProject(project.id);
       return project.id;
     },
   });
+}
 
-  const save = useMutation({
-    mutationFn: async () => {
-      const project = projectForSave();
-      if (!project) throw new Error("No project loaded");
-      return unwrap(
-        await api.PUT("/api/projects/{project_id}", {
-          params: { path: { project_id: project.id } },
-          body: project,
-        }),
-      );
-    },
-    onSuccess: markSaved,
+export function useProjectList(enabled = true) {
+  return useQuery({
+    queryKey: ["projects"],
+    queryFn: ({ signal }) => listProjects(signal),
+    enabled,
   });
+}
 
-  // Keyboard: Ctrl/Cmd+S save, Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo.
-  const { mutate } = save;
+export function useInvalidateProjects() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: ["projects"] });
+}
+
+/** Autosave wiring plus keyboard: Ctrl/Cmd+S save, Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo. */
+export function useProjectShortcuts(): void {
+  useEffect(() => startAutosave(), []);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       const editingText =
-        event.target instanceof HTMLElement && event.target.closest("input, textarea") !== null;
+        event.target instanceof HTMLElement &&
+        event.target.closest("input, textarea, [contenteditable=true], .cm-editor") !== null;
       if (key === "s") {
         event.preventDefault();
-        mutate();
+        void autosaver.flush(false);
       } else if (!editingText && key === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();
@@ -81,7 +103,5 @@ export function useProjectSession() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mutate]);
-
-  return { session, save };
+  }, []);
 }

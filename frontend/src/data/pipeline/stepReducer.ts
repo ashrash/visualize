@@ -34,7 +34,11 @@ export function createStep(op: StepOp, columns: Column[]): PipelineStep {
     case "filter":
       return { ...base, op, predicates: [], expression: null };
     case "sort":
-      return { ...base, op, keys: first ? [{ field: first, descending: false, nullsLast: true }] : [] };
+      return {
+        ...base,
+        op,
+        keys: first ? [{ field: first, descending: false, nullsLast: true }] : [],
+      };
     case "select":
       return { ...base, op, fields: columns.map((c) => c.name) };
     case "rename":
@@ -61,7 +65,14 @@ export function createStep(op: StepOp, columns: Column[]): PipelineStep {
         aggregations: [{ field: null, fn: "count", asName: "count" }],
       };
     case "join":
-      return { ...base, op, right: { kind: "dataset", id: "" }, how: "left", on: [], suffix: "_right" };
+      return {
+        ...base,
+        op,
+        right: { kind: "dataset", id: "" },
+        how: "left",
+        on: [],
+        suffix: "_right",
+      };
     case "union":
       return { ...base, op, others: [], byName: true };
     case "pivot":
@@ -142,11 +153,14 @@ export function summarizeStep(step: PipelineStep): string {
   const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
   switch (step.op) {
     case "filter": {
-      const n = step.predicates.length + (step.expression?.trim() ? 1 : 0);
+      const n = (step.predicates?.length ?? 0) + (step.expression?.trim() ? 1 : 0);
       return n === 0 ? "No conditions yet" : count(n, "condition");
     }
     case "sort":
-      return step.keys.map((k) => `${k.field} ${k.descending ? "desc" : "asc"}`).join(", ") || "No keys yet";
+      return (
+        step.keys.map((k) => `${k.field} ${k.descending ? "desc" : "asc"}`).join(", ") ||
+        "No keys yet"
+      );
     case "select":
       return count(step.fields.length, "column");
     case "rename":

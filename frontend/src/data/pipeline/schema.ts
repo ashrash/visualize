@@ -42,14 +42,22 @@ function applyStep(columns: Column[], step: PipelineStep): Column[] {
         return next ? { ...c, name: next } : c;
       });
     case "calc":
-      return step.name ? [...columns.filter((c) => c.name !== step.name), synthetic(step.name, "DOUBLE", "quantitative")] : columns;
+      return step.name
+        ? [
+            ...columns.filter((c) => c.name !== step.name),
+            synthetic(step.name, "DOUBLE", "quantitative"),
+          ]
+        : columns;
     case "group_aggregate": {
       const index = byName(columns);
       const keys = step.by.flatMap((f) => {
         const c = index.get(f);
         return c ? [c] : [];
       });
-      return [...keys, ...step.aggregations.map((a) => synthetic(a.asName, "DOUBLE", "quantitative"))];
+      return [
+        ...keys,
+        ...step.aggregations.map((a) => synthetic(a.asName, "DOUBLE", "quantitative")),
+      ];
     }
     case "cast": {
       const casts = new Map(step.casts.map((c) => [c.field, c.to]));
@@ -57,7 +65,11 @@ function applyStep(columns: Column[], step: PipelineStep): Column[] {
         const to = casts.get(c.name);
         if (!to) return c;
         const semantic: Column["semantic"] =
-          to === "integer" || to === "float" ? "quantitative" : to === "date" || to === "timestamp" ? "temporal" : "nominal";
+          to === "integer" || to === "float"
+            ? "quantitative"
+            : to === "date" || to === "timestamp"
+              ? "temporal"
+              : "nominal";
         return { ...c, type: to.toUpperCase(), semantic };
       });
     }

@@ -43,7 +43,9 @@ export function DropdownMenuLabel({
   className,
   ...props
 }: ComponentProps<typeof MenuPrimitive.Label>) {
-  return <MenuPrimitive.Label className={cn("px-2 py-1 text-xs text-muted", className)} {...props} />;
+  return (
+    <MenuPrimitive.Label className={cn("px-2 py-1 text-xs text-muted", className)} {...props} />
+  );
 }
 
 export function DropdownMenuSeparator({
