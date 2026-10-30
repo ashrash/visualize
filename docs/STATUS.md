@@ -141,6 +141,30 @@ pipelines with join and pivot work end to end (backend + UI + e2e coverage); bas
 with full config, themes and PNG/SVG export; save, autosave and undo work. Known perf gaps are
 tracked below for Wave 4, not blockers.
 
+## Wave 2 log
+
+- 2026-10-31: pre-Wave 2 lead work merged: the four official `apache/echarts-custom-series`
+  packages (`@echarts-x/custom-violin`, `-contour`, `-bar-range`, `-line-range`; ~30-43 KB
+  unpacked each) added as frontend dependencies; `OverlayResult.group` added (additive, nullable)
+  for overlays scoped to one color/facet group.
+- 2026-10-31: Wave 2 dispatched: `plots-distribution-relationship`, `plots-timeseries`,
+  `plots-geo`, `plots-multivariate-econometric` (4 plot agents, the CLAUDE.md §10 cap), `stats`
+  (MVP §5: correlation, regression, t-tests, ANOVA, chi-square, distribution fitting, outliers,
+  CIs), and `ui-data` (stats panel UI). `plots-composition-specialized` queued to start once one
+  of the four plot agents finishes.
+- 2026-10-31: ui-data stats panel merged: source (dataset/pipeline) picker, field and group-by
+  checklists, a descriptive-statistics result table wired to the real `/api/stats/describe`, and
+  a "plot this" shortcut building a histogram/box `ChartSpec` from a field summary (renders once
+  `plots-distribution-relationship` merges; shows a graceful "not available yet" notice until
+  then). The §5 test UI (correlation, regression, t-tests, etc.) is built but gated off behind a
+  new `statsTests` flag (default off) with a typed-but-stubbed wire shape, the same pattern Wave
+  1 used for `pipelineApi` before transform merged — needs a follow-up wiring pass once `stats`'s
+  Wave 2 branch merges. Reviewer: approve with nits, two should-fix items addressed before merge
+  ("plot this" was using the live source-picker state instead of the described request's own
+  source/groupBy, so switching sources after Run without re-running could plot the wrong field
+  against the wrong dataset; the grouped box plot wasn't encoding the group, drawing one box).
+  vitest 356 passed/1 skipped, biome and build clean.
+
 ## MVP.md
 
 ### 1. Data Sources & Import
@@ -204,9 +228,9 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Mean, median and mode | stats · ui-data | partial | Backend: describe (exact, SQL; modes with tie warning). Stats panel UI: Wave 2. |
-| Standard deviation and variance | stats · ui-data | partial | Backend: describe (overflow-safe moments). Stats panel UI: Wave 2. |
-| Percentiles and quartiles | stats · ui-data | partial | Backend: describe + quantiles kernel (exact, R type 7). Stats panel UI: Wave 2. |
+| Mean, median and mode | stats · ui-data | done | Backend: describe (exact, SQL; modes with tie warning). Stats panel UI: source/field/group picker, result table. |
+| Standard deviation and variance | stats · ui-data | done | Backend: describe (overflow-safe moments). Stats panel UI: result table. |
+| Percentiles and quartiles | stats · ui-data | done | Backend: describe + quantiles kernel (exact, R type 7). Stats panel UI: percentile input, result table. |
 | Correlation analysis | stats · ui-data | todo |  |
 | Linear regression | stats · ui-data | partial | Kernel: OLS fit with CI band (used by trendlines). Endpoint + UI: Wave 2. |
 | Multiple regression | stats · ui-data | todo |  |
@@ -217,7 +241,7 @@ Tracked per plot under Plots.md below.
 | Distribution fitting | stats · ui-data | todo |  |
 | Outlier detection | stats · ui-data | todo |  |
 | Confidence intervals | stats · ui-data | partial | Kernel: bootstrap CIs; fit bands. Endpoint + UI: Wave 2. |
-| Descriptive statistics | stats · ui-data | partial | Backend done: `/api/stats/describe` (grouped, filtered, percentiles, skew/kurtosis). 10 fields with modes 2.6 s at 10M; grouped 7-8 s (Wave 4). Stats panel UI: Wave 2. |
+| Descriptive statistics | stats · ui-data | done | Backend: `/api/stats/describe` (grouped, filtered, percentiles, skew/kurtosis). 10 fields with modes 2.6-3.9 s at 10M depending on conditions (Wave 4 watch item); grouped 7-8 s (Wave 4). Stats panel UI: source (dataset/pipeline) picker, field/group-by checklists, result table, "plot this" shortcut to a histogram/box chart. |
 
 ### 6. Interactivity
 
