@@ -15,11 +15,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import shutil
 import zipfile
-from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 from uuid import uuid4
@@ -74,18 +72,6 @@ class _Manifest(BaseModel):
     datasets: list[_ManifestDataset] = Field(default_factory=list)
 
 
-def _dataset_refs(node: Any) -> Iterator[str]:
-    """Yield every dataset id referenced anywhere in a raw project document."""
-    if isinstance(node, dict):
-        if node.get("kind") == "dataset" and isinstance(node.get("id"), str):
-            yield node["id"]
-        for value in node.values():
-            yield from _dataset_refs(value)
-    elif isinstance(node, list):
-        for item in node:
-            yield from _dataset_refs(item)
-
-
 def _remap(node: Any, mapping: dict[str, str]) -> Any:
     """Rewrite dataset ids in refs and in source-keyed maps (dashboard filter fieldMap)."""
     if isinstance(node, dict):
@@ -104,8 +90,7 @@ def _remap(node: Any, mapping: dict[str, str]) -> Any:
 
 
 def _project_dataset_ids(doc: dict[str, Any]) -> list[str]:
-    ids = list(doc.get("datasetIds", [])) + list(_dataset_refs(doc))
-    return list(dict.fromkeys(ids))
+    return catalog.referenced_dataset_ids(doc)
 
 
 def _sha256_of(path: Path) -> str:
@@ -285,12 +270,14 @@ def _sanitize(dataset: Dataset, version: DatasetVersion, new_dataset_id: str, re
 def _register_dataset(db: Session, storage: LocalStorage, dataset: Dataset, staged: Path) -> None:
     """Move the staged Parquet file into place and add the catalog entry.
 
-    `dataset` already has a fresh id and scrubbed paths.
-    TODO(data-core): replace the body with catalog.register_dataset_bundle(...) once it exists.
+    `dataset` already has a fresh id (never one taken from the archive) and scrubbed paths;
+    the catalog function rewrites `parquetPath`, `sourcePath` and `sizeBytes` and refuses to
+    overwrite an existing id.
     """
-    dest = storage.resolve(dataset.current().parquet_path)
-    os.replace(staged, dest)
-    catalog.save_dataset(db, dataset)
+    version = dataset.current()
+    catalog.register_dataset_bundle(
+        db, storage, dataset, {version.n: staged}, new_id=dataset.id, move=True
+    )
 
 
 def _rollback_registered(db: Session, storage: LocalStorage, ids: list[str]) -> None:
