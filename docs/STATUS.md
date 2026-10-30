@@ -40,8 +40,8 @@ items in their final report and the lead updates this file. Status values: `todo
 - 2026-10-30: stats Wave 1 merged (bd5649f): shared kernels (sampling incl. stratified with group
   caps, quantiles, ECDF, histogram bins, Q-Q, KDE 1-D/2-D, OLS/LOWESS fits, bootstrap) and
   `/api/stats/describe`. Reviewer: approve with nits after one fix round. Describe (10M rows, 10
-  fields): 1.6 s, with modes 2.6 s; grouped with modes 7-8 s (Wave 4 perf item). Follow-ups in
-  progress: stratified n_missing, KDE method on coarse grids, mixed-magnitude rescale.
+  fields): 1.6 s, with modes 2.6 s; grouped with modes 7-8 s (Wave 4 perf item). Follow-up
+  merged (492f0a7): stratified n_missing, KDE cell averages on coarse grids, per-group rescale.
 - 2026-10-30: ui-data follow-up merged (a63e9b4): staged import wizard (upload/path, live preview,
   per-sheet import jobs with SSE progress and cancel), server rows (sort/filter/search), CSV/Excel
   export jobs, rename/refresh/delete with 409-then-force. Data-core flags removed; `pipelineApi`
