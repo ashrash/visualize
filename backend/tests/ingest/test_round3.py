@@ -152,3 +152,41 @@ def test_vanished_upload_is_reported_as_deleted(
     monkeypatch.setattr(importer, "choose_encoding", vanish)
     job = import_job(client, stagedId=staged["stagedId"])
     assert job.status == "failed" and "was deleted" in (job.error or "")
+
+
+# -- qa: unsupported text files -------------------------------------------------------------
+
+PROSE = b"Meeting notes for Tuesday\nWe talked about the roadmap and the budget.\n"
+
+
+def test_unknown_extension_is_415_listing_supported_kinds(client: TestClient) -> None:
+    response = client.post("/api/datasets/staged", files={"file": ("notes.txt", PROSE)})
+    assert response.status_code == 415
+    detail = response.json()["detail"]
+    assert ".csv" in detail and ".xlsx" in detail and ".json" in detail
+    assert client.app.state.storage.staged_dir.exists()  # type: ignore[attr-defined]
+    assert list(client.app.state.storage.staged_dir.iterdir()) == []  # type: ignore[attr-defined]
+
+
+def test_unknown_extension_with_an_explicit_kind_is_accepted(client: TestClient) -> None:
+    response = client.post(
+        "/api/datasets/staged?kind=csv", files={"file": ("export.txt", b"a;b\n1;2\n")}
+    )
+    assert response.status_code == 201, response.text
+    staged = response.json()
+    assert staged["kind"] == "csv"
+    job = import_job(client, stagedId=staged["stagedId"], kind="csv")
+    assert job.status == "succeeded"
+    dataset = client.get(f"/api/datasets/{job.result.dataset_id}").json()
+    assert [c["name"] for c in dataset["versions"][0]["columns"]] == ["a", "b"]
+
+
+def test_prose_read_as_csv_warns_one_column_no_rows(client: TestClient, stage: Stage) -> None:
+    staged = stage("notes.csv", b"Meeting notes for Tuesday\n")
+    _, meta = read_arrow(
+        client.post("/api/datasets/preview", json={"stagedId": staged["stagedId"]}).content
+    )
+    assert any("one column with no rows" in w for w in meta["warnings"])
+    job = import_job(client, stagedId=staged["stagedId"])
+    assert job.status == "succeeded"
+    assert any("one column with no rows" in w for w in job.result.warnings)

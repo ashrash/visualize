@@ -440,6 +440,16 @@ def write_version(
     )
 
 
+def shape_warnings(kind: SourceKind, columns: list[Column], rows: int) -> list[str]:
+    """Hints for text that probably isn't a table (e.g. prose read as a CSV)."""
+    if kind in (SourceKind.CSV, SourceKind.TSV) and len(columns) == 1 and rows == 0:
+        return [
+            "The file was read as one column with no rows, so it may not be a "
+            f"{kind.value.upper()} file. Check the delimiter and header options."
+        ]
+    return []
+
+
 def schema_changes(before: list[Column], after: list[Column]) -> list[str]:
     """Readable warnings for columns removed, added or retyped by a refresh."""
     old = {c.name: c.type for c in before}

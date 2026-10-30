@@ -24,7 +24,6 @@ from viz.errors import ConflictError, InvalidSpecError, UnsupportedFormatError
 
 _EXTENSIONS = {
     ".csv": SourceKind.CSV,
-    ".txt": SourceKind.CSV,
     ".tsv": SourceKind.TSV,
     ".tab": SourceKind.TSV,
     ".json": SourceKind.JSON,
@@ -76,11 +75,19 @@ _TYPE_ALIASES = {
 MAX_JSON_OBJECT_BYTES = 1 << 30
 
 
-def detect_kind(file_name: str) -> SourceKind:
+SUPPORTED_EXTENSIONS = ", ".join(_EXTENSIONS)
+
+
+def detect_kind(file_name: str, explicit: SourceKind | None = None) -> SourceKind:
+    """The kind from the file extension, or `explicit` when the user picked one (e.g. a .txt
+    file that really is a CSV). Unknown extensions are refused (415)."""
+    if explicit is not None:
+        return explicit
     kind = _EXTENSIONS.get(Path(file_name).suffix.lower())
     if kind is None:
         raise UnsupportedFormatError(
-            f"unsupported file type: {file_name!r} (use CSV, TSV, JSON or Excel)"
+            f"unsupported file type: {file_name!r}. Supported: CSV, TSV, JSON or Excel "
+            f"({SUPPORTED_EXTENSIONS}); for another extension, choose the file type explicitly"
         )
     return kind
 

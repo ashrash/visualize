@@ -23,6 +23,7 @@ from viz.ingest.importer import (
     prepare_source,
     rollback_source,
     schema_changes,
+    shape_warnings,
     write_version,
 )
 from viz.ingest.staging import using_staged
@@ -89,6 +90,7 @@ def _import(ctx: JobContext, params: ImportParams) -> JobResult:
         ctx.progress(0.3, "Converting to Parquet")
         with ctx.cursor(progress=(0.3, 0.9)) as cur:
             version = write_version(cur, ctx.storage, source, params.dataset_id, 1)
+        source.warnings.extend(shape_warnings(source.kind, version.columns, version.row_count))
         ctx.progress(0.95, "Saving")
         original = str(Path(params.path).expanduser().resolve()) if params.path else None
         dataset = Dataset(
@@ -146,6 +148,7 @@ def _refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
             version = write_version(cur, ctx.storage, source, dataset.id, number)
         ctx.progress(0.95, "Saving")
         warnings = list(source.warnings)
+        warnings += shape_warnings(source.kind, version.columns, version.row_count)
         if dataset.versions:
             warnings += schema_changes(dataset.current().columns, version.columns)
         ctx.check_cancelled()

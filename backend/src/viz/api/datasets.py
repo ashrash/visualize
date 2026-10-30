@@ -121,11 +121,24 @@ def delete_dataset(
 
 
 @router.post("/staged", response_model=StagedFile, status_code=201, openapi_extra=UPLOAD_OPENAPI)
-async def stage_file(request: Request, storage: StorageDep, settings: SettingsDep) -> StagedFile:
+async def stage_file(
+    request: Request,
+    storage: StorageDep,
+    settings: SettingsDep,
+    kind: Annotated[
+        SourceKind | None,
+        Query(description="File type, for a file whose extension isn't recognised"),
+    ] = None,
+) -> StagedFile:
     """Upload a file (multipart field `file`) for preview and import. The body is streamed to
-    disk; files over `max_upload_mb` are refused from `Content-Length` before reading."""
-    upload = await receive_upload(request, storage, settings)
-    return await run_sync(finish_staging, storage, upload)
+    disk; files over `max_upload_mb` are refused from `Content-Length` before reading.
+    Unknown extensions are 415 unless `kind` is given."""
+
+    def accept(name: str) -> None:
+        readers.detect_kind(name, kind)
+
+    upload = await receive_upload(request, storage, settings, accept=accept)
+    return await run_sync(finish_staging, storage, upload, kind)
 
 
 @router.delete("/staged/{staged_id}", status_code=204)

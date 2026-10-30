@@ -27,6 +27,7 @@ from viz.ingest.importer import (
     open_relation,
     profile_relation,
     read_error,
+    shape_warnings,
 )
 from viz.ingest.upload import Upload
 from viz.storage import LocalStorage
@@ -36,10 +37,12 @@ _PREVIEW_TRANSCODE_BYTES = 8 * 1024 * 1024
 _ESTIMATE_SAMPLE_BYTES = 1024 * 1024
 
 
-def finish_staging(storage: LocalStorage, upload: Upload) -> StagedFile:
+def finish_staging(
+    storage: LocalStorage, upload: Upload, kind: SourceKind | None = None
+) -> StagedFile:
     """Sniff a streamed upload's type and list Excel sheets; deletes it if it's unusable."""
     try:
-        kind = readers.sniff_kind(upload.path, readers.detect_kind(upload.file_name))
+        kind = readers.sniff_kind(upload.path, readers.detect_kind(upload.file_name, kind))
         sheets = readers.excel_sheets(upload.path) if kind == SourceKind.EXCEL else []
     except BaseException:
         storage.delete_staged(upload.staged_id)
@@ -150,6 +153,7 @@ def _preview(
             estimated = _estimate_rows(
                 source, shown, bool(detected.header) if kind != SourceKind.JSON else False
             )
+            warnings.extend(shape_warnings(kind, columns, shown))
             if kind == SourceKind.JSON and shown == 1 and not options.json_path and nested:
                 warnings.append(
                     "This looks like a single JSON object. To import a list inside it, "
