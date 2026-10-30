@@ -159,7 +159,18 @@ def test_materialize_writes_parquet_and_later_compiles_read_it(
     assert before["steps"][3]["materialized"] == "pending"
 
     result = client.post("/api/pipelines/materialize", json={"pipeline": p}).json()
-    assert result == {"jobs": {}, "ready": ["g"]}
+    assert set(result["jobs"]) == {"g"} and result["ready"] == []
+    # The same request while the job is queued or running joins it (dedupe key).
+    again = client.post("/api/pipelines/materialize", json={"pipeline": p}).json()
+    assert again["jobs"] == result["jobs"] or again == {"jobs": {}, "ready": ["g"]}
+    job = client.get(f"/api/jobs/{result['jobs']['g']}").json()
+    assert job["kind"] == "materialize"
+    finished = client.app.state.jobs.wait(result["jobs"]["g"], 30)  # type: ignore[attr-defined]
+    assert finished.status == "succeeded", finished
+    assert client.post("/api/pipelines/materialize", json={"pipeline": p}).json() == {
+        "jobs": {},
+        "ready": ["g"],
+    }
 
     after = client.post("/api/pipelines/inspect", json={"pipeline": p, "includeSql": True}).json()
     assert after["steps"][3]["materialized"] == "ready"

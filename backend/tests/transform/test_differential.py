@@ -41,7 +41,8 @@ class Env:
         path.parent.mkdir(parents=True, exist_ok=True)
         schema = pa.schema([("k", pa.string()), ("x", pa.float64()), ("y", pa.int64())])
         pq.write_table(pa.Table.from_pandas(frame, schema=schema, preserve_index=False), path)
-        columns, rows = profile_parquet(self.engine, path)
+        with self.engine.cursor() as cur:
+            columns, rows = profile_parquet(cur, path)
         self.datasets[dataset_id] = Dataset(
             id=dataset_id,
             name=dataset_id,

@@ -13,7 +13,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from viz.chartdata.cache import chart_key
-from viz.chartdata.slots import SlotRegistry
 from viz.contracts import ChartDataRequest, PlotType, Reduction, StatResult
 from viz.errors import QueryInterruptedError
 from viz.plots import scoped_registry
@@ -67,72 +66,23 @@ def test_cache_key_covers_version_and_viewport_bucket() -> None:
     assert chart_key("d@v1", request, 50_000) != chart_key("d@v1", wide, 50_000)
 
 
-def test_slot_registry_supersedes_older_generations() -> None:
-    slots = SlotRegistry()
-    first = slots.begin("chart:a")
-    second = slots.begin("chart:a")
-    other = slots.begin("chart:b")
-    with pytest.raises(QueryInterruptedError) as info:
-        slots.check(first)
-    assert info.value.status_code == 409
-    slots.check(second)
-    slots.check(other)
-    assert slots.cancel(other) is True
-    with pytest.raises(QueryInterruptedError):
-        slots.check(other)
-    for ticket in (first, second, other):
-        slots.end(ticket)
-    # Generations come from one monotonic counter and never reset, even for idle slots.
-    again = slots.begin("chart:a")
-    assert again.generation > other.generation > second.generation > first.generation
+def test_chart_queries_take_the_request_ticket(engine: Any) -> None:
+    """Review blockers 3 and 7, now on the engine: requests are ordered per slot key by their
+    arrival ticket. A newer request supersedes the older one, and cancelling (disconnecting)
+    the older request never touches the newer one."""
+    from viz.engine import new_owner, request_scope
+    from viz.transform import runtime
 
-
-def test_aborted_older_request_never_cancels_the_newer_one() -> None:
-    """Review repro (slot_race.py): abort A, send B; A's watcher fires after B began."""
-    slots = SlotRegistry()
-    a = slots.begin("chart:c1")
-    b = slots.begin("chart:c1")
-    assert slots.cancel(a) is False  # A is no longer the newest: nothing to cancel
-    slots.check(b)  # B is still current
-    with pytest.raises(QueryInterruptedError):
-        slots.check(a)  # A stops at its next query anyway
-
-
-def test_disconnect_cancels_only_its_own_ticket() -> None:
-    import asyncio
-
-    from viz.api.charts import run_cancellable
-    from viz.chartdata.slots import slots_for
-
-    class Gone:
-        async def is_disconnected(self) -> bool:
-            return True
-
-    class FakeEngine:
-        pass
-
-    engine = FakeEngine()
-    slots = slots_for(engine)  # type: ignore[arg-type]
-    older = slots.begin("chart:z")
-    newer = slots.begin("chart:z")
-    release = threading.Event()
-
-    def work() -> str:
-        release.wait(2)
-        slots.check(newer)  # must not have been cancelled by the older request's disconnect
-        return "ok"
-
-    async def scenario() -> str:
-        task = asyncio.ensure_future(
-            run_cancellable(Gone(), engine, older, work)  # type: ignore[arg-type]
-        )
-        await asyncio.sleep(0.25)
-        release.set()
-        return await task
-
-    assert asyncio.run(scenario()) == "ok"
-    assert slots.is_current(newer)
-    assert slots.cancel(newer) is True  # the newest one can still be cancelled
+    older, newer = new_owner(), new_owner()  # tickets taken at arrival, in order
+    assert newer.ticket > older.ticket
+    with request_scope(newer):
+        assert runtime.query_arrow(engine, "SELECT 1 AS v", key="chart:k").num_rows == 1
+    with request_scope(older), pytest.raises(QueryInterruptedError) as info:
+        runtime.query_arrow(engine, "SELECT 1 AS v", key="chart:k")
+    assert info.value.status_code == 409  # superseded
+    engine.cancel_owner(older)  # the older client disconnects late
+    with request_scope(newer):
+        assert runtime.query_arrow(engine, "SELECT 2 AS v", key="chart:k").num_rows == 1
 
 
 def test_newer_request_in_the_same_slot_wins(client: TestClient, upload: Any) -> None:
@@ -285,9 +235,11 @@ def test_pipeline_as_chart_source(upload: Any, chart: Any, client: TestClient) -
     # The same chart over the materialized pipeline gives the same answer.
     steps[1]["materialize"] = True
     pipeline = _pipeline(ds["id"], steps)
-    assert client.post("/api/pipelines/materialize", json={"pipeline": pipeline}).json()[
-        "ready"
-    ] == ["c"]
+    started = client.post("/api/pipelines/materialize", json={"pipeline": pipeline}).json()
+    job = client.app.state.jobs.wait(started["jobs"]["c"], 30)  # type: ignore[attr-defined]
+    assert job.status == "succeeded", job
+    again = client.post("/api/pipelines/materialize", json={"pipeline": pipeline}).json()
+    assert again == {"jobs": {}, "ready": ["c"]}
     table2, _ = chart({**body, "pipelines": [pipeline]})
     assert table2.to_pylist() == table.to_pylist()
 

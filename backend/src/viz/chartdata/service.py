@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import cast
 
 import pyarrow as pa
 from sqlalchemy.orm import Session
@@ -21,7 +20,6 @@ from viz.chartdata.basic import AGGREGATE_PLOTS, ORDERED, aggregate_chart, epoch
 from viz.chartdata.cache import CachedChart, cache_for, chart_key
 from viz.chartdata.context import ChartContext, ChartOutput
 from viz.chartdata.reduce import numeric_x, x_range_predicate
-from viz.chartdata.slots import Ticket, TicketEngine, slots_for
 from viz.chartdata.sql import alias, col, fn
 from viz.contracts import (
     ChartDataMeta,
@@ -77,63 +75,52 @@ def chart_data(
     request: ChartDataRequest,
     *,
     mark_cap: int,
-    ticket: Ticket | None = None,
 ) -> ChartResult:
-    """Chart data for `request`. The endpoint passes the `ticket` it took before any work
-    started (so a disconnect can cancel exactly this request); direct callers can omit it."""
-    started = time.perf_counter()
-    slots = slots_for(engine)
-    own_ticket = ticket is None
-    if ticket is None:
-        ticket = slots.begin(slot_key(request))
-    try:
-        spec = request.spec
-        # Every query this request runs, including plot modules' own queries through the
-        # Relation, first checks that the ticket is still the newest in its slot.
-        guarded = cast(Engine, TicketEngine(engine, slots, ticket))
-        relation = resolve_source(
-            guarded,
-            db,
-            storage,
-            spec.source,
-            request.pipelines,
-            [*spec.filters, *request.filters],
-            query_key=ticket.key,
-            generation=ticket.generation,
-        )
-        # TODO(data-core): enqueue pending materializations of a pipeline source as jobs.
-        cache = cache_for(engine)
-        cache_key = chart_key(relation.version_key, request, mark_cap)
-        hit = cache.get(cache_key)
-        if hit is not None:
-            meta = hit.meta.model_copy(
-                update={"cached": True, "ms": round((time.perf_counter() - started) * 1000, 2)}
-            )
-            return ChartResult(hit.table, hit.stat, meta)
+    """Chart data for `request`.
 
-        spec = _resolve_encodings(spec, relation)
-        ctx = ChartContext(
-            spec=spec,
-            relation=relation,
-            viewport=request.viewport,
-            mark_cap=mark_cap,
-            ticket=ticket,
-            slots=slots,
+    Call it inside a request scope (the endpoint uses `viz.engine.run_cancellable`): every
+    query, including plot modules' own queries through the Relation, then runs under the slot
+    key with the request's arrival ticket as its generation. A newer request in the same slot
+    supersedes this one, and a client disconnect cancels only this request's queries.
+    """
+    started = time.perf_counter()
+    spec = request.spec
+    key = slot_key(request)
+    relation = resolve_source(
+        engine,
+        db,
+        storage,
+        spec.source,
+        request.pipelines,
+        [*spec.filters, *request.filters],
+        query_key=key,
+    )
+    # TODO(transform): enqueue pending materializations of a pipeline source as jobs too
+    # (needs the job runner here); today POST /api/pipelines/materialize starts them.
+    cache = cache_for(engine)
+    cache_key = chart_key(relation.version_key, request, mark_cap)
+    hit = cache.get(cache_key)
+    if hit is not None:
+        meta = hit.meta.model_copy(
+            update={"cached": True, "ms": round((time.perf_counter() - started) * 1000, 2)}
         )
-        definition = get_plot(spec.plot_type)
-        if definition is None:
-            if spec.plot_type not in AGGREGATE_PLOTS:
-                raise NotImplementedYetError(
-                    f"plot type {spec.plot_type.value!r} is not implemented yet"
-                )
-            result = _finish_table(ctx, aggregate_chart(ctx), started)
-        else:
-            result = _run_plot_module(ctx, started)
-        cache.put(cache_key, CachedChart(result.table, result.stat, result.meta))
-        return result
-    finally:
-        if own_ticket:
-            slots.end(ticket)
+        return ChartResult(hit.table, hit.stat, meta)
+
+    spec = _resolve_encodings(spec, relation)
+    ctx = ChartContext(
+        spec=spec, relation=relation, viewport=request.viewport, mark_cap=mark_cap, key=key
+    )
+    definition = get_plot(spec.plot_type)
+    if definition is None:
+        if spec.plot_type not in AGGREGATE_PLOTS:
+            raise NotImplementedYetError(
+                f"plot type {spec.plot_type.value!r} is not implemented yet"
+            )
+        result = _finish_table(ctx, aggregate_chart(ctx), started)
+    else:
+        result = _run_plot_module(ctx, started)
+    cache.put(cache_key, CachedChart(result.table, result.stat, result.meta))
+    return result
 
 
 def _run_plot_module(ctx: ChartContext, started: float) -> ChartResult:
@@ -167,8 +154,8 @@ def _run_plot_module(ctx: ChartContext, started: float) -> ChartResult:
             relation,
             viewport=ctx.viewport,
             mark_cap=ctx.mark_cap,
-            # TODO(data-core): pass the process-pool executor for pure-Python work.
-            executor=None,
+            # data-core's process pool, for pure-Python work (bootstrap, force layouts, ...).
+            executor=ctx.relation.engine.pool,
         )
     except runtime.USER_ERRORS as exc:
         raise InvalidSpecError(runtime.clean_error(exc)) from exc

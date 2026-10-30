@@ -48,7 +48,8 @@ def big(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[Engine, Loca
             FROM range({ROWS}) t(i)
             """
         ).write_parquet(str(path))
-    columns, count = profile_parquet(engine, path)
+    with engine.cursor() as cur:
+        columns, count = profile_parquet(cur, path)
     dataset = Dataset(
         id="big",
         name="big",

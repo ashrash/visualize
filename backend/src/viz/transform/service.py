@@ -14,6 +14,7 @@ from viz.contracts import (
     FormulaCheckRequest,
     FormulaCheckResult,
     FormulaFunction,
+    JobKind,
     MaterializeRequest,
     MaterializeResult,
     PipelineInspectRequest,
@@ -26,10 +27,12 @@ from viz.contracts import (
 from viz.contracts.pipeline import CastStep
 from viz.engine import Engine
 from viz.errors import InvalidSpecError
+from viz.jobs import JobRunner
 from viz.storage import LocalStorage
 from viz.transform import runtime
-from viz.transform.compiler import CompiledPipeline, Materialization
+from viz.transform.compiler import CompiledPipeline
 from viz.transform.formula import FormulaError, function_docs, validate_formula
+from viz.transform.materialize import MaterializeParams, dedupe_key
 from viz.transform.source import make_compiler
 from viz.transform.steps import cast_expression
 
@@ -204,33 +207,30 @@ def functions() -> list[FormulaFunction]:
     ]
 
 
-def run_materialization(engine: Engine, item: Materialization) -> None:
-    """Write one materialized prefix to its content-addressed Parquet file.
-
-    The job body for JobKind.MATERIALIZE. It is idempotent: the file name is the hash of
-    the prefix SQL, so a finished file is never rewritten.
-    """
-    if item.path.is_file():
-        return
-    runtime.write_parquet(engine, item.sql, item.path, key=f"mat:{item.key}")
-
-
 def materialize(
-    engine: Engine, db: Session, storage: LocalStorage, request: MaterializeRequest
+    engine: Engine,
+    db: Session,
+    storage: LocalStorage,
+    jobs: JobRunner,
+    request: MaterializeRequest,
 ) -> MaterializeResult:
-    """Materialize every pending `materialize` step, in pipeline order.
+    """Start (or join) the job that writes every pending `materialize` step, in order.
 
-    TODO(data-core): submit each item as `JobKind.MATERIALIZE` (dedupe_key = item.key) and
-    return step id -> job id in `jobs`. Until the jobs runner lands this runs in the request.
-    Each step is compiled again after the previous one is written, so later steps read the
-    earlier Parquet files instead of recomputing the prefix.
+    One job per pipeline does all its pending steps (each later prefix reads the earlier
+    file), so every pending step maps to the same job id. The dedupe key is the first
+    pending prefix's key: identical requests share one running job.
     """
-    compiler_pipelines = [request.pipeline, *request.pipelines]
-    ready: list[str] = []
-    for _ in range(len(request.pipeline.steps) + 1):
-        compiled = make_compiler(engine, db, storage, compiler_pipelines).compile(request.pipeline)
-        if not compiled.pending:
-            ready = [s.step_id for s in compiled.steps if s.materialized == "ready"]
-            break
-        run_materialization(engine, compiled.pending[0])
-    return MaterializeResult(jobs={}, ready=ready)
+    compiled = make_compiler(engine, db, storage, [request.pipeline, *request.pipelines]).compile(
+        request.pipeline
+    )
+    ready = [s.step_id for s in compiled.steps if s.materialized == "ready"]
+    if not compiled.pending:
+        return MaterializeResult(jobs={}, ready=ready)
+    params = MaterializeParams(pipeline=request.pipeline, pipelines=request.pipelines)
+    job = jobs.submit(
+        JobKind.MATERIALIZE,
+        params,
+        title=f"Materialize {request.pipeline.name}",
+        dedupe_key=dedupe_key(compiled.pending[0].key),
+    )
+    return MaterializeResult(jobs={m.step_id: job.id for m in compiled.pending}, ready=ready)

@@ -82,7 +82,8 @@ class Env:
         path = self.storage.resolve(rel)
         path.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(table, path)
-        profiled, count = profile_parquet(self.engine, path)
+        with self.engine.cursor() as cur:
+            profiled, count = profile_parquet(cur, path)
         self.datasets[dataset_id] = Dataset(
             id=dataset_id,
             name=dataset_id,

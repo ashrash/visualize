@@ -74,6 +74,8 @@ class Materialization:
     key: str
     sql: str
     path: Path
+    # The same file as a data-dir path (for storage.atomic_write).
+    rel: str
 
 
 @dataclass
@@ -304,7 +306,8 @@ class Compiler:
                         trial[-1] = (name, exp.select(exp.Star()).from_(parquet_source(path)))
                         state = "ready"
                     else:
-                        pending.append(Materialization(step.id, key, sql, path))
+                        rel = runtime.derived_rel(self.storage, key)
+                        pending.append(Materialization(step.id, key, sql, path, rel))
                         state = "pending"
             except StepProblem as problem:
                 error = StepError(

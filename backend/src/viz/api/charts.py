@@ -1,13 +1,13 @@
 """Chart endpoints: the plot catalogue, the chart-data protocol and trendline overlays.
 
-Chart data is cancellable: the work runs in the threadpool while the endpoint watches for a
-client disconnect, and a newer request in the same slot supersedes older ones (409).
+Chart data is cancellable. `viz.engine.run_cancellable` runs the work in the threadpool as
+one request (an owner with an arrival ticket, taken before any work starts). Every query uses
+the slot key with that ticket as its generation: a newer request in the same slot supersedes
+older ones (409), and a client disconnect cancels only this request's queries.
 """
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Callable
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
@@ -16,7 +16,6 @@ from fastapi.concurrency import run_in_threadpool
 from viz.api.deps import DbDep, EngineDep, SettingsDep, StorageDep
 from viz.chartdata.overlays import overlay_key, overlays
 from viz.chartdata.service import chart_data, slot_key
-from viz.chartdata.slots import Ticket, slots_for
 from viz.contracts import (
     ARROW_STREAM_MEDIA_TYPE,
     ChartDataRequest,
@@ -24,9 +23,8 @@ from viz.contracts import (
     OverlayResult,
     PlotInfo,
 )
-from viz.engine import Engine, ipc_bytes
+from viz.engine import ipc_bytes, run_cancellable
 from viz.plots import plot_infos
-from viz.transform import runtime
 
 router = APIRouter(tags=["charts"])
 
@@ -40,27 +38,6 @@ _CHART_RESPONSE: dict[int | str, dict[str, Any]] = {
         "that use a stat transform",
     }
 }
-_POLL_S = 0.1
-
-
-async def run_cancellable[T](
-    request: Request, engine: Engine, ticket: Ticket, work: Callable[[], T]
-) -> T:
-    """Run `work` in the threadpool. If the client disconnects, cancel `ticket` and interrupt
-    its query, but only while it is still the newest request in its slot: an aborted older
-    request must never cancel the newer one that replaced it.
-
-    TODO(data-core): use data-core's run_cancellable (owner tokens + arrival tickets).
-    """
-    task = asyncio.ensure_future(run_in_threadpool(work))
-    while True:
-        done, _ = await asyncio.wait({task}, timeout=_POLL_S)
-        if done:
-            return task.result()
-        if await request.is_disconnected():
-            if slots_for(engine).cancel(ticket):
-                runtime.interrupt(engine, ticket.key)
-            return await task
 
 
 @router.get("/plots", response_model=list[PlotInfo])
@@ -77,21 +54,12 @@ async def get_chart_data(
     storage: StorageDep,
     settings: SettingsDep,
 ) -> Response:
-    # The ticket is taken here, before any work starts, so the disconnect watcher and the
-    # worker agree on which request is which.
-    slots = slots_for(engine)
-    ticket = slots.begin(slot_key(body))
-    try:
-        result = await run_cancellable(
-            request,
-            engine,
-            ticket,
-            lambda: chart_data(
-                engine, storage, db, body, mark_cap=settings.mark_cap, ticket=ticket
-            ),
-        )
-    finally:
-        slots.end(ticket)
+    result = await run_cancellable(
+        request,
+        engine,
+        slot_key(body),
+        lambda: chart_data(engine, storage, db, body, mark_cap=settings.mark_cap),
+    )
     if result.stat is not None:
         payload = ChartStatResponse(result=result.stat, meta=result.meta)
         return Response(payload.model_dump_json(), media_type="application/json")
@@ -109,14 +77,9 @@ async def get_chart_overlays(
     storage: StorageDep,
     settings: SettingsDep,
 ) -> list[OverlayResult]:
-    slots = slots_for(engine)
-    ticket = slots.begin(overlay_key(body))
-    try:
-        return await run_cancellable(
-            request,
-            engine,
-            ticket,
-            lambda: overlays(engine, storage, db, body, mark_cap=settings.mark_cap, ticket=ticket),
-        )
-    finally:
-        slots.end(ticket)
+    return await run_cancellable(
+        request,
+        engine,
+        overlay_key(body),
+        lambda: overlays(engine, storage, db, body, mark_cap=settings.mark_cap),
+    )

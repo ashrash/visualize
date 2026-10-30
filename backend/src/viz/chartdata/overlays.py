@@ -21,7 +21,6 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast as type_cast
 
 import numpy as np
 import pyarrow as pa
@@ -32,8 +31,7 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 
 from viz.chartdata.basic import AGGREGATE_PLOTS
 from viz.chartdata.reduce import epoch_ms_values, numeric_x
-from viz.chartdata.service import chart_data, slot_key
-from viz.chartdata.slots import Ticket, TicketEngine, slots_for
+from viz.chartdata.service import chart_data
 from viz.chartdata.sql import alias, cast, col, fn, to_sql
 from viz.contracts import (
     ChartDataRequest,
@@ -106,10 +104,9 @@ def _aggregated_points(
     request: ChartDataRequest,
     series: int,
     mark_cap: int,
-    ticket: Ticket,
 ) -> Points:
     # The cache key ignores the slot, so this usually reuses the chart's cached response.
-    result = chart_data(engine, storage, db, request, mark_cap=mark_cap, ticket=ticket)
+    result = chart_data(engine, storage, db, request, mark_cap=mark_cap)
     table = result.table
     if table is None or f"y{series}" not in table.column_names:
         raise InvalidSpecError(f"the chart has no y series {series}")
@@ -365,50 +362,45 @@ def overlays(
     request: ChartDataRequest,
     *,
     mark_cap: int,
-    ticket: Ticket | None = None,
 ) -> list[OverlayResult]:
     """One fit per spec.style.trendlines entry. On a chart split by color this is a single
-    fit across all colors (Wave 1); per-group fits come with OverlayResult.group in Wave 2."""
+    fit across all colors (Wave 1); per-group fits come with OverlayResult.group in Wave 2.
+
+    Runs in the overlay slot (`overlay_key`), never the chart's own slot, so the overlay and
+    data requests of one chart don't supersede each other.
+    """
     spec = request.spec
     trendlines = spec.style.trendlines
     if not trendlines:
         return []
-    # Run in the overlay slot (see overlay_key), never in the chart's own slot.
+    key = overlay_key(request)
+    # slot_key(request) == key from here on, for the aggregate path's chart_data call.
     request = request.model_copy(update={"slot": f"overlay:{request.slot or spec.id}"})
-    slots = slots_for(engine)
-    own_ticket = ticket is None
-    if ticket is None:
-        ticket = slots.begin(slot_key(request))  # == overlay_key of the original request
-    try:
-        results: list[OverlayResult] = []
-        aggregate = get_plot(spec.plot_type) is None and spec.plot_type in AGGREGATE_PLOTS
-        relation = None
-        if not aggregate:
-            relation = resolve_source(
-                type_cast(Engine, TicketEngine(engine, slots, ticket)),
-                db,
-                storage,
-                spec.source,
-                request.pipelines,
-                [*spec.filters, *request.filters],
-                query_key=ticket.key,
-                generation=ticket.generation,
-            )
-        cache: dict[int, Points] = {}
-        for trend in trendlines:
-            if trend.series not in cache:
-                if aggregate:
-                    cache[trend.series] = _aggregated_points(
-                        engine, storage, db, request, trend.series, mark_cap, ticket
-                    )
-                else:
-                    assert relation is not None
-                    cache[trend.series] = _raw_points(relation, request, trend.series)
-            result = fit_trendline(trend, cache[trend.series])
-            if aggregate and spec.encodings.get("color"):
-                result.warnings.append("The trendline is fitted across all colors together.")
-            results.append(result)
-        return results
-    finally:
-        if own_ticket:
-            slots.end(ticket)
+    results: list[OverlayResult] = []
+    aggregate = get_plot(spec.plot_type) is None and spec.plot_type in AGGREGATE_PLOTS
+    relation = None
+    if not aggregate:
+        relation = resolve_source(
+            engine,
+            db,
+            storage,
+            spec.source,
+            request.pipelines,
+            [*spec.filters, *request.filters],
+            query_key=key,
+        )
+    cache: dict[int, Points] = {}
+    for trend in trendlines:
+        if trend.series not in cache:
+            if aggregate:
+                cache[trend.series] = _aggregated_points(
+                    engine, storage, db, request, trend.series, mark_cap
+                )
+            else:
+                assert relation is not None
+                cache[trend.series] = _raw_points(relation, request, trend.series)
+        result = fit_trendline(trend, cache[trend.series])
+        if aggregate and spec.encodings.get("color"):
+            result.warnings.append("The trendline is fitted across all colors together.")
+        results.append(result)
+    return results

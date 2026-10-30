@@ -17,7 +17,6 @@ from viz.errors import InvalidSpecError
 from viz.ingest.catalog import get_dataset
 from viz.stats.relation import Relation
 from viz.storage import LocalStorage
-from viz.transform import runtime
 from viz.transform.compiler import CompiledPipeline, Compiler, sha
 
 
@@ -84,8 +83,8 @@ def relation_for(
         row_count=row_count,
         version_key=version_key,
         query_key=query_key,
-        # stats' Relation passes generation= to engine.cursor; only engines that take it get it.
-        generation=generation if runtime.engine_takes_generation(compiler.engine) else None,
+        # None inside a request scope: the engine uses the request's arrival ticket.
+        generation=generation,
     )
     return with_filters(relation, filters)
 

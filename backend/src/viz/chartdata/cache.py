@@ -5,8 +5,8 @@ hash), the plot type, encodings, params, every filter, the zoom range, the viewp
 to 100 px, since downsampling depends on it) and style.errorBars. All other style fields,
 the chart name and its interactions are cosmetic and excluded, so restyling never re-queries.
 
-TODO(data-core): consider moving to the engine's query cache primitive once it lands; this
-caches whole responses (including Python-side reductions), so it stays useful on top of it.
+This caches whole responses, including the Python-side reductions (LTTB, error bars), so it
+sits on top of the engine's per-query result cache rather than replacing it.
 """
 
 from __future__ import annotations

@@ -47,7 +47,8 @@ class World:
     def _register(self, dataset_id: str) -> Dataset:
         rel = self.storage.parquet_rel(dataset_id, 1)
         path = self.storage.resolve(rel)
-        columns, rows = profile_parquet(self.engine, path)
+        with self.engine.cursor() as cur:
+            columns, rows = profile_parquet(cur, path)
         dataset = Dataset(
             id=dataset_id,
             name=dataset_id,

@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Response
 
 from viz.api.deps import DbDep, EngineDep, SettingsDep, StorageDep
+from viz.api.jobs import JobsDep
 from viz.contracts import (
     ARROW_STREAM_MEDIA_TYPE,
     FormulaCheckRequest,
@@ -65,6 +66,8 @@ def formula_functions() -> list[FormulaFunction]:
 
 @router.post("/materialize", response_model=MaterializeResult)
 def materialize_pipeline(
-    body: MaterializeRequest, db: DbDep, engine: EngineDep, storage: StorageDep
+    body: MaterializeRequest, db: DbDep, engine: EngineDep, storage: StorageDep, jobs: JobsDep
 ) -> MaterializeResult:
-    return service.materialize(engine, db, storage, body)
+    """Start (or join) a MATERIALIZE job for the pipeline's pending steps; follow it with
+    /api/jobs/{id}. `ready` lists steps whose Parquet already exists."""
+    return service.materialize(engine, db, storage, jobs, body)
