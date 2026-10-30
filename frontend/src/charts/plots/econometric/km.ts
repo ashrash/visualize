@@ -107,6 +107,14 @@ export const kaplanMeier = definePlot({
       default: 10,
     },
     {
+      name: "eventValue",
+      affectsData: true,
+      type: "text",
+      label: "Event value (blank = automatic)",
+      help: "The event field's value that means the event happened. Automatic: 1 of 0/1, true, 2 of 1/2 (R's Surv coding), or a word like 'died'.",
+      default: "",
+    },
+    {
       name: "showCi",
       affectsData: false,
       type: "boolean",
@@ -134,6 +142,7 @@ export const kaplanMeier = definePlot({
       ciLevel: 0.95,
       ciType: "log-log",
       maxGroups: 10,
+      eventValue: "",
       showCi: true,
       showCensored: true,
       showMedian: false,

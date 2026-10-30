@@ -309,3 +309,47 @@ describe("Andrews curves", () => {
     expect(o.series[0].lineStyle.color).not.toBe(o.series[1].lineStyle.color);
   });
 });
+
+describe("tooltips escape user data", () => {
+  const XSS = '<img src=x onerror="alert(1)">';
+  const safe = (html: unknown) => {
+    expect(typeof html).toBe("string");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  };
+
+  it("PCA: point labels, color groups and field names", () => {
+    const o = render("pca_biplot", pcaData);
+    safe(o.tooltip.formatter({ seriesName: XSS, name: XSS, value: [1, 2] }));
+    const arrows = o.series.find((s: Opt) => s.name === "Loadings");
+    safe(arrows.markLine.tooltip.formatter({ name: XSS, value: "0.1, 0.2" }));
+  });
+
+  it("cluster: point labels", () => {
+    const o = render("cluster", clusterData);
+    safe(o.tooltip.formatter({ seriesName: "Cluster 1", name: XSS, value: [1, 2] }));
+  });
+
+  it("radar: group values and field names", () => {
+    const data = makeData(
+      { color: [XSS], n: [1], y0: [1], y1: [2], y2: [3], y0_norm: [0], y1_norm: [0], y2_norm: [0] },
+      { y0: XSS, y1: "v", y2: "w", color: "g" },
+    );
+    const o = render("radar", data);
+    safe(o.series[0].tooltip.formatter({ name: XSS, data: o.series[0].data[0] }));
+  });
+
+  it("factor loadings: field names", () => {
+    const data = statData({
+      variables: [XSS, "b"],
+      factors: ["Factor 1"],
+      loadings: [[0.9], [0.8]],
+      communality: [0.81, 0.64],
+      explainedVarianceRatio: [0.7],
+    });
+    const heat = render("factor_loading", data);
+    safe(heat.tooltip.formatter({ value: [0, 1, 0.9] }));
+    const bars = render("factor_loading", data, { display: "bars" });
+    safe(bars.series[0].tooltip.formatter({ dataIndex: 1 }));
+  });
+});

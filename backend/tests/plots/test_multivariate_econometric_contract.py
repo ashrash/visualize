@@ -81,6 +81,7 @@ FRONTEND: dict[str, dict[str, Any]] = {
             "ciLevel": 0.95,
             "ciType": "log-log",
             "maxGroups": 10,
+            "eventValue": "",
             "showCi": True,
             "showCensored": True,
             "showMedian": False,

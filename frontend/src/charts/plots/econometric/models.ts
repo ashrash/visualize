@@ -15,6 +15,7 @@ import {
   CATEGORICAL,
   count,
   EMPTY,
+  escapeHtml,
   fmt,
   num,
   objs,
@@ -99,7 +100,8 @@ function ordered<T extends { estimate: number | null }>(rows: T[], sort: string)
 
 function tooltipFor(t: Values, scale: (v: number | null) => number | null, what: string): string {
   return (
-    `<b>${str(t.term) ?? ""}</b><br/>${what}: ${fmt(scale(num(t.estimate)))}` +
+    // Term names carry data values (categorical levels): escape them.
+    `<b>${escapeHtml(str(t.term))}</b><br/>${escapeHtml(what)}: ${fmt(scale(num(t.estimate)))}` +
     ` [${fmt(scale(num(t.ciLow)))}, ${fmt(scale(num(t.ciHigh)))}]` +
     `<br/>SE: ${fmt(num(t.se))}, p = ${pValue(num(t.pValue))}`
   );

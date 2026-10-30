@@ -256,7 +256,20 @@ def test_fa_matches_full_data_fit_and_statsmodels(rel: Rel) -> None:
     # scikit-learn's covariance has divisor n; the correlation matrix has divisor n - 1.
     common_full = ((full.components_.T * math.sqrt(len(x) / (len(x) - 1))) ** 2).sum(axis=1)
     diff = np.abs(np.asarray(values["communality"]) - common_full).max()
-    assert diff < 1e-6, diff
+    assert diff < 1e-5, diff
+    # ...and it is at least as good a maximum-likelihood fit: the ML discrepancy
+    # F = log|S| + tr(R S^-1) - log|R| - p, with S = L L' + Psi, is no larger.
+    corr = np.corrcoef(x, rowvar=False)
+
+    def discrepancy(loadings: np.ndarray, psi: np.ndarray) -> float:
+        sigma = loadings @ loadings.T + np.diag(psi)
+        _, logdet_s = np.linalg.slogdet(sigma)
+        _, logdet_r = np.linalg.slogdet(corr)
+        return float(logdet_s + np.trace(corr @ np.linalg.inv(sigma)) - logdet_r - len(corr))
+
+    scale = len(x) / (len(x) - 1)
+    ref = discrepancy(full.components_.T * math.sqrt(scale), full.noise_variance_ * scale)
+    assert discrepancy(ours, np.asarray(values["uniqueness"])) <= ref + 1e-9
     # An independent ML implementation (statsmodels) agrees on the rotation-invariant parts.
     sm = Factor(corr=np.corrcoef(x, rowvar=False), n_factor=2, method="ml", nobs=len(x)).fit()
     assert values["communality"] == pytest.approx(sm.communality, abs=2e-3)
@@ -302,14 +315,61 @@ def test_rotation_recovers_simple_structure(rel: Rel) -> None:
     assert len(set(first)) == 1 and len(set(second)) == 1 and first[0] != second[0]
 
 
+@pytest.mark.parametrize(
+    ("p", "limit"), [(2, 0), (3, 1), (4, 1), (5, 2), (6, 3), (7, 3), (9, 5), (10, 6)]
+)
+def test_factor_identifiability_limit(p: int, limit: int) -> None:
+    # R's factanal: degrees of freedom ((p - k)^2 - (p + k)) / 2 must be >= 0.
+    assert mv.max_fa_factors(p) == limit
+    if limit:
+        assert ((p - limit) ** 2 - (p + limit)) >= 0
+        assert ((p - limit - 1) ** 2 - (p + limit + 1)) < 0
+
+
 def test_factor_degenerate_inputs(rel: Rel) -> None:
     r = rel({"a": [1.0, 2, 3, 4], "b": [2.0, 1, 4, 3], "c": [0.0, 1, 1, 0]})
-    with pytest.raises(InvalidSpecError, match="at most 2 factors"):
-        run(r, PlotType.FACTOR_LOADING, {"factors": 3}, y=["a", "b", "c"])
-    with pytest.raises(InvalidSpecError, match="at most 3"):
+    # p = 3, k = 2 has -2 degrees of freedom: not identified (R's factanal refuses it too).
+    with pytest.raises(InvalidSpecError, match="at most 1 factor "):
+        run(r, PlotType.FACTOR_LOADING, {"factors": 2}, y=["a", "b", "c"])
+    with pytest.raises(InvalidSpecError, match="at least 3 fields"):
+        run(r, PlotType.FACTOR_LOADING, {"factors": 1}, y=["a", "b"])
+    with pytest.raises(InvalidSpecError, match="at most 3 components"):
         run(r, PlotType.FACTOR_LOADING, {"factors": 4, "method": "pca"}, y=["a", "b", "c"])
+    # Principal components have no identifiability limit.
+    stat(run(r, PlotType.FACTOR_LOADING, {"factors": 3, "method": "pca"}, y=["a", "b", "c"]))
     out = run(r, PlotType.FACTOR_LOADING, {"factors": 1}, y=["a", "b", "c"])
     assert any("unstable" in w for w in out.warnings)
+
+
+def test_factor_analysis_is_quick_even_without_convergence(rel: Rel) -> None:
+    import time
+
+    # Iris with one factor is a Heywood case: EM never converges, so it must stop early.
+    started = time.perf_counter()
+    out = run(rel(iris_table()), PlotType.FACTOR_LOADING, {"factors": 1}, y=IRIS)
+    assert time.perf_counter() - started < 3.0
+    assert any("Heywood" in w or "converge" in w for w in out.warnings)
+    with pytest.raises(InvalidSpecError, match="at most 1 factor "):
+        run(rel(iris_table()), PlotType.FACTOR_LOADING, {"factors": 2}, y=IRIS)
+
+
+def test_many_fields_on_many_rows_use_sampled_moments(
+    rel: Rel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rng = np.random.default_rng(9)
+    x = rng.normal(size=(2000, 3)) @ np.array([[1, 0.5, 0], [0, 1, 0.3], [0, 0, 1]])
+    r = rel({"a": x[:, 0], "b": x[:, 1], "c": x[:, 2]})
+    exact = stat(run(r, PlotType.PCA_BIPLOT, y=["a", "b", "c"]))
+    monkeypatch.setattr(mv, "MAX_EXACT_COV_WORK", 100)
+    monkeypatch.setattr(mv, "COV_SAMPLE_CAP", 1500)
+    out = run(r, PlotType.PCA_BIPLOT, y=["a", "b", "c"])
+    assert out.sampled and out.n == 1500 and out.n_total == 2000
+    assert "random sample" in out.method
+    assert np.asarray(out.values["eigenvalues"]) == pytest.approx(
+        np.asarray(exact["eigenvalues"]), rel=0.1
+    )
+    fa = run(r, PlotType.FACTOR_LOADING, {"method": "pca", "factors": 2}, y=["a", "b", "c"])
+    assert fa.sampled and fa.n_total == 2000
 
 
 # --- Clustering -------------------------------------------------------------------------------

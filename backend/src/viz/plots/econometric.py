@@ -66,7 +66,20 @@ def _canonical(value: object) -> str:
     return str(value)
 
 
-_POSITIVE_WORDS = ("1", "true", "yes", "y", "positive", "pos", "event", "t")
+# Words that read as "the event happened" / "it did not", for two-valued text fields.
+_POSITIVE_WORDS = frozenset(
+    {
+        "yes", "y", "true", "t", "positive", "pos", "event", "case", "success",
+        "dead", "died", "death", "deceased", "failed", "failure", "fail", "relapse",
+        "relapsed", "recurrence", "progressed", "progression", "churned", "default",
+    }
+)  # fmt: skip
+_NEGATIVE_WORDS = frozenset(
+    {
+        "no", "n", "false", "f", "negative", "neg", "none", "control", "alive", "survived",
+        "living", "censored", "censor", "retained", "active",
+    }
+)  # fmt: skip
 
 
 def binary_outcome(
@@ -78,8 +91,11 @@ def binary_outcome(
 ) -> tuple[np.ndarray, str, list[str]]:
     """0/1 codes for a two-valued field, the label treated as 1, and notes.
 
-    0/1 and false/true map directly; other pairs need `positive`, or the value that reads as
-    positive ("yes", "event", ...), or else the last in sorted order (with a note).
+    In order: an explicit `positive` value; 0/1 (1); false/true (true); 1/2 (2, the R
+    `Surv` convention where 1 = censored and 2 = event); a pair where exactly one value reads
+    as positive ("died", "yes", ...) or exactly one reads as negative ("survived", "no", ...);
+    otherwise the last value in sorted order. Every guess beyond 0/1 and true/false adds a
+    note naming the value used, and callers expose `positive` so the user can override it.
     """
     text = [_canonical(v) for v in values]
     levels = sorted(set(text))
@@ -100,8 +116,25 @@ def binary_outcome(
             raise StatsInputError(
                 f"'{name}' must have exactly two values (such as 0/1); it has {len(levels)}."
             )
-        chosen = next((lowered[w] for w in _POSITIVE_WORDS if w in lowered), levels[-1])
-        notes.append(f"Treating '{name}' = {chosen} as the positive outcome.")
+        positives = [lowered[w] for w in lowered if w in _POSITIVE_WORDS]
+        negatives = [lowered[w] for w in lowered if w in _NEGATIVE_WORDS]
+        if set(levels) <= {"1", "2"}:
+            chosen = "2"
+            notes.append(
+                f"'{name}' is coded 1/2: treating 2 as the event and 1 as censored "
+                "(R's Surv convention). Set the event value to change this."
+            )
+        else:
+            if len(positives) == 1:
+                chosen = positives[0]
+            elif len(negatives) == 1 and len(levels) == 2:
+                chosen = next(level for level in levels if level != negatives[0])
+            else:
+                chosen = levels[-1]
+            notes.append(
+                f"Treating '{name}' = {chosen} as the event (positive) value. "
+                "Set it explicitly if that's wrong."
+            )
     if len(levels) > 2:
         raise StatsInputError(
             f"'{name}' must have exactly two values (such as 0/1); it has {len(levels)}."
@@ -491,10 +524,16 @@ class KaplanMeierParams(PlotParams):
     ci_level: float = CiLevel
     ci_type: Literal["log-log", "log", "plain"] = "log-log"
     max_groups: int = Field(default=10, ge=1, le=30)
+    # The event field's value meaning "the event happened"; "" = 1/true/2-of-1,2/automatic.
+    event_value: str = Field(default="", max_length=200)
     # Cosmetic.
     show_ci: bool = True
     show_censored: bool = True
     show_median: bool = False
+
+
+# Band transform -> statsmodels' quantile_ci method, so the median's interval matches the band.
+_MEDIAN_CI = {"log-log": "cloglog", "log": "log", "plain": "linear"}
 
 
 def km_bands(
@@ -528,6 +567,12 @@ def km_bands(
     params=KaplanMeierParams,
 )
 def kaplan_meier(req: PlotRequest) -> StatResult:
+    """Kaplan-Meier curves (statsmodels SurvfuncRight) with Greenwood bands and log-rank test.
+
+    Survival, Greenwood SEs, bands and the log-rank test match R's survfit/survdiff. The median
+    follows statsmodels: the first time S(t) <= 0.5. Where S(t) sits exactly at 0.5 over an
+    interval R reports the interval's midpoint instead, so the two can differ there.
+    """
     from statsmodels.duration.survfunc import SurvfuncRight, survdiff
 
     params = req.params
@@ -542,7 +587,10 @@ def kaplan_meier(req: PlotRequest) -> StatResult:
     if np.any(times < 0):
         raise StatsInputError(f"'{time_name}' has negative times.")
     events, _, event_notes = binary_outcome(
-        rows.table.column(event_name).to_pylist(), event_name, need_both=False
+        rows.table.column(event_name).to_pylist(),
+        event_name,
+        params.event_value or None,
+        need_both=False,
     )
     notes += event_notes
     keys = (
@@ -582,9 +630,12 @@ def kaplan_meier(req: PlotRequest) -> StatResult:
                 notes.append(f"{key}: the curve is drawn through {len(keep):,} of its steps.")
             median = float(sf.quantile(0.5))
             try:
-                # The cloglog transform takes log(0) where S reaches 0; those ends are inf.
+                # Same transform as the band (statsmodels' names). log(0) where S reaches 0
+                # leaves those ends infinite (null).
                 with np.errstate(divide="ignore", invalid="ignore"):
-                    m_low, m_high = sf.quantile_ci(0.5, alpha=1 - params.ci_level)
+                    m_low, m_high = sf.quantile_ci(
+                        0.5, alpha=1 - params.ci_level, method=_MEDIAN_CI[params.ci_type]
+                    )
             except (ValueError, IndexError, ZeroDivisionError):  # degenerate intervals
                 m_low = m_high = math.nan
             entry.update(
@@ -702,10 +753,12 @@ def roc(req: PlotRequest) -> StatResult:
         keep = _thin(len(fpr))
         if auc < 0.5:
             notes.append(f"{name}: AUC is below 0.5, so higher scores go with the negative class.")
-        if se == 0:
+        if auc in (0.0, 1.0):
             notes.append(
                 f"{name}: the classes are perfectly separated, so the AUC interval has zero width."
             )
+        elif se == 0:
+            notes.append(f"{name}: the AUC's standard error is zero, so its interval has no width.")
         curves.append(
             {
                 "score": name,
@@ -1199,21 +1252,30 @@ def impulse_response(req: PlotRequest) -> StatResult:
     notes: list[str] = []
     if n < total:
         notes.append(f"Left out {total - n:,} periods with a missing value; gaps are joined.")
-    max_lags = max(1, min(8, (n - 1) // (k + 1) - 1))
+
+    def too_few(lags: int) -> bool:
+        # Each equation estimates k * lags + 1 coefficients from n - lags periods.
+        return n - lags <= k * lags + 1
+
+    wanted = params.lags or 1
+    if too_few(wanted):
+        raise StatsInputError(
+            f"{n} periods are too few for {k} series with {wanted} lag"
+            f"{'s' if wanted > 1 else ''}; use fewer lags or series."
+        )
     model = VAR(data)
     try:
         if params.lags == 0:
-            order = model.select_order(maxlags=max_lags)
-            lags = max(1, int(order.aic))
-            chosen = f"{lags} lag{'s' if lags > 1 else ''} chosen by AIC"
+            max_lags = max(lag for lag in range(1, 9) if not too_few(lag))
+            try:
+                order = model.select_order(maxlags=max_lags)
+                lags = max(1, int(order.aic))
+                chosen = f"{lags} lag{'s' if lags > 1 else ''} chosen by AIC"
+            except ValueError:  # too few periods to compare lag orders
+                lags, chosen = 1, "1 lag (too few periods to choose by AIC)"
         else:
             lags = params.lags
             chosen = f"{lags} lag{'s' if lags > 1 else ''}"
-        if n - lags <= k * lags + 1:
-            raise StatsInputError(
-                f"{n} periods are too few for {k} series with {lags} lags; "
-                "use fewer lags or series."
-            )
         result = model.fit(lags)
         irf = result.irf(params.periods)
     except (np.linalg.LinAlgError, ValueError) as exc:

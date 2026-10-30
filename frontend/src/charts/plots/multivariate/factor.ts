@@ -4,7 +4,18 @@ import { divergingRamp } from "../../core/palettes";
 import { param } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import { definePlot } from "../../core/types";
-import { colorsFor, count, EMPTY, fmt, list, nums, QUANT, statValues, strs } from "./stat";
+import {
+  colorsFor,
+  count,
+  EMPTY,
+  escapeHtml,
+  fmt,
+  list,
+  nums,
+  QUANT,
+  statValues,
+  strs,
+} from "./stat";
 
 echarts.use([HeatmapChart]);
 
@@ -97,7 +108,7 @@ export const factorLoading = definePlot({
     const rows = [...variables].reverse();
     const at = (vi: number, fi: number) => loadings[vi]?.[fi] ?? null;
     const tooltip = (vi: number, fi: number) =>
-      `<b>${variables[vi]}</b><br/>${factorNames[fi]}: ${fmt(at(vi, fi))}` +
+      `<b>${escapeHtml(variables[vi])}</b><br/>${escapeHtml(factorNames[fi])}: ${fmt(at(vi, fi))}` +
       `<br/>Communality: ${fmt(communality[vi] ?? null)}`;
     if (param(spec, "display", "heatmap") === "bars") {
       const colors = colorsFor(spec, theme, factors.length);

@@ -1,4 +1,5 @@
 import type { ChartSpec, Column, ColumnSemantic } from "../../../api/types";
+import { echarts } from "../../core/echarts";
 import { paletteColors } from "../../core/palettes";
 import type { ChartData, ChartTheme, JsonValue } from "../../core/types";
 
@@ -47,6 +48,15 @@ export function objs(value: JsonValue | undefined): Values[] {
 export function colorsFor(spec: ChartSpec, theme: ChartTheme, count: number): string[] {
   const colors = paletteColors(spec.style?.palette, theme, Math.max(count, 8));
   return Array.from({ length: Math.max(count, 1) }, (_, i) => colors[i % colors.length] as string);
+}
+
+/**
+ * Text for tooltip HTML. ECharts puts a tooltip formatter's return value straight into
+ * innerHTML, so every data value or field name interpolated into one must go through this.
+ * TODO(ui-charts): promote a shared escapeHtml to charts/core (other families need it too).
+ */
+export function escapeHtml(value: unknown): string {
+  return echarts.format.encodeHTML(value === null || value === undefined ? "" : String(value));
 }
 
 /** Fixed-precision number for labels and tooltips (no trailing noise like 0.30000000004). */

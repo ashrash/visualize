@@ -8,6 +8,7 @@ import {
   colorsFor,
   count,
   EMPTY,
+  escapeHtml,
   fmt,
   list,
   num,
@@ -61,7 +62,7 @@ function renderBiplot(spec: ChartSpec, data: ChartData, theme: ChartTheme, ctx?:
         label: labelPoints
           ? {
               show: true,
-              formatter: "{b}",
+              formatter: (p: { name?: string }) => p.name ?? "",
               position: "right",
               fontSize: 10,
               color: theme.textMuted,
@@ -82,7 +83,8 @@ function renderBiplot(spec: ChartSpec, data: ChartData, theme: ChartTheme, ctx?:
           coord: [x, y],
           name,
           value: `${fmt(num(l.x))}, ${fmt(num(l.y))}`,
-          label: { show: true, formatter: name, position: "end", color: theme.text },
+          // A function, not a template string: a field name with "{b}" in it stays literal.
+          label: { show: true, formatter: () => name, position: "end", color: theme.text },
         },
       ];
     });
@@ -99,7 +101,10 @@ function renderBiplot(spec: ChartSpec, data: ChartData, theme: ChartTheme, ctx?:
         symbol: ["none", "arrow"],
         symbolSize: 8,
         lineStyle: { color: theme.text, width: 1.5, type: "solid" },
-        tooltip: { formatter: (p: { name: string; value: string }) => `${p.name}: ${p.value}` },
+        tooltip: {
+          formatter: (p: { name: string; value: string }) =>
+            `${escapeHtml(p.name)}: ${escapeHtml(p.value)}`,
+        },
         data: lines,
       },
     });
@@ -110,7 +115,8 @@ function renderBiplot(spec: ChartSpec, data: ChartData, theme: ChartTheme, ctx?:
     tooltip: {
       trigger: "item",
       formatter: (p: { seriesName: string; name?: string; value: number[] }) =>
-        `${p.name ? `<b>${p.name}</b><br/>` : ""}${p.seriesName}<br/>` +
+        // Point labels and color groups are data values: escaped.
+        `${p.name ? `<b>${escapeHtml(p.name)}</b><br/>` : ""}${escapeHtml(p.seriesName)}<br/>` +
         `${componentLabel(cx, ratios)}: ${fmt(p.value[0])}<br/>` +
         `${componentLabel(cy, ratios)}: ${fmt(p.value[1])}`,
     },

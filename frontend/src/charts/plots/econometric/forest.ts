@@ -5,6 +5,7 @@ import {
   ANY,
   CATEGORICAL,
   EMPTY,
+  escapeHtml,
   fmt,
   hasName,
   num,
@@ -32,7 +33,7 @@ function pooledRow(p: Values, label: string, colorIndex: number): IntervalRow {
     pooled: true,
     colorIndex,
     tooltip:
-      `<b>${label}</b> (${num(p.k) ?? 0} studies)<br/>` +
+      `<b>${escapeHtml(label)}</b> (${num(p.k) ?? 0} studies)<br/>` +
       `${fmt(num(p.estimate))} [${fmt(num(p.lower))}, ${fmt(num(p.upper))}], ` +
       `p = ${pValue(num(p.pValue))}${heterogeneity}`,
   };
@@ -189,7 +190,7 @@ export const forest = definePlot({
         size: weight !== null ? 5 + 11 * Math.sqrt(weight / maxWeight) : 8,
         colorIndex: Math.max(0, group ? groupKeys.indexOf(group) : 0),
         tooltip:
-          `<b>${str(s.label) ?? ""}</b><br/>${fmt(num(s.estimate))} ` +
+          `<b>${escapeHtml(str(s.label))}</b><br/>${fmt(num(s.estimate))} ` +
           `[${fmt(num(s.lower))}, ${fmt(num(s.upper))}]` +
           (weight !== null ? `<br/>Weight ${fmt(weight, 1)}%` : ""),
       };

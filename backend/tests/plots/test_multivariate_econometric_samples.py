@@ -50,7 +50,24 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, Any]]] = [
     ("radar", "specimens", _enc(y=MEASURES, color="species"), {}),
     ("parallel_coordinates", "specimens", _enc(y=[*MEASURES, "island"], color="species"), {}),
     ("pca_biplot", "specimens", _enc(y=MEASURES, color="species"), {}),
-    ("factor_loading", "specimens", _enc(y=MEASURES), {"factors": 2}),
+    # Four measures identify one ML factor; principal components take two.
+    ("factor_loading", "specimens", _enc(y=MEASURES), {"factors": 1}),
+    ("factor_loading", "specimens", _enc(y=MEASURES), {"factors": 2, "method": "pca"}),
+    (
+        "factor_loading",
+        "countries",
+        _enc(
+            y=[
+                "gdp_per_capita",
+                "life_exp_2000",
+                "life_exp_2020",
+                "co2_per_capita",
+                "internet_pct",
+                "population_m",
+            ]
+        ),
+        {"factors": 2},
+    ),
     ("cluster", "specimens", _enc(y=MEASURES), {"k": 3}),
     (
         "cluster",

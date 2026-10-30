@@ -9,6 +9,7 @@ import {
   colorsFor,
   count,
   EMPTY,
+  escapeHtml,
   fmt,
   num,
   nums,
@@ -82,7 +83,7 @@ function renderClusters(v: Values, spec: ChartSpec, theme: ChartTheme, ctx?: Ren
       symbol: "diamond",
       symbolSize: 16,
       z: 5,
-      itemStyle: { color: theme.text, borderColor: theme.background ?? "#fff", borderWidth: 1.5 },
+      itemStyle: { color: theme.text, borderColor: theme.border, borderWidth: 1.5 },
       data: centroids.map((c) => ({
         value: [num(c.x), num(c.y)],
         name: `Cluster ${(num(c.cluster) ?? 0) + 1} (${num(c.size) ?? 0} rows)`,
@@ -97,7 +98,8 @@ function renderClusters(v: Values, spec: ChartSpec, theme: ChartTheme, ctx?: Ren
     tooltip: {
       trigger: "item",
       formatter: (p: { seriesName: string; name?: string; value: number[] }) =>
-        `${p.name ? `<b>${p.name}</b><br/>` : ""}${p.seriesName}<br/>` +
+        // Point labels are data values: escaped.
+        `${p.name ? `<b>${escapeHtml(p.name)}</b><br/>` : ""}${escapeHtml(p.seriesName)}<br/>` +
         `PC1: ${fmt(p.value[0])}, PC2: ${fmt(p.value[1])}` +
         (silhouette !== null ? `<br/>Silhouette (all): ${fmt(silhouette)}` : ""),
     },

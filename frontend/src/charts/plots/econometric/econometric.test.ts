@@ -447,3 +447,47 @@ describe("event study", () => {
     expect(o.xAxis).toMatchObject({ min: -2.5, max: 1.5 });
   });
 });
+
+describe("tooltips escape user data", () => {
+  const XSS = '<img src=x onerror="alert(1)">';
+  const safe = (html: unknown) => {
+    expect(typeof html).toBe("string");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  };
+
+  it("forest: study labels and subgroup keys", () => {
+    const data = statData({
+      rows: [
+        { label: XSS, group: XSS, estimate: 0.2, lower: 0.1, upper: 0.3, se: 0.05, weight: 100 },
+      ],
+      pooled: { k: 1, estimate: 0.2, lower: 0.1, upper: 0.3, se: 0.05, pValue: 0.01 },
+      subgroups: [{ key: XSS, k: 1, estimate: 0.2, lower: 0.1, upper: 0.3 }],
+      measure: "difference",
+      nullValue: 0,
+    });
+    const o = render("forest", data);
+    safe(o.series[0].data[0].tooltip);
+    safe(o.series[0].tooltip.formatter({ data: o.series[0].data[0] }));
+    const diamonds = o.series.filter((s: Opt) => s.type === "custom")[1];
+    const subtotal = diamonds.data.find((d: Opt) => String(d.tooltip).includes("img"));
+    safe(subtotal.tooltip);
+  });
+
+  it("coefficient and marginal effects: categorical levels in term names", () => {
+    const terms = [
+      { term: `plan: ${XSS}`, estimate: 0.1, se: 0.05, ciLow: 0, ciHigh: 0.2, pValue: 0.04 },
+    ];
+    const coef = render("coefficient", statData({ model: "ols", terms }));
+    safe(coef.series[0].data[0].tooltip);
+    const me = render("marginal_effects", statData({ scale: "outcome", effects: terms }));
+    safe(me.series[0].data[0].tooltip);
+  });
+
+  it("ROC and PR best-point tooltips", () => {
+    const rocOption = render("roc", rocData);
+    safe(rocOption.series[0].markPoint.tooltip.formatter({ name: XSS, value: "0.5" }));
+    const pr = render("precision_recall", prData);
+    safe(pr.series[0].markPoint.tooltip.formatter({ name: XSS, value: "0.5" }));
+  });
+});

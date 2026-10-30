@@ -169,29 +169,64 @@ def _quant_fields(req: PlotRequest, channel: str) -> list[str]:
 
 @dataclass(frozen=True)
 class Moments:
-    """Means and the sample covariance matrix (ddof 1) of complete rows, computed exactly."""
+    """Means and the sample covariance matrix (ddof 1) of complete rows."""
 
     names: list[str]
+    # Rows the moments use (the sample size when sampled).
     n: int
     n_missing: int
     mean: np.ndarray
     cov: np.ndarray
+    # Complete rows before sampling.
+    n_total: int
+    sampled: bool = False
+
+    @property
+    def how(self) -> str:
+        if self.sampled:
+            return f"a random sample of {self.n:,} of {self.n_total:,} complete rows"
+        return f"exact, {self.n:,} complete rows"
+
+
+# SQL does p(p + 1)/2 covar_samp aggregates per row; above this many (pairs x rows) the
+# moments come from a sample instead (50 fields x 2M rows took ~10 s exactly).
+MAX_EXACT_COV_WORK = 500_000_000
+COV_SAMPLE_CAP = 250_000
 
 
 def exact_moments(rel: Relation, names: Sequence[str]) -> Moments:
-    """One SQL pass: count, means and every pairwise covar_samp over the complete rows."""
+    """Count, means and every pairwise covar_samp over the complete rows, in one SQL pass.
+
+    Exact unless that pass would be too costly (many fields on many rows): then the moments
+    of a seeded 250k-row sample, with `sampled` set.
+    """
     for name in names:
         rel.require(name, QUANT)
     condition = all_valid([rel.columns[f] for f in names])
     assert condition is not None
     p = len(names)
+    total, eligible = rel.rows(
+        rel.select(alias(count_star(), "_t"), alias(count_if(condition), "_e"))
+    )[0]
+    total, eligible = int(total), int(eligible)
+    if eligible < 3:
+        raise StatsInputError(
+            f"This chart needs at least 3 rows with every selected field; there are {eligible}."
+        )
+    pairs = p * (p + 1) // 2
+    if pairs * eligible > MAX_EXACT_COV_WORK and eligible > COV_SAMPLE_CAP:
+        rows = complete_rows(rel, names, cap=COV_SAMPLE_CAP)
+        x = rows.matrix(names)
+        cov = np.atleast_2d(np.cov(x, rowvar=False, ddof=1))
+        return Moments(
+            list(names), rows.n, total - eligible, x.mean(axis=0), cov, eligible, sampled=True
+        )
     selects: list[exp.Expr] = [alias(count_star(), "_n")]
     selects += [alias(fn("avg", as_double(col(f))), f"_m{i}") for i, f in enumerate(names)]
     for i in range(p):
         for j in range(i, p):
             pair = fn("covar_samp", as_double(col(names[i])), as_double(col(names[j])))
             selects.append(alias(pair, f"_c{i}_{j}"))
-    total = rel.rows(rel.select(alias(count_star(), "_t")))[0][0]
     row = rel.rows(rel.narrow(condition).select(*selects))[0]
     n = int(row[0])
     if n < 3:
@@ -208,7 +243,7 @@ def exact_moments(rel: Relation, names: Sequence[str]) -> Moments:
             k += 1
     if not (np.all(np.isfinite(cov)) and np.all(np.isfinite(mean))):
         raise StatsInputError("The values are too large to analyse.")
-    return Moments(list(names), n, int(total) - n, mean, cov)
+    return Moments(list(names), n, total - n, mean, cov, n)
 
 
 def drop_constant(
@@ -465,6 +500,10 @@ class PcaFit:
     vectors: np.ndarray
     standardized: bool
     warnings: list[str]
+    n_total: int
+    sampled: bool
+    # "exact, N complete rows" or "a random sample of n of N complete rows".
+    how: str
 
     @property
     def ratio(self) -> np.ndarray:
@@ -506,6 +545,9 @@ def pca_fit(rel: Relation, names: Sequence[str], *, standardize_fields: bool) ->
         vectors=vectors,
         standardized=standardize_fields,
         warnings=notes,
+        n_total=moments.n_total,
+        sampled=moments.sampled,
+        how=moments.how,
     )
 
 
@@ -543,7 +585,8 @@ def pca_biplot(req: PlotRequest) -> StatResult:
         arrow_scale = 0.8 * spread / reach
     notes = list(fit.warnings)
     if rows.sampled:
-        notes.append(f"Components use all {fit.n:,} rows; {rows.n:,} of them are drawn as points.")
+        used = f"a sample of {fit.n:,}" if fit.sampled else f"all {fit.n:,}"
+        notes.append(f"Components use {used} rows; {rows.n:,} rows are drawn as points.")
     ratio = fit.ratio
     values = {
         "variables": fit.names,
@@ -567,10 +610,11 @@ def pca_biplot(req: PlotRequest) -> StatResult:
     what = "correlation" if fit.standardized else "covariance"
     return stat_result(
         values,
-        method=f"PCA of the {what} matrix (exact, {fit.n:,} complete rows)",
+        method=f"PCA of the {what} matrix ({fit.how})",
         n=fit.n,
+        n_total=fit.n_total,
         n_missing=fit.n_missing,
-        sampled=False,
+        sampled=fit.sampled,
         warnings=notes,
     )
 
@@ -627,15 +671,22 @@ def factor_analysis(corr: np.ndarray, factors: int) -> tuple[np.ndarray, np.ndar
 
     rows = _fa_sufficient_rows(corr)
     # scikit-learn's tolerance applies to the log-likelihood summed over rows; with only 2p rows
-    # it must be tight. EM steps on a 2p x p matrix take microseconds, so many are affordable.
+    # it must be tight. EM steps on a 2p x p matrix take ~25 us, so 20k of them are ~0.5 s: a
+    # Heywood case (a uniqueness heading to 0) never converges and stops there, reported.
     model = FactorAnalysis(
-        n_components=factors, svd_method="lapack", tol=1e-12, max_iter=200_000, random_state=0
+        n_components=factors, svd_method="lapack", tol=1e-11, max_iter=20_000, random_state=0
     )
     with py_warnings.catch_warnings(record=True) as caught:
         py_warnings.simplefilter("always", ConvergenceWarning)
         model.fit(rows)
     converged = not any(issubclass(w.category, ConvergenceWarning) for w in caught)
     return np.asarray(model.components_.T), np.asarray(model.noise_variance_), converged
+
+
+def max_fa_factors(p: int) -> int:
+    """Most factors an ML factor model of p fields can identify: degrees of freedom
+    ((p - k)^2 - (p + k)) / 2 must be >= 0 (as R's factanal requires). 0 when none fit."""
+    return max((k for k in range(1, p) if (p - k) ** 2 >= p + k), default=0)
 
 
 def orient(loadings: np.ndarray) -> np.ndarray:
@@ -660,13 +711,22 @@ def factor_loading(req: PlotRequest) -> StatResult:
     corr = correlation(moments.cov[np.ix_(keep, keep)])
     p = len(names)
     k = params.factors
-    if k > p or (params.method == "fa" and k >= p):
-        limit = p - 1 if params.method == "fa" else p
-        raise StatsInputError(
-            f"With {p} fields, choose at most {limit} factor{'s' if limit != 1 else ''}."
-        )
+    if params.method == "pca" and k > p:
+        raise StatsInputError(f"With {p} fields, choose at most {p} components.")
     if params.method == "fa":
-        loadings, uniqueness, converged = factor_analysis(corr, k)
+        limit = max_fa_factors(p)
+        if limit == 0:
+            raise StatsInputError(
+                f"Factor analysis needs at least 3 fields to identify a factor; there are {p}. "
+                "Use principal components instead."
+            )
+        if k > limit:
+            raise StatsInputError(
+                f"With {p} fields, factor analysis can identify at most {limit} factor"
+                f"{'s' if limit != 1 else ''} (more would leave negative degrees of freedom). "
+                "Choose fewer factors, add fields, or use principal components."
+            )
+        loadings, uniqueness, converged = run_cpu(req.executor, factor_analysis, corr, k)
         if not converged:
             notes.append("Factor analysis did not fully converge; treat the loadings as rough.")
         if np.any(uniqueness < 0.005):
@@ -706,10 +766,11 @@ def factor_loading(req: PlotRequest) -> StatResult:
             "method": params.method,
             "rotation": params.rotation if k > 1 else "none",
         },
-        method=method + f" (exact, {moments.n:,} complete rows)",
+        method=method + f" ({moments.how})",
         n=moments.n,
+        n_total=moments.n_total,
         n_missing=moments.n_missing,
-        sampled=False,
+        sampled=moments.sampled,
         warnings=notes,
     )
 
@@ -940,11 +1001,20 @@ class DendrogramParams(PlotParams):
     orientation: Literal["top", "left"] = "top"
 
 
-def linkage_matrix(x: np.ndarray, method: str, metric: str) -> np.ndarray:
-    """SciPy hierarchical clustering. Top-level and picklable: runs in the process pool."""
-    from scipy.cluster.hierarchy import linkage
+def linkage_matrix(x: np.ndarray, method: str, metric: str) -> tuple[np.ndarray, float]:
+    """SciPy hierarchical clustering and its cophenetic correlation.
 
-    return np.asarray(linkage(x, method=method, metric=metric))
+    Top-level and picklable: runs in the process pool, so the O(n^2) distance matrix (about
+    100 MB at 5,000 rows, plus the cophenetic distances) never lives in the API process.
+    """
+    from scipy.cluster.hierarchy import cophenet, linkage
+    from scipy.spatial.distance import pdist
+
+    distances = pdist(x, metric=metric)
+    # A condensed matrix of euclidean distances gives the same tree as the raw rows (Ward too).
+    z = np.asarray(linkage(distances, method=method))
+    coph, _ = cophenet(z, distances)
+    return z, float(coph)
 
 
 def cut_height(z: np.ndarray, clusters: int) -> float:
@@ -971,8 +1041,8 @@ def cut_height(z: np.ndarray, clusters: int) -> float:
     params=DendrogramParams,
 )
 def dendrogram(req: PlotRequest) -> StatResult:
-    from scipy.cluster.hierarchy import cophenet, fcluster
     from scipy.cluster.hierarchy import dendrogram as scipy_dendrogram
+    from scipy.cluster.hierarchy import fcluster
 
     params = req.params
     assert isinstance(params, DendrogramParams)
@@ -1000,7 +1070,7 @@ def dendrogram(req: PlotRequest) -> StatResult:
             raise StatsInputError(NOTHING_TO_CLUSTER)
     if params.metric == "cosine" and np.any(np.all(x == 0, axis=1)):
         raise StatsInputError("Cosine distance is undefined for rows that are all zero.")
-    z = run_cpu(req.executor, linkage_matrix, x, params.method, params.metric)
+    z, coph = run_cpu(req.executor, linkage_matrix, x, params.method, params.metric)
     n = len(x)
     names = rows.text(label) if label else [f"Row {i + 1}" for i in range(n)]
     leaf_names = [name if name is not None else "(missing)" for name in names]
@@ -1026,7 +1096,6 @@ def dendrogram(req: PlotRequest) -> StatResult:
         show_leaf_counts=True,
     )
     colors = [int(c[1:]) for c in tree["color_list"]]
-    coph, _ = cophenet(z, _pdist(x, params.metric))
     leaves = list(tree["ivl"])
     leaf_counts = [int(z[leaf - n, 3]) if leaf >= n else 1 for leaf in tree["leaves"]]
     n_clusters = len(np.unique(membership))
@@ -1054,12 +1123,6 @@ def dendrogram(req: PlotRequest) -> StatResult:
         n_missing=rows.n_missing,
         warnings=notes,
     )
-
-
-def _pdist(x: np.ndarray, metric: str) -> np.ndarray:
-    from scipy.spatial.distance import pdist
-
-    return np.asarray(pdist(x, metric=metric))
 
 
 # ---------------------------------------------------------------------------------------------

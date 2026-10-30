@@ -181,6 +181,42 @@ def test_kaplan_meier_all_censored_and_bad_events(rel: Rel) -> None:
     assert values_of(booleans)["groups"][0]["events"] == 3
 
 
+def test_kaplan_meier_event_coding(rel: Rel) -> None:
+    # R's Surv convention: 1 = censored, 2 = event. Deaths at 1 and 2 of 6 patients, the
+    # others censored later: S stays at 4/6 after t = 2, it must not fall to 0.
+    times = [1.0, 2, 3, 4, 5, 6]
+    r_style = rel({"t": times, "status": [2, 2, 1, 1, 1, 1]})
+    out = run(r_style, PlotType.KAPLAN_MEIER, time="t", event="status")
+    group = values_of(out)["groups"][0]
+    assert group["events"] == 2
+    assert group["survival"] == pytest.approx([1, 5 / 6, 4 / 6])
+    assert any("1/2" in w for w in out.warnings)
+    # Words: "died" is the event whether it sorts first or last.
+    words = rel({"t": times, "status": ["died", "died", *["survived"] * 4]})
+    group = values_of(run(words, PlotType.KAPLAN_MEIER, time="t", event="status"))["groups"][0]
+    assert group["events"] == 2
+    alive = rel({"t": times, "status": ["dead", "dead", *["alive"] * 4]})
+    assert (
+        values_of(run(alive, PlotType.KAPLAN_MEIER, time="t", event="status"))["groups"][0][
+            "events"
+        ]
+        == 2
+    )
+    # One recognizable "no" word: the other value is the event.
+    censored = rel({"t": times, "status": ["relapse_x", "relapse_x", *["censored"] * 4]})
+    assert (
+        values_of(run(censored, PlotType.KAPLAN_MEIER, time="t", event="status"))["groups"][0][
+            "events"
+        ]
+        == 2
+    )
+    # An explicit event value always wins (here: 1 is the event, as in 0/1-free coding).
+    explicit = run(r_style, PlotType.KAPLAN_MEIER, {"eventValue": "1"}, time="t", event="status")
+    assert values_of(explicit)["groups"][0]["events"] == 4
+    with pytest.raises(InvalidSpecError, match="not a value"):
+        run(r_style, PlotType.KAPLAN_MEIER, {"eventValue": "dead"}, time="t", event="status")
+
+
 def test_km_bands_degenerate() -> None:
     lo, hi = ec.km_bands(np.array([1.0, 0.5, 0.0]), np.array([0.0, 0.1, 0.0]), 0.95, "log-log")
     assert lo[0] == hi[0] == 1 and lo[2] == hi[2] == 0 and lo[1] < 0.5 < hi[1]
@@ -222,6 +258,10 @@ def test_roc_degenerate_inputs(rel: Rel) -> None:
     curve = values_of(out)["curves"][0]
     assert curve["auc"] == 1 and curve["aucLow"] == curve["aucHigh"] == 1
     assert any("perfectly separated" in w for w in out.warnings)
+    # A constant score: AUC 0.5 with zero SE is not "perfect separation".
+    flat = run(rel({"y": [0, 0, 1, 1], "s": [0.5] * 4}), PlotType.ROC, truth="y", score="s")
+    assert values_of(flat)["curves"][0]["auc"] == 0.5
+    assert not any("perfectly separated" in w for w in flat.warnings)
     labels = run(
         rel({"y": ["no", "yes", "no", "yes"], "s": [0.1, 0.9, 0.3, 0.2]}),
         PlotType.ROC,
@@ -610,6 +650,23 @@ def test_irf_degenerate_inputs(rel: Rel) -> None:
             y=["a", "b"],
             time="t",
         )
+    # Automatic lags with too few periods: the same clear message, not "collinear".
+    with pytest.raises(InvalidSpecError, match="too few for 2 series with 1 lag"):
+        run(
+            rel({"t": np.arange(4), "a": x[:4, 0], "b": x[:4, 1]}),
+            PlotType.IMPULSE_RESPONSE,
+            y=["a", "b"],
+            time="t",
+        )
+    short = values_of(
+        run(
+            rel({"t": np.arange(9), "a": x[:9, 0], "b": x[:9, 1]}),
+            PlotType.IMPULSE_RESPONSE,
+            y=["a", "b"],
+            time="t",
+        )
+    )
+    assert short["lags"] >= 1
     auto = values_of(
         run(
             rel({"t": np.arange(30), "a": x[:, 0], "b": x[:, 1]}),

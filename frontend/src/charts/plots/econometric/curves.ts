@@ -9,6 +9,7 @@ import {
   colorsFor,
   count,
   EMPTY,
+  escapeHtml,
   fmt,
   hasName,
   num,
@@ -124,7 +125,7 @@ export const roc = definePlot({
               ],
               tooltip: {
                 formatter: (p: { name: string; value: string }) =>
-                  `${p.name}<br/>Youden J = ${p.value}`,
+                  `${escapeHtml(p.name)}<br/>Youden J = ${escapeHtml(p.value)}`,
               },
             }
           : undefined,
@@ -200,7 +201,8 @@ export const precisionRecall = definePlot({
                 },
               ],
               tooltip: {
-                formatter: (p: { name: string; value: string }) => `${p.name}<br/>F1 = ${p.value}`,
+                formatter: (p: { name: string; value: string }) =>
+                  `${escapeHtml(p.name)}<br/>F1 = ${escapeHtml(p.value)}`,
               },
             }
           : undefined,

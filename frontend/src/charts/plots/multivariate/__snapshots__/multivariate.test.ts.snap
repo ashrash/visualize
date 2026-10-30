@@ -487,7 +487,7 @@ exports[`multivariate registry entries > cluster renders the same option in ligh
         },
       ],
       "itemStyle": {
-        "borderColor": "#111111",
+        "borderColor": "#cccccc",
         "borderWidth": 1.5,
         "color": "#eeeeee",
       },
@@ -691,7 +691,7 @@ exports[`multivariate registry entries > cluster renders the same option in ligh
         },
       ],
       "itemStyle": {
-        "borderColor": "#fff",
+        "borderColor": "#cccccc",
         "borderWidth": 1.5,
         "color": "#000000",
       },
@@ -1874,7 +1874,7 @@ exports[`multivariate registry entries > pca_biplot renders the same option in l
               ],
               "label": {
                 "color": "#eeeeee",
-                "formatter": "a",
+                "formatter": [Function],
                 "position": "end",
                 "show": true,
               },
@@ -1896,7 +1896,7 @@ exports[`multivariate registry entries > pca_biplot renders the same option in l
               ],
               "label": {
                 "color": "#eeeeee",
-                "formatter": "b",
+                "formatter": [Function],
                 "position": "end",
                 "show": true,
               },
@@ -2124,7 +2124,7 @@ exports[`multivariate registry entries > pca_biplot renders the same option in l
               ],
               "label": {
                 "color": "#000000",
-                "formatter": "a",
+                "formatter": [Function],
                 "position": "end",
                 "show": true,
               },
@@ -2146,7 +2146,7 @@ exports[`multivariate registry entries > pca_biplot renders the same option in l
               ],
               "label": {
                 "color": "#000000",
-                "formatter": "b",
+                "formatter": [Function],
                 "position": "end",
                 "show": true,
               },

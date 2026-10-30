@@ -5,7 +5,7 @@ import { maxOf, minOf } from "../../core/math";
 import { param, resolveStyle } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import { definePlot } from "../../core/types";
-import { CATEGORICAL, count, fmt, QUANT } from "./stat";
+import { CATEGORICAL, count, escapeHtml, fmt, QUANT } from "./stat";
 
 echarts.use([RadarChart, RadarComponent]);
 
@@ -125,10 +125,12 @@ export const radar = definePlot({
           tooltip: {
             formatter: (p: { name: string; data: { raw: unknown[] } }) =>
               [
-                `<b>${p.name}</b>`,
+                // Group values and field names are user data: escaped.
+                `<b>${escapeHtml(p.name)}</b>`,
                 ...measures.map(
                   (k, j) =>
-                    `${agg} ${data.meta.fields[k] ?? k}: ${fmt(p.data.raw[j] as number | null)}`,
+                    `${agg} ${escapeHtml(data.meta.fields[k] ?? k)}: ` +
+                    fmt(p.data.raw[j] as number | null),
                 ),
               ].join("<br/>"),
           },
