@@ -58,4 +58,8 @@ class ChartDataMeta(Contract):
 class RowsPageMeta(Contract):
     offset: int
     limit: int
+    # Rows after filters and search.
     total_rows: int
+    # Rows in the dataset version, before filters.
+    dataset_rows: int | None = None
+    version: int | None = None

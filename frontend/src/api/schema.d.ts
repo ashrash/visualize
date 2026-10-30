@@ -528,6 +528,11 @@ export interface components {
              * Format: date-time
              */
             importedAt: string;
+            /** Sourcepath */
+            sourcePath?: string | null;
+            options?: components["schemas"]["ImportOptions"] | null;
+            /** Sizebytes */
+            sizeBytes?: number | null;
         };
         /** DedupeStep */
         DedupeStep: {
@@ -795,6 +800,29 @@ export interface components {
             sheet?: string | null;
             /** Headerrow */
             headerRow?: number | null;
+            /** Skiprows */
+            skipRows?: number | null;
+            /** Quote */
+            quote?: string | null;
+            /** Escape */
+            escape?: string | null;
+            /** Decimalseparator */
+            decimalSeparator?: string | null;
+            /** Nullstrings */
+            nullStrings?: string[] | null;
+            /** Dateformat */
+            dateFormat?: string | null;
+            /** Timestampformat */
+            timestampFormat?: string | null;
+            /** Columntypes */
+            columnTypes?: {
+                [key: string]: string;
+            } | null;
+            /** Allvarchar */
+            allVarchar?: boolean | null;
+            jsonFormat?: components["schemas"]["JsonFormat"] | null;
+            /** Jsonpath */
+            jsonPath?: string | null;
         };
         /** InPredicate */
         InPredicate: {
@@ -896,6 +924,11 @@ export interface components {
              */
             suffix: string;
         };
+        /**
+         * JsonFormat
+         * @enum {string}
+         */
+        JsonFormat: "auto" | "array" | "newline_delimited";
         JsonValue: unknown;
         /** KpiWidget */
         KpiWidget: {
@@ -1485,6 +1518,135 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /**
+         * ExportFile
+         * @description Server-produced.
+         */
+        ExportFile: {
+            /** Exportid */
+            exportId: string;
+            /** Filename */
+            fileName: string;
+            format: components["schemas"]["ExportFormat"];
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Rowcount */
+            rowCount: number;
+            /** Downloadurl */
+            downloadUrl: string;
+            /**
+             * Expiresat
+             * Format: date-time
+             */
+            expiresAt: string;
+        };
+        /**
+         * ExportFormat
+         * @enum {string}
+         */
+        ExportFormat: "csv" | "xlsx";
+        /** ExportRequest */
+        ExportRequest: {
+            source: components["schemas"]["SourceRef"];
+            format: components["schemas"]["ExportFormat"];
+            /**
+             * Version
+             * @default null
+             */
+            version: number | null;
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Sort */
+            sort?: components["schemas"]["viz__contracts__dataset__SortKey"][];
+            /**
+             * Columns
+             * @default null
+             */
+            columns: string[] | null;
+            /**
+             * Filename
+             * @default null
+             */
+            fileName: string | null;
+            /**
+             * Delimiter
+             * @default null
+             */
+            delimiter: string | null;
+        };
+        /**
+         * ImportPreviewMeta
+         * @description Arrow metadata of a preview response. Server-produced.
+         */
+        ImportPreviewMeta: {
+            kind: components["schemas"]["SourceKind"];
+            detected: components["schemas"]["ImportOptions"];
+            /** Sheets */
+            sheets: string[];
+            /** Columns */
+            columns: components["schemas"]["Column"][];
+            /** Rowsshown */
+            rowsShown: number;
+            /** Estimatedrows */
+            estimatedRows: number | null;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * Job
+         * @description Server-produced. Each SSE event carries a full snapshot.
+         */
+        Job: {
+            /** Id */
+            id: string;
+            kind: components["schemas"]["JobKind"];
+            /** Title */
+            title: string;
+            status: components["schemas"]["JobStatus"];
+            /** Progress */
+            progress: number | null;
+            /** Message */
+            message: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Startedat */
+            startedAt: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Error */
+            error: string | null;
+            result: components["schemas"]["JobResult"] | null;
+        };
+        /**
+         * JobKind
+         * @enum {string}
+         */
+        JobKind: "import" | "refresh" | "materialize" | "export";
+        /**
+         * JobResult
+         * @description Server-produced.
+         */
+        JobResult: {
+            /** Datasetid */
+            datasetId: string | null;
+            /** Version */
+            version: number | null;
+            /** Pipelineid */
+            pipelineId: string | null;
+            export: components["schemas"]["ExportFile"] | null;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * JobStatus
+         * @enum {string}
+         */
+        JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         /** ProjectDuplicate */
         ProjectDuplicate: {
             /**
@@ -1535,6 +1697,31 @@ export interface components {
             limit: number;
             /** Totalrows */
             totalRows: number;
+            /**
+             * Datasetrows
+             * @default null
+             */
+            datasetRows: number | null;
+            /**
+             * Version
+             * @default null
+             */
+            version: number | null;
+        };
+        /**
+         * StagedFile
+         * @description An uploaded file waiting to be previewed and imported. Server-produced.
+         */
+        StagedFile: {
+            /** Stagedid */
+            stagedId: string;
+            /** Filename */
+            fileName: string;
+            kind: components["schemas"]["SourceKind"];
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Sheets */
+            sheets: string[];
         };
         /** StatResult */
         StatResult: {
@@ -1553,6 +1740,31 @@ export interface components {
             sampled: boolean;
             /** Warnings */
             warnings?: string[];
+        };
+        /** SortKey */
+        viz__contracts__dataset__SortKey: {
+            /** Field */
+            field: string;
+            /**
+             * Desc
+             * @default false
+             */
+            desc: boolean;
+        };
+        /** SortKey */
+        viz__contracts__pipeline__SortKey: {
+            /** Field */
+            field: string;
+            /**
+             * Descending
+             * @default false
+             */
+            descending: boolean;
+            /**
+             * Nullslast
+             * @default true
+             */
+            nullsLast: boolean;
         };
     };
     responses: never;

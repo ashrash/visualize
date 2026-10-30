@@ -1599,6 +1599,38 @@
             "type": "string",
             "format": "date-time",
             "title": "Importedat"
+          },
+          "sourcePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepath"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizebytes"
           }
         },
         "additionalProperties": false,
@@ -2302,6 +2334,132 @@
               }
             ],
             "title": "Headerrow"
+          },
+          "skipRows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skiprows"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote"
+          },
+          "escape": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escape"
+          },
+          "decimalSeparator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decimalseparator"
+          },
+          "nullStrings": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nullstrings"
+          },
+          "dateFormat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dateformat"
+          },
+          "timestampFormat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestampformat"
+          },
+          "columnTypes": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columntypes"
+          },
+          "allVarchar": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allvarchar"
+          },
+          "jsonFormat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JsonFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "jsonPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jsonpath"
           }
         },
         "additionalProperties": false,
@@ -2522,6 +2680,15 @@
           "on"
         ],
         "title": "JoinStep"
+      },
+      "JsonFormat": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "array",
+          "newline_delimited"
+        ],
+        "title": "JsonFormat"
       },
       "JsonValue": {},
       "KpiWidget": {
@@ -4028,6 +4195,422 @@
         "title": "ChartDataMeta",
         "type": "object"
       },
+      "ExportFile": {
+        "additionalProperties": false,
+        "description": "Server-produced.",
+        "properties": {
+          "exportId": {
+            "title": "Exportid",
+            "type": "string"
+          },
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "sizeBytes": {
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "rowCount": {
+            "title": "Rowcount",
+            "type": "integer"
+          },
+          "downloadUrl": {
+            "title": "Downloadurl",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exportId",
+          "fileName",
+          "format",
+          "sizeBytes",
+          "rowCount",
+          "downloadUrl",
+          "expiresAt"
+        ],
+        "title": "ExportFile",
+        "type": "object"
+      },
+      "ExportFormat": {
+        "enum": [
+          "csv",
+          "xlsx"
+        ],
+        "title": "ExportFormat",
+        "type": "string"
+      },
+      "ExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          },
+          "filters": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/viz__contracts__dataset__SortKey"
+            },
+            "title": "Sort",
+            "type": "array"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Columns"
+          },
+          "fileName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Filename"
+          },
+          "delimiter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delimiter"
+          }
+        },
+        "required": [
+          "source",
+          "format"
+        ],
+        "title": "ExportRequest",
+        "type": "object"
+      },
+      "ImportPreviewMeta": {
+        "additionalProperties": false,
+        "description": "Arrow metadata of a preview response. Server-produced.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "detected": {
+            "$ref": "#/components/schemas/ImportOptions"
+          },
+          "sheets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sheets",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/Column"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "rowsShown": {
+            "title": "Rowsshown",
+            "type": "integer"
+          },
+          "estimatedRows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedrows"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "detected",
+          "sheets",
+          "columns",
+          "rowsShown",
+          "estimatedRows",
+          "warnings"
+        ],
+        "title": "ImportPreviewMeta",
+        "type": "object"
+      },
+      "Job": {
+        "additionalProperties": false,
+        "description": "Server-produced. Each SSE event carries a full snapshot.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "status",
+          "progress",
+          "message",
+          "seq",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "error",
+          "result"
+        ],
+        "title": "Job",
+        "type": "object"
+      },
+      "JobKind": {
+        "enum": [
+          "import",
+          "refresh",
+          "materialize",
+          "export"
+        ],
+        "title": "JobKind",
+        "type": "string"
+      },
+      "JobResult": {
+        "additionalProperties": false,
+        "description": "Server-produced.",
+        "properties": {
+          "datasetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datasetid"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "pipelineId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipelineid"
+          },
+          "export": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportFile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "datasetId",
+          "version",
+          "pipelineId",
+          "export",
+          "warnings"
+        ],
+        "title": "JobResult",
+        "type": "object"
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
       "ProjectDuplicate": {
         "additionalProperties": false,
         "properties": {
@@ -4151,6 +4734,30 @@
           "totalRows": {
             "title": "Totalrows",
             "type": "integer"
+          },
+          "datasetRows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Datasetrows"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
           }
         },
         "required": [
@@ -4159,6 +4766,43 @@
           "totalRows"
         ],
         "title": "RowsPageMeta",
+        "type": "object"
+      },
+      "StagedFile": {
+        "additionalProperties": false,
+        "description": "An uploaded file waiting to be previewed and imported. Server-produced.",
+        "properties": {
+          "stagedId": {
+            "title": "Stagedid",
+            "type": "string"
+          },
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "sizeBytes": {
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "sheets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sheets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stagedId",
+          "fileName",
+          "kind",
+          "sizeBytes",
+          "sheets"
+        ],
+        "title": "StagedFile",
         "type": "object"
       },
       "StatResult": {
@@ -4198,6 +4842,49 @@
           "n"
         ],
         "title": "StatResult",
+        "type": "object"
+      },
+      "viz__contracts__dataset__SortKey": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "desc": {
+            "default": false,
+            "title": "Desc",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "SortKey",
+        "type": "object"
+      },
+      "viz__contracts__pipeline__SortKey": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "descending": {
+            "default": false,
+            "title": "Descending",
+            "type": "boolean"
+          },
+          "nullsLast": {
+            "default": true,
+            "title": "Nullslast",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "SortKey",
         "type": "object"
       }
     }
