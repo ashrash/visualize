@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from viz import __version__
-from viz.api import charts, datasets, projects
+from viz.api import charts, datasets, exports, jobs, projects
 from viz.auth import current_user
 
 api_router = APIRouter(dependencies=[Depends(current_user)])
@@ -23,5 +23,7 @@ def health() -> Health:
 
 
 api_router.include_router(datasets.router)
+api_router.include_router(jobs.router)
+api_router.include_router(exports.router)
 api_router.include_router(charts.router)
 api_router.include_router(projects.router)

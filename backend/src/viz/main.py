@@ -22,6 +22,7 @@ from viz.config import Settings, get_settings
 from viz.contracts import EXPORTED_MODELS
 from viz.engine import Engine
 from viz.errors import VizError
+from viz.jobs import InProcessJobRunner
 from viz.meta.db import create_db_engine, make_sessionmaker, run_migrations
 from viz.storage import LocalStorage
 
@@ -42,9 +43,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.storage = storage
         app.state.sessionmaker = make_sessionmaker(db_engine)
         app.state.engine = engine
+        # data-core: background jobs (imports, materialisation, exports).
+        jobs = InProcessJobRunner(
+            engine=engine,
+            storage=storage,
+            sessionmaker=app.state.sessionmaker,
+            settings=settings,
+        )
+        app.state.jobs = jobs
+        storage.sweep(
+            staged_max_age_s=settings.staged_retention_s,
+            exports_max_age_s=settings.export_retention_s,
+        )
         try:
             yield
         finally:
+            jobs.close()
             engine.close()
             db_engine.dispose()
 

@@ -36,6 +36,23 @@ class Settings(BaseSettings):
     max_upload_mb: int = 4_096
     # Local mode reads files in place; hosted deployments turn this off.
     allow_path_import: bool = True
+    # Path imports up to this size are copied into sources/ first; larger ones are read in place.
+    copy_source_max_mb: int = 512
+
+    # Query result cache (bytes budget), keyed by dataset version + SQL.
+    cache_mb: int = 256
+    # Process pool for pure-Python CPU work; BLAS threads per worker (None = cores / workers).
+    process_workers: int = 2
+    blas_threads: int | None = None
+    prewarm_process_pool: bool = True
+    # Background jobs (imports, materialisation, exports).
+    max_concurrent_jobs: int = 1
+    # Threads for a second DuckDB instance used only by jobs; None = share the main instance.
+    job_duckdb_threads: int | None = None
+    job_retention_s: int = 3600
+    export_retention_s: int = 3600
+    staged_retention_s: int = 86_400
+    preview_rows: int = 1000
 
     @property
     def db_url(self) -> str:
