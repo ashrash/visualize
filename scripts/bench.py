@@ -63,8 +63,8 @@ DESCRIBE_BUDGET_S = 3.0
 
 # Failures that docs/STATUS.md already tracks (they do not fail the run unless --strict).
 KNOWN_ISSUES = {
-    "grid sorted, cold": "STATUS (data-core): first sorted page ~190 ms cold; deferred to Wave 4",
-    "grid filtered, cold": "STATUS (data-core): first filtered page is a direct scan; Wave 4",
+    # Keys are the case labels used by Bench.cold_case / grid_case.
+    "sorted, cold": "STATUS (data-core): first sorted page ~190 ms cold; deferred to Wave 4",
 }
 
 TERMINAL_JOB = {"succeeded", "failed", "cancelled"}
