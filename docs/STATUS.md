@@ -36,6 +36,12 @@ items in their final report and the lead updates this file. Status values: `todo
   sorted page 190 ms cold (over the 150 ms budget, Wave 4). Follow-ups in progress: cp1252
   fallback on mostly-UTF-8 files, generation counter guard, sticky conditional cancel,
   request_scope in dependencies, upload parser edge cases, explicit memory-limit split.
+- 2026-10-30: platform follow-up merged (vizproj uses data-core's bundle registration and ref walker).
+- 2026-10-30: stats Wave 1 merged (bd5649f): shared kernels (sampling incl. stratified with group
+  caps, quantiles, ECDF, histogram bins, Q-Q, KDE 1-D/2-D, OLS/LOWESS fits, bootstrap) and
+  `/api/stats/describe`. Reviewer: approve with nits after one fix round. Describe (10M rows, 10
+  fields): 1.6 s, with modes 2.6 s; grouped with modes 7-8 s (Wave 4 perf item). Follow-ups in
+  progress: stratified n_missing, KDE method on coarse grids, mixed-magnitude rescale.
 
 ## MVP.md
 
@@ -89,7 +95,7 @@ Tracked per plot under Plots.md below.
 | Line styles and thickness | ui-charts | done | Generated config panel + applyStyle (basic plots). |
 | Error bars | ui-charts | partial | SD/SE/CI/fixed rendered (incl. with color). Server bounds: transform branch in review. |
 | Trendlines | ui-charts | partial | Rendering + config done. Server fits (/api/charts/overlays): transform branch in review. |
-| Regression lines | ui-charts | partial | As trendlines; server fit via stats kernels (in review). |
+| Regression lines | ui-charts | partial | As trendlines; server fit kernels merged (stats); overlays endpoint: transform in progress. |
 | Confidence intervals | ui-charts | partial | CI band primitive done; server bands via overlays (in review). |
 | Tooltips | ui-charts | done | Formatted axis/item tooltips. |
 | Reference lines | ui-charts | done | Generated config panel + applyStyle (basic plots). |
@@ -100,11 +106,11 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Mean, median and mode | stats · ui-data | todo |  |
-| Standard deviation and variance | stats · ui-data | todo |  |
-| Percentiles and quartiles | stats · ui-data | todo |  |
+| Mean, median and mode | stats · ui-data | partial | Backend: describe (exact, SQL; modes with tie warning). Stats panel UI: Wave 2. |
+| Standard deviation and variance | stats · ui-data | partial | Backend: describe (overflow-safe moments). Stats panel UI: Wave 2. |
+| Percentiles and quartiles | stats · ui-data | partial | Backend: describe + quantiles kernel (exact, R type 7). Stats panel UI: Wave 2. |
 | Correlation analysis | stats · ui-data | todo |  |
-| Linear regression | stats · ui-data | todo |  |
+| Linear regression | stats · ui-data | partial | Kernel: OLS fit with CI band (used by trendlines). Endpoint + UI: Wave 2. |
 | Multiple regression | stats · ui-data | todo |  |
 | Hypothesis testing | stats · ui-data | todo |  |
 | T-tests | stats · ui-data | todo |  |
@@ -112,8 +118,8 @@ Tracked per plot under Plots.md below.
 | Chi-square tests | stats · ui-data | todo |  |
 | Distribution fitting | stats · ui-data | todo |  |
 | Outlier detection | stats · ui-data | todo |  |
-| Confidence intervals | stats · ui-data | todo |  |
-| Descriptive statistics | stats · ui-data | todo |  |
+| Confidence intervals | stats · ui-data | partial | Kernel: bootstrap CIs; fit bands. Endpoint + UI: Wave 2. |
+| Descriptive statistics | stats · ui-data | partial | Backend done: `/api/stats/describe` (grouped, filtered, percentiles, skew/kurtosis). 10 fields with modes 2.6 s at 10M; grouped 7-8 s (Wave 4). Stats panel UI: Wave 2. |
 
 ### 6. Interactivity
 
