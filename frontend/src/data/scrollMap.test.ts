@@ -58,6 +58,58 @@ describe("scrollWindow", () => {
   });
 });
 
+describe("with a sticky header", () => {
+  const HEADER = 40;
+  const CLIENT = 640; // header + 600px of body
+  const TOTAL = 10_000_000;
+
+  it("shows the last row fully at the end of the scroll range", () => {
+    const scrollHeight = HEADER + MAX_SCROLL_PX;
+    const scrollTop = scrollHeight - CLIENT; // what the browser allows at the bottom
+    const w = scrollWindow({
+      scrollTop,
+      viewportPx: CLIENT - HEADER,
+      totalRows: TOTAL,
+      rowHeight: ROW,
+    });
+    expect(w.end).toBe(TOTAL);
+    const lastTop = w.startTop + (TOTAL - 1 - w.start) * ROW;
+    expect(lastTop + ROW).toBeLessThanOrEqual(scrollTop + (CLIENT - HEADER));
+  });
+
+  it("go to row N puts row N at the top of the visible body, fully", () => {
+    const body = CLIENT - HEADER;
+    for (const row of [0, 777, 5_000_000, 9_999_990, 9_999_999]) {
+      const top = scrollTopForRow(row, { viewportPx: body, totalRows: TOTAL, rowHeight: ROW });
+      const w = scrollWindow({
+        scrollTop: top,
+        viewportPx: body,
+        totalRows: TOTAL,
+        rowHeight: ROW,
+        anchor: { top, row: Math.min(row, TOTAL - Math.floor(body / ROW)) },
+      });
+      const wanted = Math.min(row, TOTAL - Math.floor(body / ROW));
+      expect(w.firstVisible).toBe(wanted);
+      const rowTop = w.startTop + (row - w.start) * ROW;
+      if (row === wanted) expect(rowTop).toBe(top);
+      // Whatever the first visible row is, the viewport is full of whole rows.
+      expect(w.end - w.firstVisible).toBeGreaterThanOrEqual(Math.floor(body / ROW));
+    }
+  });
+
+  it("drops the anchor once the scrollbar moves", () => {
+    const body = CLIENT - HEADER;
+    const w = scrollWindow({
+      scrollTop: 4_000_000,
+      viewportPx: body,
+      totalRows: TOTAL,
+      rowHeight: ROW,
+      anchor: { top: 1_000_000, row: 12345 },
+    });
+    expect(w.firstVisible).not.toBe(12345);
+  });
+});
+
 describe("scrollTopForRow", () => {
   it("round-trips through scrollWindow within one pixel's worth of rows", () => {
     const rowsPerPx = 10_000_000 / MAX_SCROLL_PX;

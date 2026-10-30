@@ -52,12 +52,15 @@ export function DataGrid({ dataset }: { dataset: Dataset }) {
 
   const valuesLoader = (field: string): LoadValues => {
     const others = filterList(setFilter(filters, field, null));
-    return (search, signal) =>
+    const load: LoadValues = (search, signal) =>
       fetchColumnValues(
         dataset.id,
         { field, search: search || null, filters: others, limit: 100 },
         signal,
       );
+    // Cached values are only valid for this dataset version and these other filters.
+    load.scope = [dataset.id, version?.n, others];
+    return load;
   };
 
   const exportRequest = (): ExportRequest => ({

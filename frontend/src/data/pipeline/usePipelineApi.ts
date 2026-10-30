@@ -88,11 +88,16 @@ export function useFormulaCheck(args: {
     }),
     400,
   );
-  return useQuery({
+  const query = useQuery({
     queryKey: ["formula-check", body],
     queryFn: ({ signal }) => checkFormula(JSON.parse(body), signal),
     enabled: featureOn("pipelineApi") && pipeline !== undefined && args.expression.trim() !== "",
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
+  // The verdict only applies to the text it was computed for (keepPreviousData can hand back
+  // the result of an earlier expression).
+  const forExpression = (JSON.parse(body) as { expression: string }).expression;
+  const current = forExpression === args.expression && !query.isPlaceholderData;
+  return { ...query, data: current ? query.data : undefined };
 }

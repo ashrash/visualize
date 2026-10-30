@@ -24,6 +24,10 @@ items in their final report and the lead updates this file. Status values: `todo
   streaming upload size limit (needs middleware).
 - 2026-10-30: ui-data merged (shell, ui kit, scaled grid, import, project UI, pipeline editor). Phase B
   UI for data-core/transform endpoints is behind flags in `frontend/src/api/features.ts`.
+- 2026-10-30: ui-charts merged (registry, MVP §4 applyStyle, §8 themes/formatting, primitives, Plots §1,
+  chart export). Follow-ups before Wave 2: multi-grid detection, required `affectsData`, EChart
+  component replacement. All three merged (5a9a92f); charts screen wired by ui-data (e526497).
+  Lead browser smoke on integrated main: import, grid, charts, new chart, reload, dark: no errors.
 
 ## MVP.md
 
@@ -64,25 +68,25 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| X-axis and Y-axis selection | ui-charts | partial | Phase 0 builder (x, y, aggregate) for bar. |
-| Multiple Y-axis support | ui-charts | todo |  |
-| Color customization | ui-charts | todo |  |
-| Labels and annotations | ui-charts | todo |  |
-| Legend configuration | ui-charts | todo |  |
-| Chart titles and subtitles | ui-charts | todo |  |
-| Axis scaling (linear, logarithmic) | ui-charts | todo |  |
-| Axis formatting | ui-charts | todo |  |
-| Gridline configuration | ui-charts | todo |  |
-| Data point markers | ui-charts | todo |  |
-| Line styles and thickness | ui-charts | todo |  |
-| Error bars | ui-charts | todo |  |
-| Trendlines | ui-charts | todo |  |
-| Regression lines | ui-charts | todo |  |
-| Confidence intervals | ui-charts | todo |  |
-| Tooltips | ui-charts | partial | Axis tooltip on bar. |
-| Reference lines | ui-charts | todo |  |
-| Chart orientation | ui-charts | todo |  |
-| Stacking and grouping | ui-charts | todo |  |
+| X-axis and Y-axis selection | ui-charts | done | Generated Data tab from the plot's channel schema. |
+| Multiple Y-axis support | ui-charts | done | y_axes + per-series axis assignment. |
+| Color customization | ui-charts | done | Palettes + per-series colors. |
+| Labels and annotations | ui-charts | done | Value labels, point/area/text annotations. |
+| Legend configuration | ui-charts | done | Generated config panel + applyStyle (basic plots). |
+| Chart titles and subtitles | ui-charts | done | Generated config panel + applyStyle (basic plots). |
+| Axis scaling (linear, logarithmic) | ui-charts | done | Linear/log/time/category; log drops non-positive values with a warning. |
+| Axis formatting | ui-charts | done | Intl number/currency/percent/date formats per axis. |
+| Gridline configuration | ui-charts | done | Generated config panel + applyStyle (basic plots). |
+| Data point markers | ui-charts | done | Generated config panel + applyStyle (basic plots). |
+| Line styles and thickness | ui-charts | done | Generated config panel + applyStyle (basic plots). |
+| Error bars | ui-charts | partial | SD/SE/CI/fixed rendered (incl. with color). Server bounds: transform branch in review. |
+| Trendlines | ui-charts | partial | Rendering + config done. Server fits (/api/charts/overlays): transform branch in review. |
+| Regression lines | ui-charts | partial | As trendlines; server fit via stats kernels (in review). |
+| Confidence intervals | ui-charts | partial | CI band primitive done; server bands via overlays (in review). |
+| Tooltips | ui-charts | done | Formatted axis/item tooltips. |
+| Reference lines | ui-charts | done | Generated config panel + applyStyle (basic plots). |
+| Chart orientation | ui-charts | done | Vertical/horizontal swap. |
+| Stacking and grouping | ui-charts | done | Grouped, stacked and 100% stacked. |
 
 ### 5. Statistical Analysis
 
@@ -107,16 +111,16 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Zoom and pan | ui-charts | todo |  |
-| Hover tooltips | ui-charts | todo |  |
+| Zoom and pan | ui-charts | partial | dataZoom with detail-on-demand re-query (needs transform merge for server xRange). |
+| Hover tooltips | ui-charts | done |  |
 | Click-to-filter | ui-dashboard | todo |  |
 | Cross-filtering | ui-dashboard | todo |  |
 | Drill-down | ui-dashboard | todo |  |
 | Drill-through | ui-dashboard | todo |  |
 | Data point selection | ui-dashboard | todo |  |
 | Multi-select | ui-dashboard | todo |  |
-| Interactive legends | ui-charts | todo |  |
-| Range sliders | ui-charts | todo |  |
+| Interactive legends | ui-charts | done | Legend toggles survive cosmetic edits. |
+| Range sliders | ui-charts | partial | Slider dataZoom; xDomain from server after transform merges. |
 | Date range filters | ui-dashboard | todo |  |
 | Dynamic chart updates | ui-dashboard | todo |  |
 | Linked visualizations | ui-dashboard | todo |  |
@@ -141,29 +145,29 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Light and dark themes | ui-charts | partial | CSS tokens + OS/forced mode; chart colors from tokens. |
-| Custom color palettes | ui-charts | todo |  |
-| Custom fonts | ui-charts | todo |  |
-| Chart templates | ui-charts | todo |  |
-| Reusable styles | ui-charts | todo |  |
-| Number formatting | ui-charts | todo |  |
-| Currency formatting | ui-charts | todo |  |
-| Percentage formatting | ui-charts | todo |  |
-| Date formatting | ui-charts | todo |  |
-| Custom legends | ui-charts | todo |  |
-| Background customization | ui-charts | todo |  |
+| Light and dark themes | ui-charts | done | ECharts theme from CSS tokens, runtime setTheme. |
+| Custom color palettes | ui-charts | done | Okabe-Ito (default), Tableau-10, viridis, cividis. |
+| Custom fonts | ui-charts | done | Font family/size in style; chart font token. |
+| Chart templates | ui-charts | done | Templates from project.templates (apply/save). Sidebar wiring: ui-data. |
+| Reusable styles | ui-charts | done | Same as templates. |
+| Number formatting | ui-charts | done |  |
+| Currency formatting | ui-charts | done |  |
+| Percentage formatting | ui-charts | done |  |
+| Date formatting | ui-charts | done |  |
+| Custom legends | ui-charts | partial | Position/show; per-series names via series overrides. |
+| Background customization | ui-charts | partial | Theme background token; per-chart background not yet. |
 
 ### 9. Export & Sharing
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Export as PNG | ui-charts | todo |  |
-| Export as SVG | ui-charts | todo |  |
-| Export as PDF | ui-charts | todo |  |
-| Export as JPEG | ui-charts | todo |  |
+| Export as PNG | ui-charts | done | saveChart via swappable ExportSink. |
+| Export as SVG | ui-charts | done | Offscreen SVG render. |
+| Export as PDF | ui-charts | done | Vector via lazy jsPDF + svg2pdf; raster fallback for non-Latin-1 text. |
+| Export as JPEG | ui-charts | done |  |
 | Export as CSV | data-core | todo |  |
 | Export underlying data to Excel | data-core | todo |  |
-| Copy chart to clipboard | ui-charts | todo |  |
+| Copy chart to clipboard | ui-charts | done | ClipboardItem PNG. |
 | Share dashboard through URL | platform · ui-dashboard | todo |  |
 | Embed visualizations | platform · ui-dashboard | todo |  |
 | Generate reports | platform · ui-dashboard | todo |  |
@@ -189,13 +193,13 @@ Tracked per plot under Plots.md below.
 | § | Plot | Key | Owner | Status |
 |---|---|---|---|---|
 | 1 | Bar Chart | `bar` | ui-charts | done |
-| 1 | Horizontal Bar Chart | `horizontal_bar` | ui-charts | todo |
-| 1 | Grouped Bar Chart | `grouped_bar` | ui-charts | todo |
-| 1 | Stacked Bar Chart | `stacked_bar` | ui-charts | todo |
-| 1 | Line Chart | `line` | ui-charts | todo |
-| 1 | Area Chart | `area` | ui-charts | todo |
-| 1 | Pie Chart | `pie` | ui-charts | todo |
-| 1 | Donut Chart | `donut` | ui-charts | todo |
+| 1 | Horizontal Bar Chart | `horizontal_bar` | ui-charts | done |
+| 1 | Grouped Bar Chart | `grouped_bar` | ui-charts | done |
+| 1 | Stacked Bar Chart | `stacked_bar` | ui-charts | done |
+| 1 | Line Chart | `line` | ui-charts | done |
+| 1 | Area Chart | `area` | ui-charts | done |
+| 1 | Pie Chart | `pie` | ui-charts | done |
+| 1 | Donut Chart | `donut` | ui-charts | done |
 | 2 | Histogram | `histogram` | plots-distribution-relationship | todo |
 | 2 | Density Plot | `density` | plots-distribution-relationship | todo |
 | 2 | Box Plot | `box` | plots-distribution-relationship | todo |

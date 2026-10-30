@@ -15,7 +15,13 @@ import {
   type Scalar,
 } from "./filters";
 
-export type LoadValues = (search: string, signal: AbortSignal) => Promise<ColumnValues>;
+/**
+ * Loads distinct values for the filter checklist. `scope` identifies what the values depend on
+ * (dataset, version, the other columns' filters) and is part of the query cache key.
+ */
+export type LoadValues = ((search: string, signal: AbortSignal) => Promise<ColumnValues>) & {
+  scope?: readonly unknown[];
+};
 
 function useDebounced<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -41,8 +47,9 @@ function ValuesChecklist({
 }) {
   const [search, setSearch] = useState("");
   const term = useDebounced(search, 250);
+  const scope = loadValues.scope ?? [];
   const query = useQuery({
-    queryKey: ["column-values", column.name, term],
+    queryKey: ["column-values", ...scope, column.name, term],
     queryFn: ({ signal }) => loadValues(term, signal),
   });
   const toggle = (value: Scalar, on: boolean) =>

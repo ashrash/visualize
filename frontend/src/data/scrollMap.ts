@@ -31,6 +31,12 @@ export interface ScrollInput {
   rowHeight: number;
   overscan?: number;
   maxPx?: number;
+  /**
+   * A row the user navigated to exactly (go to row, wheel, keys). While scrollTop still equals
+   * `top` (what we set), that row is the first visible one; dragging the scrollbar moves scrollTop
+   * and drops the anchor. Needed because at 10M rows one pixel of scrolling is ~35 rows.
+   */
+  anchor?: { top: number; row: number } | null;
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), hi);
@@ -42,11 +48,13 @@ export function scrollWindow({
   rowHeight,
   overscan = 20,
   maxPx = MAX_SCROLL_PX,
+  anchor = null,
 }: ScrollInput): ScrollWindow {
   const fullPx = totalRows * rowHeight;
   const totalPx = Math.min(fullPx, maxPx);
   const scaled = fullPx > maxPx;
-  const visibleRows = Math.ceil(viewportPx / rowHeight);
+  // Fully visible rows decide the last reachable first row; the window renders one extra.
+  const visibleRows = Math.max(Math.floor(viewportPx / rowHeight), 1);
   const maxScroll = Math.max(totalPx - viewportPx, 1);
   const top = clamp(scrollTop, 0, maxScroll);
 
@@ -57,9 +65,10 @@ export function scrollWindow({
     const fraction = top / maxScroll;
     firstVisible = Math.round(fraction * Math.max(totalRows - visibleRows, 0));
   }
+  if (scaled && anchor && Math.abs(anchor.top - top) < 1) firstVisible = anchor.row;
   firstVisible = clamp(firstVisible, 0, Math.max(totalRows - 1, 0));
   const start = Math.max(firstVisible - overscan, 0);
-  const end = Math.min(firstVisible + visibleRows + overscan, totalRows);
+  const end = Math.min(firstVisible + Math.ceil(viewportPx / rowHeight) + overscan, totalRows);
   // Unscaled rows sit at index * rowHeight; scaled rows hang off the current scrollTop so the
   // viewport always shows the mapped rows however many rows one pixel of scrolling skips.
   const startTop = scaled ? top + (start - firstVisible) * rowHeight : start * rowHeight;
@@ -75,8 +84,13 @@ export function scrollTopForRow(
   const totalPx = Math.min(fullPx, maxPx);
   const target = clamp(row, 0, Math.max(totalRows - 1, 0));
   if (fullPx <= maxPx) return clamp(target * rowHeight, 0, Math.max(totalPx - viewportPx, 0));
-  const visibleRows = Math.ceil(viewportPx / rowHeight);
+  const visibleRows = Math.max(Math.floor(viewportPx / rowHeight), 1);
   const maxScroll = Math.max(totalPx - viewportPx, 1);
   const fraction = target / Math.max(totalRows - visibleRows, 1);
   return clamp(fraction * maxScroll, 0, maxScroll);
+}
+
+/** The first row that keeps a full viewport of rows below it (the last reachable first row). */
+export function lastFirstRow(totalRows: number, viewportPx: number, rowHeight: number): number {
+  return Math.max(totalRows - Math.max(Math.floor(viewportPx / rowHeight), 1), 0);
 }

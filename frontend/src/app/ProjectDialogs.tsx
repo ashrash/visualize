@@ -13,6 +13,7 @@ import {
   deleteCurrentProject,
   renameCurrentProject,
   restoreProjectVersion,
+  runGuarded,
 } from "./projectActions";
 import { openProject, useInvalidateProjects } from "./useProjectSession";
 
@@ -48,9 +49,11 @@ export function RenameDialog({
           onSubmit={(event) => {
             event.preventDefault();
             if (!value.trim()) return;
-            renameCurrentProject(value).then(
+            // Unsaved-changes prompts and errors are handled by the shared guard.
+            void runGuarded(
+              (discard) => renameCurrentProject(value, { discard }),
+              "Couldn't rename",
               () => onOpenChange(false),
-              (e: unknown) => setError(message(e)),
             );
           }}
         >
@@ -190,10 +193,10 @@ export function ImportProjectDialog({
               <Button
                 variant="primary"
                 onClick={() =>
-                  openProject(result.project.id).then(
+                  void runGuarded(
+                    (discard) => openProject(result.project.id, { discard }),
+                    "Couldn't open project",
                     () => onOpenChange(false),
-                    (e: unknown) =>
-                      toast("Couldn't open project", { variant: "error", description: message(e) }),
                   )
                 }
               >
@@ -307,13 +310,13 @@ export function VersionsDialog({
                     size="sm"
                     variant="danger"
                     onClick={() =>
-                      restoreProjectVersion(v.id).then(
+                      void runGuarded(
+                        (discard) => restoreProjectVersion(v.id, { discard }),
+                        "Couldn't restore",
                         () => {
                           toast("Version restored", { variant: "success" });
                           onOpenChange(false);
                         },
-                        (e: unknown) =>
-                          toast("Couldn't restore", { variant: "error", description: message(e) }),
                       )
                     }
                   >

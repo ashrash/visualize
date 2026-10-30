@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { toast } from "../../components/ui/toast";
-import { followJobById } from "../../state/jobs";
+import { useJobsStore } from "../../state/jobs";
 import { PipelinePreview } from "./PipelinePreview";
 import { StepForm } from "./StepForm";
 import { columnsAt } from "./schema";
@@ -40,6 +40,15 @@ export function PipelineEditor({
     inspect?.steps.find((s) => s.stepId === id);
   const queryClient = useQueryClient();
   const [materializing, setMaterializing] = useState(false);
+  // Stop following materialize jobs when the editor goes away.
+  const materializeStops = useRef<(() => void)[]>([]);
+  useEffect(
+    () => () => {
+      for (const stop of materializeStops.current) stop();
+      materializeStops.current = [];
+    },
+    [],
+  );
 
   const materializeNow = async () => {
     setMaterializing(true);
@@ -55,7 +64,7 @@ export function PipelineEditor({
       }
       let left = ids.length;
       for (const id of ids) {
-        followJobById(id, (job) => {
+        const stop = useJobsStore.getState().trackId(id, (job) => {
           if (job.status !== "succeeded") {
             toast("Materialization failed", {
               variant: "error",
@@ -68,6 +77,7 @@ export function PipelineEditor({
             void queryClient.invalidateQueries({ queryKey: ["pipeline-inspect"] });
           }
         });
+        materializeStops.current.push(stop);
       }
       return;
     } catch (error) {
@@ -283,7 +293,12 @@ export function PipelineEditor({
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
                   Preview after this step
                 </h4>
-                <PipelinePreview pipeline={pipeline} pipelines={pipelines} stepId={selected.id} />
+                <PipelinePreview
+                  key={selected.id}
+                  pipeline={pipeline}
+                  pipelines={pipelines}
+                  stepId={selected.id}
+                />
               </section>
             ) : (
               <div

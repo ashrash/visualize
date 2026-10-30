@@ -51,7 +51,9 @@ export const useProjectStore = create<ProjectState>()(
         const changed = (past as Partial<ProjectState>).project !== current.project;
         if (!changed) return;
         const now = Date.now();
-        const quiet = now - lastEdit >= COALESCE_MS;
+        // An edit after undo must clear the redo stack, so it is never coalesced away.
+        const hasRedo = useProjectStore.temporal.getState().futureStates.length > 0;
+        const quiet = hasRedo || now - lastEdit >= COALESCE_MS;
         lastEdit = now; // a continuous burst stays one step until a pause
         // zundo types this callback as setState; at runtime it takes (past, replace, current, delta).
         if (quiet) (handleSet as (...args: unknown[]) => void)(past, replace, current, delta);
@@ -66,16 +68,26 @@ export function undo(): void {
   if (useProjectStore.temporal.getState().pastStates.length === 0) return;
   useProjectStore.setState({ dirty: true });
   useProjectStore.temporal.getState().undo();
+  lastEdit = 0;
 }
 
 export function redo(): void {
   if (useProjectStore.temporal.getState().futureStates.length === 0) return;
   useProjectStore.setState({ dirty: true });
   useProjectStore.temporal.getState().redo();
+  lastEdit = 0;
 }
 
 /** The project as it should be sent to the server (with the confirmed revision). */
 export function projectForSave(): Project | null {
   const { project, revision } = useProjectStore.getState();
   return project ? { ...project, revision } : null;
+}
+
+/** Record a freshly imported dataset in the open project (one undoable edit). */
+export function attachToProject(dataset: { id: string }): void {
+  useProjectStore.getState().update((p) => ({
+    ...p,
+    datasetIds: [...new Set([...(p.datasetIds ?? []), dataset.id])],
+  }));
 }

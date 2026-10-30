@@ -2,7 +2,14 @@ import { autocompletion, closeBrackets, completionKeymap } from "@codemirror/aut
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { sql } from "@codemirror/lang-sql";
 import { bracketMatching } from "@codemirror/language";
-import { Annotation, Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
+import {
+  Annotation,
+  Compartment,
+  EditorState,
+  StateEffect,
+  StateField,
+  Transaction,
+} from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -75,17 +82,21 @@ const errorField = StateField.define<DecorationSet>({
     for (const effect of tr.effects) {
       if (effect.is(setError)) {
         const e = effect.value;
-        if (!e || e.from >= e.to) return Decoration.none;
+        const length = tr.state.doc.length;
+        // Clamp: the check may describe text that has since been shortened.
+        const from = e ? Math.min(Math.max(e.from, 0), length) : 0;
+        const to = e ? Math.min(Math.max(e.to, 0), length) : 0;
+        if (!e || from >= to) return Decoration.none;
         return Decoration.set([
           Decoration.mark({
             class: "cm-formula-error",
             attributes: { title: e.message },
-          }).range(e.from, e.to),
+          }).range(from, to),
         ]);
       }
     }
-    // A user edit makes the old error position meaningless until the next check.
-    return tr.docChanged && !tr.annotation(External) ? Decoration.none : decorations;
+    // Follow the underlined text through edits; the next check replaces it.
+    return decorations.map(tr.changes);
   },
   provide: (field) => EditorView.decorations.from(field),
 });
@@ -171,18 +182,23 @@ export default function FormulaEditorImpl({
     if (editor && editor.state.doc.toString() !== value) {
       editor.dispatch({
         changes: { from: 0, to: editor.state.doc.length, insert: value },
-        annotations: External.of(true),
+        annotations: [External.of(true), Transaction.addToHistory.of(false)],
       });
     }
   }, [value]);
 
+  const errorStart = error?.start;
+  const errorEnd = error?.end;
+  const errorMessage = error?.message;
   useEffect(() => {
     view.current?.dispatch({
       effects: setError.of(
-        error ? { from: error.start, to: error.end, message: error.message } : null,
+        errorStart !== undefined && errorEnd !== undefined
+          ? { from: errorStart, to: errorEnd, message: errorMessage ?? "" }
+          : null,
       ),
     });
-  }, [error]);
+  }, [errorStart, errorEnd, errorMessage]);
 
   return <div ref={host} />;
 }

@@ -1,6 +1,6 @@
 // biome-ignore-all lint/a11y/useSemanticElements: explicit ARIA roles on divs, because display:grid on real table elements drops their native roles in WebKit.
 // biome-ignore-all lint/a11y/useFocusableInteractive: the rows and headers are structural; interaction happens in the buttons inside them.
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import {
   columnResizingFeature,
   columnSizingFeature,
@@ -18,7 +18,7 @@ import { Tooltip } from "../components/ui/tooltip";
 import { ColumnFilter, type LoadValues } from "./ColumnFilter";
 import type { FilterMap } from "./filters";
 import { filterList } from "./filters";
-import { scrollTopForRow, scrollWindow } from "./scrollMap";
+import { lastFirstRow, scrollTopForRow, scrollWindow } from "./scrollMap";
 
 // Header model, column sizing and resizing come from TanStack Table; the body is windowed by
 // `scrollWindow` (scaled scrolling for 10M rows) with 200-row pages fetched as they scroll into view, so the table itself never
@@ -61,6 +61,7 @@ export function useGridHead(args: {
     queryKey: pageKey(args.gridKey, args.sort, filters, 0),
     queryFn: ({ signal }) => args.fetchPage({ offset: 0, limit: PAGE_SIZE, signal }),
     enabled: args.enabled ?? true,
+    placeholderData: keepPreviousData,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -104,7 +105,15 @@ export function GridView({
   toolbar,
 }: GridViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [scroll, setScroll] = useState({ top: 0, viewport: 600 });
+  const headerRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<{ top: number; row: number } | null>(null);
+  const [scroll, setScroll] = useState<{
+    top: number;
+    viewport: number;
+    anchor: { top: number; row: number } | null;
+  }>({ top: 0, viewport: 600, anchor: null });
+  // Latest values for the native wheel/key handlers below.
+  const live = useRef({ scaled: false, firstVisible: 0, totalRows });
   const [goTo, setGoTo] = useState("");
   const visible = useMemo(() => columns.filter((c) => !hidden.has(c.name)), [columns, hidden]);
   const filterPredicates = useMemo(() => filterList(filters), [filters]);
@@ -129,28 +138,134 @@ export function GridView({
   const gridColumns = `${INDEX_WIDTH}px ${widths.map((w) => `${w}px`).join(" ")}`;
   const width = INDEX_WIDTH + widths.reduce((a, b) => a + b, 0);
 
-  // Track the scroll position and viewport height. The body is windowed by `scrollWindow`, which
-  // also maps the scrollbar onto the row index when the dataset is too tall for one element.
+  // Track the scroll position and the body viewport (the scroller minus the sticky header). The
+  // body is windowed by `scrollWindow`, which also maps the scrollbar onto the row index when
+  // the dataset is too tall for one element.
+  const readScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const header = headerRef.current?.offsetHeight ?? 0;
+    setScroll({
+      top: el.scrollTop,
+      viewport: Math.max((el.clientHeight || 600) - header, ROW_HEIGHT),
+      anchor: anchorRef.current,
+    });
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: readScroll only touches refs and setState.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const read = () => setScroll({ top: el.scrollTop, viewport: el.clientHeight || 600 });
-    read();
-    el.addEventListener("scroll", read, { passive: true });
-    const observer = new ResizeObserver(read);
+    readScroll();
+    el.addEventListener("scroll", readScroll, { passive: true });
+    const observer = new ResizeObserver(readScroll);
     observer.observe(el);
     return () => {
-      el.removeEventListener("scroll", read);
+      el.removeEventListener("scroll", readScroll);
       observer.disconnect();
     };
   }, []);
+
+  /** Make `row` the first visible row, exactly (also works when one pixel is many rows). */
+  const moveTo = (row: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const input = { viewportPx: scroll.viewport, totalRows, rowHeight: ROW_HEIGHT };
+    const target = Math.min(
+      Math.max(Math.round(row), 0),
+      lastFirstRow(totalRows, scroll.viewport, ROW_HEIGHT),
+    );
+    el.scrollTop = scrollTopForRow(target, input);
+    anchorRef.current = { top: el.scrollTop, row: target };
+    readScroll();
+  };
+  // A new dataset, sort or filter changes what "row N" means: forget the exact position.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on identity changes only.
+  useEffect(() => {
+    anchorRef.current = null;
+    scrollRef.current?.scrollTo({ top: 0 });
+    readScroll();
+  }, [gridKey, totalRows]);
+  const moveToRef = useRef(moveTo);
+  moveToRef.current = moveTo;
 
   const win = scrollWindow({
     scrollTop: scroll.top,
     viewportPx: scroll.viewport,
     totalRows,
     rowHeight: ROW_HEIGHT,
+    anchor: scroll.anchor,
   });
+  live.current = { scaled: win.scaled, firstVisible: win.firstVisible, totalRows };
+
+  // In scaled mode one wheel notch or arrow press would skip ~100 rows, so move by whole rows.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Fractional wheel deltas (trackpads) accumulate here until they add up to a whole row.
+    let remainder = 0;
+    /** The row the user is on: the exact anchor while it is still in effect, else the mapped one. */
+    const currentRow = () => {
+      const anchor = anchorRef.current;
+      return anchor && Math.abs(anchor.top - el.scrollTop) < 1
+        ? anchor.row
+        : live.current.firstVisible;
+    };
+    const pageRows = () => Math.max(Math.floor(el.clientHeight / ROW_HEIGHT) - 2, 1);
+    const onWheel = (event: WheelEvent) => {
+      // Ctrl+wheel and pinch are browser zoom; horizontal scrolling stays native.
+      if (
+        event.ctrlKey ||
+        !live.current.scaled ||
+        Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const perUnit =
+        event.deltaMode === 2 ? pageRows() : event.deltaMode === 1 ? 1 : 1 / ROW_HEIGHT;
+      remainder += event.deltaY * perUnit;
+      const rows = Math.trunc(remainder);
+      remainder -= rows;
+      if (rows !== 0) moveToRef.current(currentRow() + rows);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (!live.current.scaled || event.target !== el || event.ctrlKey || event.metaKey) return;
+      let next: number | undefined;
+      switch (event.key) {
+        case "ArrowDown":
+          next = currentRow() + 1;
+          break;
+        case "ArrowUp":
+          next = currentRow() - 1;
+          break;
+        case "PageDown":
+          next = currentRow() + pageRows();
+          break;
+        case "PageUp":
+          next = currentRow() - pageRows();
+          break;
+        case " ":
+          next = currentRow() + (event.shiftKey ? -pageRows() : pageRows());
+          break;
+        case "Home":
+          next = 0;
+          break;
+        case "End":
+          next = live.current.totalRows;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      moveToRef.current(next);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("keydown", onKey);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("keydown", onKey);
+    };
+  }, []);
   const rowIndexes = Array.from(
     { length: Math.max(win.end - win.start, 0) },
     (_, k) => win.start + k,
@@ -166,6 +281,8 @@ export function GridView({
         fetchPage({ offset: page * PAGE_SIZE, limit: PAGE_SIZE, signal }),
       staleTime: Number.POSITIVE_INFINITY,
       enabled: totalRows > 0,
+      // Keep showing the previous rows while a new sort/filter loads (no empty flash).
+      placeholderData: keepPreviousData,
     })),
   });
   const pageData = new Map(pages.map((page, i) => [page, results[i]?.data]));
@@ -181,13 +298,7 @@ export function GridView({
 
   const jumpToRow = () => {
     const row = Number(goTo);
-    const el = scrollRef.current;
-    if (!el || !Number.isFinite(row)) return;
-    el.scrollTop = scrollTopForRow(row - 1, {
-      viewportPx: el.clientHeight,
-      totalRows,
-      rowHeight: ROW_HEIGHT,
-    });
+    if (Number.isFinite(row)) moveTo(row - 1);
   };
 
   return (
@@ -217,6 +328,7 @@ export function GridView({
         >
           <div
             role="rowgroup"
+            ref={headerRef}
             className="sticky top-0 z-10 border-b border-line bg-surface"
             style={{ width }}
           >
@@ -325,7 +437,7 @@ export function GridView({
                     const kind = page?.kinds[column.name];
                     const value = page?.columns[column.name]?.[offset];
                     const isNull = page !== undefined && (value === null || value === undefined);
-                    const text = page && !isNull ? formatValue(value, kind) : "";
+                    const text = page && !isNull ? formatValue(value, kind, column.type) : "";
                     return (
                       <div
                         role="cell"
