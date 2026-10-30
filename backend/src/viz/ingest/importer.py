@@ -10,8 +10,7 @@ The flow (run inside an import/refresh job):
 
 from __future__ import annotations
 
-import codecs
-import shutil
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -117,77 +116,12 @@ class PreparedSource:
     kind: SourceKind
     # Options with the encoding resolved (so a refresh repeats it).
     options: ImportOptions
-    # Where a moved staged upload came from (moved back by `rollback_source`).
-    moved_from: Path | None = None
     warnings: list[str] = field(default_factory=list)
 
 
 _TEXT_KINDS = (SourceKind.CSV, SourceKind.TSV, SourceKind.JSON)
-# Encoding assumed when a file isn't valid UTF-8 and the user didn't pick one.
+# Encoding assumed when a file isn't UTF-8 at all and the user didn't pick one.
 FALLBACK_ENCODING = "cp1252"
-
-
-def resolve_text_encoding(path: Path, kind: SourceKind, options: ImportOptions) -> str | None:
-    """Encoding to transcode from, or None when the file can be read as UTF-8."""
-    if kind not in _TEXT_KINDS:
-        return None
-    if options.encoding:
-        encoding = readers.check_encoding(options.encoding)
-    else:
-        encoding = readers.detect_encoding(readers.read_head(path))
-    return None if readers.is_utf8(encoding) else encoding
-
-
-class _NotUtf8(Exception):
-    pass
-
-
-def _copy(
-    src: Path, dst: Path, on_bytes: Callable[[int], None], *, check_utf8: bool = False
-) -> None:
-    """Copy in chunks; with `check_utf8`, raise `_NotUtf8` at the first invalid byte."""
-    copied = 0
-    decoder = codecs.getincrementaldecoder("utf-8")() if check_utf8 else None
-    try:
-        with src.open("rb") as fin, dst.open("wb") as fout:
-            while chunk := fin.read(_COPY_CHUNK):
-                if decoder is not None:
-                    try:
-                        decoder.decode(chunk)
-                    except UnicodeDecodeError as exc:
-                        raise _NotUtf8 from exc
-                fout.write(chunk)
-                copied += len(chunk)
-                on_bytes(copied)
-            if decoder is not None:
-                try:
-                    decoder.decode(b"", final=True)
-                except UnicodeDecodeError as exc:
-                    raise _NotUtf8 from exc
-    except PermissionError as exc:
-        dst.unlink(missing_ok=True)
-        raise readers.locked_file_error(src) from exc
-    except BaseException:
-        dst.unlink(missing_ok=True)
-        raise
-
-
-def _is_utf8(path: Path, on_bytes: Callable[[int], None]) -> bool:
-    decoder = codecs.getincrementaldecoder("utf-8")()
-    done = 0
-    with path.open("rb") as fh:
-        while chunk := fh.read(_COPY_CHUNK):
-            try:
-                decoder.decode(chunk)
-            except UnicodeDecodeError:
-                return False
-            done += len(chunk)
-            on_bytes(done)
-    try:
-        decoder.decode(b"", final=True)
-    except UnicodeDecodeError:
-        return False
-    return True
 
 
 class NotUtf8Error(InvalidSpecError):
@@ -197,8 +131,86 @@ class NotUtf8Error(InvalidSpecError):
 def not_utf8_warning(encoding: str) -> str:
     return (
         f"The file isn't valid UTF-8, so it was read as {encoding}. If characters look wrong, "
-        "set Encoding and refresh."
+        "set Encoding in the import options (or the refresh options) and try again."
     )
+
+
+def replaced_warning(count: int) -> str:
+    return (
+        f"{count:,} byte{'s' if count != 1 else ''} that aren't valid UTF-8 were replaced "
+        "with \ufffd. If the file uses another encoding, set Encoding in the import options "
+        "(or the refresh options)."
+    )
+
+
+@dataclass(frozen=True)
+class EncodingChoice:
+    """How to read a text file: `transcode_from` None means it's clean UTF-8 as is."""
+
+    transcode_from: str | None
+    # The encoding to record in the version's options (so a refresh repeats the choice).
+    recorded: str | None
+    warnings: tuple[str, ...] = ()
+
+
+def choose_encoding(
+    path: Path,
+    kind: SourceKind,
+    options: ImportOptions,
+    *,
+    max_bytes: int | None = None,
+    on_bytes: Callable[[int], None] | None = None,
+) -> EncodingChoice:
+    """Pick the encoding for a text file. Import scans the whole file; preview its first
+    `max_bytes`. Both use the same rules, so they agree:
+
+    - an explicit non-UTF-8 encoding is used as given;
+    - a UTF-16 BOM means UTF-16;
+    - clean UTF-8 is read as is;
+    - mostly-UTF-8 text (valid multi-byte sequences, and no more invalid bytes than valid
+      ones) or an explicit "utf-8" is transcoded as UTF-8 with the bad bytes replaced, and a
+      warning counts them;
+    - anything else (no valid multi-byte sequence at all) is read as cp1252.
+    """
+    if kind not in _TEXT_KINDS:
+        return EncodingChoice(None, None)
+    explicit = readers.check_encoding(options.encoding) if options.encoding else None
+    if explicit is not None and not readers.is_utf8(explicit):
+        return EncodingChoice(explicit, explicit)
+    if readers.detect_encoding(readers.read_head(path, 4)) == "utf-16":
+        warn = () if explicit else (not_utf8_warning("utf-16"),)
+        return EncodingChoice("utf-16", "utf-16", warn)
+    stats = readers.scan_utf8(path, max_bytes=max_bytes, on_chunk=on_bytes)
+    if stats.invalid == 0:
+        return EncodingChoice(None, explicit)
+    if explicit is not None or (stats.multibyte > 0 and stats.invalid <= stats.multibyte):
+        return EncodingChoice("utf-8", "utf-8", (replaced_warning(stats.invalid),))
+    return EncodingChoice(
+        FALLBACK_ENCODING, FALLBACK_ENCODING, (not_utf8_warning(FALLBACK_ENCODING),)
+    )
+
+
+def _link_or_copy(src: Path, dst: Path, on_bytes: Callable[[int], None]) -> None:
+    try:
+        os.link(src, dst)
+    except OSError:
+        _copy(src, dst, on_bytes)
+
+
+def _copy(src: Path, dst: Path, on_bytes: Callable[[int], None]) -> None:
+    copied = 0
+    try:
+        with src.open("rb") as fin, dst.open("wb") as fout:
+            while chunk := fin.read(_COPY_CHUNK):
+                fout.write(chunk)
+                copied += len(chunk)
+                on_bytes(copied)
+    except PermissionError as exc:
+        dst.unlink(missing_ok=True)
+        raise readers.locked_file_error(src) from exc
+    except BaseException:
+        dst.unlink(missing_ok=True)
+        raise
 
 
 def prepare_source(
@@ -214,11 +226,10 @@ def prepare_source(
 ) -> PreparedSource:
     """Put the source where the readers can open it. Reports progress in [0, 0.3].
 
-    A staged upload is moved into `sources/<id>/` (moved back by `rollback_source` if the
-    import fails; `finish_source` deletes the staged folder on success). Text that isn't
-    UTF-8 is transcoded; when the user didn't set an encoding, uploads and copied files are
-    checked in full while being moved or copied (cheap), so a bad byte deep in the file is
-    caught here instead of failing the conversion."""
+    Text files are scanned in full first (`choose_encoding`), so a bad byte deep in the file
+    is handled here instead of failing the conversion. A staged upload is moved into
+    `sources/<id>/` (hard-linked or copied; the staged upload itself is kept; `finish_source`
+    deletes the staged folder on success)."""
     if staged_id is not None:
         original = storage.find_staged(staged_id)
         if original is None:
@@ -233,74 +244,84 @@ def prepare_source(
         raise InvalidSpecError("give a staged upload or a path")
 
     resolved_kind = readers.sniff_kind(original, kind or readers.detect_kind(original.name))
-    encoding = resolve_text_encoding(original, resolved_kind, options)
-    check_utf8 = resolved_kind in _TEXT_KINDS and encoding is None and not options.encoding
     size = original.stat().st_size
-    warnings: list[str] = []
 
-    def on_bytes(done: int) -> None:
-        progress(0.3 * done / max(1, size), None)
+    def scan_progress(done: int) -> None:
+        progress(0.1 * done / max(1, size), None)
 
-    def transcoded(from_encoding: str) -> PreparedSource:
-        progress(0.0, f"Converting text from {from_encoding} to UTF-8")
+    def copy_progress(done: int) -> None:
+        progress(0.1 + 0.2 * done / max(1, size), None)
+
+    if resolved_kind in _TEXT_KINDS:
+        progress(0.0, "Checking text encoding")
+    try:
+        choice = choose_encoding(original, resolved_kind, options, on_bytes=scan_progress)
+    except PermissionError as exc:
+        raise readers.locked_file_error(original) from exc
+    resolved_options = options
+    if choice.recorded is not None and choice.recorded != options.encoding:
+        resolved_options = options.model_copy(update={"encoding": choice.recorded})
+    warnings = list(choice.warnings)
+
+    if choice.transcode_from is not None:
+        progress(0.1, f"Converting text from {choice.transcode_from} to UTF-8")
         target = storage.new_source_path(dataset_id, original.name)
         try:
-            readers.transcode(original, target, from_encoding, on_chunk=on_bytes)
+            readers.transcode(original, target, choice.transcode_from, on_chunk=copy_progress)
         except BaseException:
             target.unlink(missing_ok=True)
             raise
-        opts = options.model_copy(update={"encoding": from_encoding})
         return PreparedSource(
-            target, storage.rel(target), original.name, resolved_kind, opts, None, warnings
+            target,
+            storage.rel(target),
+            original.name,
+            resolved_kind,
+            resolved_options,
+            warnings=warnings,
         )
-
-    if encoding is not None:
-        if not options.encoding:
-            warnings.append(not_utf8_warning(encoding))
-        return transcoded(encoding)
     if staged_id is not None:
-        if check_utf8:
-            progress(0.0, "Checking text encoding")
-            if not _is_utf8(original, on_bytes):
-                warnings.append(not_utf8_warning(FALLBACK_ENCODING))
-                return transcoded(FALLBACK_ENCODING)
+        # The staged upload stays (another sheet of the same workbook may be imported from
+        # it, even in parallel); the source copy is a hard link where possible, so it costs
+        # no extra disk and stays valid after the staged folder is deleted or expires.
         target = storage.new_source_path(dataset_id, original.name)
-        shutil.move(original, target)
+        _link_or_copy(original, target, copy_progress)
         return PreparedSource(
-            target, storage.rel(target), original.name, resolved_kind, options, original, warnings
+            target,
+            storage.rel(target),
+            original.name,
+            resolved_kind,
+            resolved_options,
+            warnings=warnings,
         )
     if in_place_allowed and size > settings.copy_source_max_mb * 1024 * 1024:
-        return PreparedSource(original, None, original.name, resolved_kind, options)
-    progress(0.0, "Copying source file")
+        return PreparedSource(
+            original, None, original.name, resolved_kind, resolved_options, warnings=warnings
+        )
+    progress(0.1, "Copying source file")
     target = storage.new_source_path(dataset_id, original.name)
-    try:
-        _copy(original, target, on_bytes, check_utf8=check_utf8)
-    except _NotUtf8:
-        warnings.append(not_utf8_warning(FALLBACK_ENCODING))
-        return transcoded(FALLBACK_ENCODING)
+    _copy(original, target, copy_progress)
     return PreparedSource(
-        target, storage.rel(target), original.name, resolved_kind, options, None, warnings
+        target,
+        storage.rel(target),
+        original.name,
+        resolved_kind,
+        resolved_options,
+        warnings=warnings,
     )
 
 
 def rollback_source(storage: LocalStorage, source: PreparedSource | None) -> None:
-    """Undo `prepare_source` after a failed import: move a staged upload back, or delete the
-    copy made under `sources/`."""
+    """Undo `prepare_source` after a failed import: delete the copy (or hard link) made under
+    `sources/`. The staged upload was never touched."""
     if source is None or source.source_rel is None:
         return
-    created = storage.resolve(source.source_rel)
-    if source.moved_from is not None:
-        source.moved_from.parent.mkdir(parents=True, exist_ok=True)
-        if created.exists():
-            shutil.move(created, source.moved_from)
-    else:
-        created.unlink(missing_ok=True)
+    storage.resolve(source.source_rel).unlink(missing_ok=True)
 
 
 def finish_source(storage: LocalStorage, staged_id: str | None) -> None:
-    """After a successful import: the staged upload (moved or transcoded) is no longer needed."""
-    if staged_id is not None:
-        storage.delete_staged(staged_id)
+    """After a successful import. The staged upload is kept until `DELETE /datasets/staged/{id}`
+    or the expiry sweep, so several imports (e.g. one per Excel sheet) can use it."""
+    del storage, staged_id
 
 
 def open_relation(

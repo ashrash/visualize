@@ -17,26 +17,39 @@ Keys, generations and request owners (cancelling stale work)
   fails with `QueryInterruptedError("superseded")` (HTTP 409).
 - `generation` orders requests on one key. Take generations from `next_generation()`: one
   process-wide monotonic counter shared with request tickets, never reset per key, so
-  explicit generations and tickets compare correctly on the same key. A request whose
-  generation is older than the newest seen for its key is refused as superseded and never
-  interrupts the newer query; an equal generation (several queries of one request) is
+  explicit generations and tickets compare correctly on the same key. An explicit generation
+  larger than the counter advances the counter, so later tickets are still newer. A request
+  whose generation is older than the newest seen for its key is refused as superseded and
+  never interrupts the newer query; an equal generation (several queries of one request) is
   allowed. Without an explicit generation, the request's ticket is used (see below).
-- `cancel(key, generation)` is the conditional cancel: it interrupts the query on `key` only
-  if it belongs to `generation` and that generation is still the newest for the key. So when
+- `cancel(key, generation)` is the conditional cancel: it acts only if `generation` is still
+  the newest for the key, and it is sticky: the running query of that generation is
+  interrupted and later queries of that generation on the key refuse to start. So when
   client A aborts after B was sent on the same key, A's cancel is a no-op and B runs.
-- A request owner is per-request state in a contextvar. `request_scope()` (or
-  `run_cancellable`, which uses it) creates one with a ticket from a process-wide monotonic
-  counter taken at arrival, so a stale request can never supersede a newer one. anyio's
-  `run_sync` copies the context, so cursors opened in the threadpool know their owner.
+- A request owner is per-request state in a contextvar. `RequestScopeMiddleware` (every HTTP
+  request), `request_scope()` or `run_cancellable` creates one with a ticket from the
+  process-wide counter taken at arrival, so a stale request can never supersede a newer one.
+  Starlette's threadpool and anyio's `run_sync` copy the context, so cursors opened by sync
+  endpoints know their owner. Never open `request_scope` in a FastAPI dependency: sync
+  dependencies run in a copied context, so the owner wouldn't reach the endpoint.
+  Two cursors of the same owner on one key don't supersede each other.
   `cancel_owner(owner)` (called on client disconnect) interrupts only that owner's cursors,
   and its later cursors refuse to start. Nothing is cancelled by key on disconnect.
 - Interrupts are sticky here even though DuckDB's aren't: a cancelled cursor is
   re-interrupted every 50 ms until its block exits, so an interrupt that lands between two
   statements isn't lost. The same loop enforces the timeout.
 
+Memory and disk
+- An explicit `memory_limit` (or the default ~60% of RAM) is split 2/3 main, 1/3 background,
+  and `max_temp_directory_size` is split the same way over 90% of the free disk, so the two
+  instances together never assume more than the machine has.
+
 Failure handling
 - `duckdb.FatalException` invalidates a DuckDB instance. The engine then recreates it with
-  the same settings; the failing and in-flight requests get `EngineBusyError` (503).
+  the same settings and new cursors use the new instance; the failing request gets
+  `EngineBusyError` (503). Queries already running on the old instance finish normally if
+  it still works (the old instance is closed once its last cursor is released); if it is
+  really dead they fail, also with 503.
 
 `cache` holds query results keyed by dataset versions; `pool` runs pure-Python CPU work.
 """
@@ -44,8 +57,8 @@ Failure handling
 from __future__ import annotations
 
 import contextlib
-import itertools
 import os
+import shutil
 import threading
 import time
 from collections.abc import Iterator, Sequence
@@ -74,6 +87,8 @@ _BYTES_PER_UNIT = {
 _DEFAULT_MEMORY_SHARE_OF_DUCKDB_DEFAULT = 0.75
 # Share of the memory budget given to the background instance.
 _JOB_MEMORY_SHARE = 1 / 3
+# Share of the free disk DuckDB may spill to (DuckDB's own default), split between instances.
+_TEMP_DISK_SHARE = 0.9
 _REAPER_INTERVAL_S = 0.05
 _SLOT_POLL_S = 0.05
 RESTARTED = "the query engine hit an internal error and was restarted; try again"
@@ -90,15 +105,26 @@ class RequestOwner:
     cancelled: bool = False
 
 
-_tickets = itertools.count(1)
+_ticket = 0
 _tickets_lock = threading.Lock()
 _owner_var: ContextVar[RequestOwner | None] = ContextVar("viz_request_owner", default=None)
 
 
 def next_generation() -> int:
     """A fresh value from the process-wide monotonic counter (tickets use it too)."""
+    global _ticket
     with _tickets_lock:
-        return next(_tickets)
+        _ticket += 1
+        return _ticket
+
+
+def observe_generation(generation: int) -> None:
+    """Advance the counter to at least `generation` (an explicit generation from elsewhere),
+    so tickets issued afterwards are newer than it."""
+    global _ticket
+    with _tickets_lock:
+        if generation > _ticket:
+            _ticket = generation
 
 
 def new_owner() -> RequestOwner:
@@ -113,11 +139,14 @@ def current_owner() -> RequestOwner | None:
 def request_scope(owner: RequestOwner | None = None) -> Iterator[RequestOwner]:
     """Run the block as one request: its cursors carry this owner and its ticket."""
     owner = owner or new_owner()
-    token = _owner_var.set(owner)
+    previous = _owner_var.get()
+    _owner_var.set(owner)
     try:
         yield owner
     finally:
-        _owner_var.reset(token)
+        # `set`, not `reset(token)`: the block may end in a different Context (e.g. a
+        # generator finalised elsewhere), where a token reset raises.
+        _owner_var.set(previous)
 
 
 # -- instances ------------------------------------------------------------------------------
@@ -144,24 +173,58 @@ def _mib(n: float) -> str:
     return f"{max(64, int(n / 2**20))}MiB"
 
 
+def _limit_to_bytes(limit: str) -> int:
+    """Parse a DuckDB size string ("8GB", "6GiB", "4000MB") the way DuckDB does."""
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute(f"SET memory_limit = {_sql_string(limit)}")
+        row = con.execute("SELECT current_setting('memory_limit')").fetchone()
+    finally:
+        con.close()
+    amount, _, unit = str(row[0] if row else "").partition(" ")
+    if unit not in _BYTES_PER_UNIT:
+        raise ValueError(f"can't read memory limit {limit!r}")
+    return int(float(amount) * _BYTES_PER_UNIT[unit])
+
+
+def _free_disk_bytes(path: Path) -> int | None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return shutil.disk_usage(path).free
+    except OSError:
+        return None
+
+
 class _Instance:
     """One in-memory DuckDB database with its settings, so it can be recreated."""
 
-    def __init__(self, threads: int | None, memory_limit: str, temp_dir: Path) -> None:
+    def __init__(
+        self,
+        threads: int | None,
+        memory_limit: str,
+        temp_dir: Path,
+        max_temp_size: str | None = None,
+    ) -> None:
         self.threads = threads
         self.memory_limit = memory_limit
         self.temp_dir = temp_dir
+        self.max_temp_size = max_temp_size
+        # Cursors attached to this instance; a retired instance closes when it reaches 0.
+        self.active = 0
+        self.retired = False
         temp_dir.mkdir(parents=True, exist_ok=True)
         self.con = duckdb.connect(":memory:")
         if threads:
             self.con.execute(f"SET threads = {int(threads)}")
         self.con.execute(f"SET memory_limit = {_sql_string(memory_limit)}")
         self.con.execute(f"SET temp_directory = {_sql_string(str(temp_dir))}")
+        if max_temp_size:
+            self.con.execute(f"SET max_temp_directory_size = {_sql_string(max_temp_size)}")
         # Results must not depend on the server's zone (TIMESTAMPTZ casts and comparisons).
         self.con.execute("SET GLOBAL TimeZone = 'UTC'")  # GLOBAL: cursors inherit it
 
     def fresh(self) -> _Instance:
-        return _Instance(self.threads, self.memory_limit, self.temp_dir)
+        return _Instance(self.threads, self.memory_limit, self.temp_dir, self.max_temp_size)
 
     def close(self) -> None:
         with contextlib.suppress(duckdb.Error):
@@ -204,17 +267,22 @@ class Engine:
         if job_threads is None:
             job_threads = max(2, (os.cpu_count() or 4) // 4)
         if memory_limit:
-            main_limit = job_limit = memory_limit
+            budget = float(_limit_to_bytes(memory_limit))
         else:
             budget = _default_limit_bytes() * _DEFAULT_MEMORY_SHARE_OF_DUCKDB_DEFAULT
-            if job_threads:
-                main_limit = _mib(budget * (1 - _JOB_MEMORY_SHARE))
-                job_limit = _mib(budget * _JOB_MEMORY_SHARE)
-            else:
-                main_limit = job_limit = _mib(budget)
-        self._main = _Instance(threads, main_limit, temp_dir)
+        free = _free_disk_bytes(temp_dir)
+        disk = free * _TEMP_DISK_SHARE if free else None
+        if job_threads:
+            main_limit = _mib(budget * (1 - _JOB_MEMORY_SHARE))
+            job_limit = _mib(budget * _JOB_MEMORY_SHARE)
+            main_temp = _mib(disk * (1 - _JOB_MEMORY_SHARE)) if disk else None
+            job_temp = _mib(disk * _JOB_MEMORY_SHARE) if disk else None
+        else:
+            main_limit = job_limit = _mib(budget)
+            main_temp = job_temp = _mib(disk) if disk else None
+        self._main = _Instance(threads, main_limit, temp_dir, main_temp)
         self._bg: _Instance | None = (
-            _Instance(job_threads, job_limit, temp_dir / "jobs") if job_threads else None
+            _Instance(job_threads, job_limit, temp_dir / "jobs", job_temp) if job_threads else None
         )
 
         self._slots = threading.BoundedSemaphore(max_concurrent_queries)
@@ -223,6 +291,8 @@ class Engine:
         self._by_key: dict[str, _Entry] = {}
         self._live: set[_Entry] = set()
         self._latest_generation: LRUCache[str, int] = LRUCache(maxsize=10_000)
+        # key -> generation cancelled with `cancel(key, generation)` (sticky).
+        self._cancelled_generation: LRUCache[str, int] = LRUCache(maxsize=10_000)
         self.restarts = 0
 
         self.cache = ResultCache(cache_mb * 2**20)
@@ -271,15 +341,16 @@ class Engine:
 
     def cancel(self, key: str, generation: int, reason: str = "cancelled") -> bool:
         """Cancel the query on `key` only if it belongs to `generation` and no newer
-        generation has arrived for the key. Returns whether anything was cancelled."""
+        generation has arrived for the key. Sticky: later queries of `generation` on `key`
+        refuse to start. Returns False (and does nothing) if a newer generation exists."""
         with self._lock:
             latest = self._latest_generation.get(key)
             if latest is not None and generation < latest:
                 return False
+            self._cancelled_generation[key] = generation
             entry = self._by_key.get(key)
-            if entry is None or entry.generation != generation:
-                return False
-            self._cancel_locked(entry, reason)
+            if entry is not None and entry.generation == generation:
+                self._cancel_locked(entry, reason)
         return True
 
     def cancel_owner(self, owner: RequestOwner, reason: str = "cancelled") -> int:
@@ -324,29 +395,38 @@ class Engine:
         self, key: str | None, generation: int | None, *, interactive: bool = False
     ) -> _Entry:
         owner = current_owner()
-        if owner is not None and owner.cancelled:
-            raise QueryInterruptedError("cancelled")
-        if generation is None and owner is not None and key is not None:
+        if generation is not None:
+            observe_generation(generation)
+        elif owner is not None and key is not None:
             generation = owner.ticket
         entry = _Entry(key, generation, owner, interactive=interactive)
         with self._lock:
+            if owner is not None and owner.cancelled:
+                raise QueryInterruptedError("cancelled")
             if key is not None and generation is not None:
                 latest = self._latest_generation.get(key)
                 if latest is not None and generation < latest:
                     raise QueryInterruptedError("superseded")
+                if self._cancelled_generation.get(key) == generation:
+                    raise QueryInterruptedError("cancelled")
                 self._latest_generation[key] = generation
             if key is not None:
                 previous = self._by_key.get(key)
                 self._by_key[key] = entry
-                if previous is not None:
+                same_request = (
+                    previous is not None and owner is not None and previous.owner is owner
+                )
+                if previous is not None and not same_request:
                     self._cancel_locked(previous, "superseded")
             self._live.add(entry)
         return entry
 
-    def _attach(self, entry: _Entry, instance: _Instance, timeout_s: float | None) -> None:
+    def _attach(self, entry: _Entry, background: bool, timeout_s: float | None) -> None:
         with self._lock:
             if entry.cancelled is not None:
                 raise QueryInterruptedError(entry.cancelled)
+            # Resolved under the lock, so a concurrent recovery can't hand out a retired one.
+            instance = (self._bg or self._main) if background else self._main
             try:
                 cur = instance.con.cursor()
             except duckdb.FatalException:
@@ -358,6 +438,7 @@ class Engine:
                 raise
             entry.cur = cur
             entry.instance = instance
+            instance.active += 1
             if timeout_s is not None:
                 entry.deadline = time.monotonic() + timeout_s
 
@@ -370,6 +451,11 @@ class Engine:
             if cur is not None:
                 with contextlib.suppress(duckdb.Error):
                     cur.close()
+                instance = entry.instance
+                if instance is not None:
+                    instance.active -= 1
+                    if instance.retired and instance.active <= 0:
+                        instance.close()
 
     def _acquire_slot(self, entry: _Entry) -> None:
         deadline = time.monotonic() + self._timeout_s
@@ -388,7 +474,10 @@ class Engine:
         else:
             return
         self.restarts += 1
-        instance.close()
+        # In-flight cursors may still finish on it; close once the last one is released.
+        instance.retired = True
+        if instance.active <= 0:
+            instance.close()
 
     def _translate(self, entry: _Entry, exc: duckdb.Error) -> Exception | None:
         """Map a DuckDB error from inside a cursor block to our error, or None to re-raise."""
@@ -405,9 +494,9 @@ class Engine:
 
     @contextmanager
     def _run(
-        self, entry: _Entry, instance: _Instance, timeout_s: float | None
+        self, entry: _Entry, background: bool, timeout_s: float | None
     ) -> Iterator[duckdb.DuckDBPyConnection]:
-        self._attach(entry, instance, timeout_s)
+        self._attach(entry, background, timeout_s)
         assert entry.cur is not None
         try:
             yield entry.cur
@@ -423,13 +512,18 @@ class Engine:
     def cursor(
         self, key: str | None = None, generation: int | None = None
     ) -> Iterator[duckdb.DuckDBPyConnection]:
-        """A private cursor for one interactive query. Fully consume results inside the block."""
+        """A private cursor for one interactive query. Fully consume results inside the block.
+
+        `generation` (optional) orders requests on `key`; take it from `next_generation()`.
+        A generation the counter never issued is accepted and advances the counter to it,
+        so it can't lock the key against later tickets. Without one, the current request
+        owner's ticket is used."""
         entry = self._register(key, generation, interactive=True)
         acquired = False
         try:
             self._acquire_slot(entry)
             acquired = True
-            with self._run(entry, self._main, self._timeout_s) as cur:
+            with self._run(entry, False, self._timeout_s) as cur:
                 yield cur
         finally:
             self._release(entry)
@@ -441,7 +535,7 @@ class Engine:
         """A cursor for job work: no query slot, no timeout, interruptible via `interrupt(key)`."""
         entry = self._register(key, None)
         try:
-            with self._run(entry, self._bg or self._main, None) as cur:
+            with self._run(entry, True, None) as cur:
                 yield cur
         finally:
             self._release(entry)

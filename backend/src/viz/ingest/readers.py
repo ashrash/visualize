@@ -10,6 +10,7 @@ from __future__ import annotations
 import codecs
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -133,6 +134,51 @@ def detect_encoding(head: bytes) -> str:
     except UnicodeDecodeError:
         return "cp1252"
     return "utf-8"
+
+
+@dataclass(frozen=True)
+class Utf8Stats:
+    # Bytes in valid multi-byte UTF-8 sequences (approximate: non-ASCII bytes minus invalid).
+    multibyte: int
+    # Invalid byte sequences (each replaced by one U+FFFD when decoding with "replace").
+    invalid: int
+    scanned: int
+
+
+_ASCII = bytes(range(128))
+
+
+def scan_utf8(
+    path: Path,
+    *,
+    max_bytes: int | None = None,
+    on_chunk: Callable[[int], None] | None = None,
+) -> Utf8Stats:
+    """Count valid multi-byte UTF-8 vs invalid bytes in a file (or its first `max_bytes`).
+    Streams in C-speed chunks; about 1 s per GB."""
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    non_ascii = invalid = scanned = 0
+    try:
+        with path.open("rb") as fh:
+            while chunk := fh.read(4 * 1024 * 1024):
+                if max_bytes is not None and scanned + len(chunk) > max_bytes:
+                    chunk = chunk[: max_bytes - scanned]
+                scanned += len(chunk)
+                high = len(chunk.translate(None, _ASCII))
+                non_ascii += high
+                if high:
+                    # Replacement characters minus genuine U+FFFD already in the file.
+                    replaced = decoder.decode(chunk).count("�")
+                    invalid += max(0, replaced - chunk.count(b"\xef\xbf\xbd"))
+                if on_chunk is not None:
+                    on_chunk(scanned)
+                if max_bytes is not None and scanned >= max_bytes:
+                    break
+            if max_bytes is None or scanned < max_bytes:
+                invalid += decoder.decode(b"", final=True).count("�")
+    except PermissionError as exc:
+        raise locked_file_error(path) from exc
+    return Utf8Stats(multibyte=max(0, non_ascii - invalid), invalid=invalid, scanned=scanned)
 
 
 def is_utf8(encoding: str | None) -> bool:
