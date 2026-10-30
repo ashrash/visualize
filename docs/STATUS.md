@@ -164,6 +164,33 @@ tracked below for Wave 4, not blockers.
   source/groupBy, so switching sources after Run without re-running could plot the wrong field
   against the wrong dataset; the grouped box plot wasn't encoding the group, drawing one box).
   vitest 356 passed/1 skipped, biome and build clean.
+- 2026-10-31: `@echarts-x/custom-contour` and `@echarts-x/custom-line-range` removed from
+  `frontend/package.json` — both import the full, non-tree-shaken `echarts` package internally,
+  self-registering every chart type as a side effect (found by `plots-distribution-relationship`,
+  confirmed: broke `render.test.ts`'s unregistered-component check). `custom-violin` and
+  `custom-bar-range` are unaffected and still available. Contour renders as a client-side binned-
+  density heatmap instead; `ciBand`/`errorBar` core primitives cover line-range/CI-band needs.
+- 2026-10-31: `plots-geo` merged (Plots.md §7, all five): choropleth, bubble map, dot density,
+  geographic heatmap, cartogram. Natural Earth GeoJSON bundled and lazy-loaded (countries + US
+  states, 110m/50m, ~1MB total, separate build chunks). Two review rounds (xhigh, given the
+  cartogram's use of the engine's process pool): round 1 found 3 blockers — a reproducible stored
+  XSS in 4 tooltip formatters (unescaped user data into innerHTML; the first instance of this
+  pattern bug this wave), an unbounded O(n²) cartogram with no region cap or process-pool
+  timeout/broken-pool handling (DoS risk, could starve other pool consumers for minutes), and a
+  crash on missing/non-finite coordinates — plus 5 should-fix items (Dorling force-layout didn't
+  converge to non-overlapping circles; renderer ignored the server-computed radius; bubble map's
+  GROUP BY was a no-op on distinct coordinates so the generic cap truncation silently dropped
+  whole regions; Natural Earth `-99`/`"CN-TW"` sentinel codes broke ISO2 matching for several
+  countries and the asset-build script wasn't committed; `count_distinct` silently behaved like
+  plain `count`). All fixed and independently re-verified (XSS payloads come back escaped through
+  the real render path; the region cap is enforced in SQL before the O(n²) layout runs, with a
+  real ProcessPool timeout/broken-pool test; 0 overlapping circles at n=100-250). A round-2 fix
+  addressed a regression the round-1 fix introduced (Australia's outlying territories collided
+  with Australia's own ISO2 code under the EH fallback). A real ui-charts bug was found and
+  correctly left unfixed, fully diagnosed instead: `ChartView` keys map-readiness on a plot's
+  registry key, which doesn't change when only `params.level`/`resolution` change, so switching a
+  choropleth's resolution leaves the chart blank — tracked as a `TODO(ui-charts)` follow-up.
+  pytest 746 passed/6 skipped, ruff/mypy clean, vitest 363 passed/1 skipped, biome/build clean.
 
 ## MVP.md
 
@@ -377,11 +404,11 @@ Tracked per plot under Plots.md below.
 | 6 | Cluster Plot | `cluster` | plots-multivariate-econometric | todo |
 | 6 | Dendrogram | `dendrogram` | plots-multivariate-econometric | todo |
 | 6 | Andrews Curves | `andrews_curves` | plots-multivariate-econometric | todo |
-| 7 | Choropleth Map | `choropleth` | plots-geo | todo |
-| 7 | Bubble Map | `bubble_map` | plots-geo | todo |
-| 7 | Dot Density Map | `dot_density` | plots-geo | todo |
-| 7 | Cartogram | `cartogram` | plots-geo | todo |
-| 7 | Geographic Heatmap | `geo_heatmap` | plots-geo | todo |
+| 7 | Choropleth Map | `choropleth` | plots-geo | done |
+| 7 | Bubble Map | `bubble_map` | plots-geo | done |
+| 7 | Dot Density Map | `dot_density` | plots-geo | done |
+| 7 | Cartogram | `cartogram` | plots-geo | done |
+| 7 | Geographic Heatmap | `geo_heatmap` | plots-geo | done |
 | 8 | Kaplan-Meier Survival Curve | `kaplan_meier` | plots-multivariate-econometric | todo |
 | 8 | Forest Plot | `forest` | plots-multivariate-econometric | todo |
 | 8 | ROC Curve | `roc` | plots-multivariate-econometric | todo |
