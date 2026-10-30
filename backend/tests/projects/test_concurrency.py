@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from viz.config import Settings
 from viz.contracts import Project
-from viz.errors import ConflictError
+from viz.errors import ConflictError, NotFoundError
 from viz.main import create_app
 from viz.projects import service
 
@@ -50,6 +50,28 @@ def test_interleaved_sessions_cannot_both_write(tmp_path: Path, op: str) -> None
         # the losing write left no snapshot behind
         revisions = [v["revision"] for v in c.get(f"/api/projects/{p['id']}/versions").json()]
         assert revisions.count(2) <= 1
+
+
+@pytest.mark.parametrize("op", ["save", "rename"])
+def test_write_racing_a_delete_is_404(tmp_path: Path, op: str) -> None:
+    settings = Settings(data_dir=tmp_path / "d")
+    with TestClient(create_app(settings)) as c:
+        p = c.post("/api/projects", json={"name": "P"}).json()
+        factory = c.app.state.sessionmaker  # type: ignore[attr-defined]
+        with factory() as s2:
+            service.get_project(s2, p["id"])  # stale row cached in this session
+            assert c.delete(f"/api/projects/{p['id']}").status_code == 204
+            with pytest.raises(NotFoundError):
+                if op == "save":
+                    service.save_project(
+                        s2,
+                        p["id"],
+                        Project.model_validate(p).model_copy(update={"name": "x"}),
+                        autosave=False,
+                        settings=settings,
+                    )
+                else:
+                    service.rename_project(s2, p["id"], "x", 0)
 
 
 def test_name_validation(client: TestClient) -> None:

@@ -209,6 +209,52 @@ def _read_json(zf: zipfile.ZipFile, name: str) -> Any:
         raise InvalidSpecError(f"{name} is not valid JSON") from exc
 
 
+def _arrow_family(t: pa.DataType) -> str | None:
+    checks = (
+        ("bool", pa.types.is_boolean),
+        ("int", pa.types.is_integer),
+        ("float", pa.types.is_floating),
+        ("decimal", pa.types.is_decimal),
+        ("string", lambda x: pa.types.is_string(x) or pa.types.is_large_string(x)),
+        ("date", pa.types.is_date),
+        ("timestamp", pa.types.is_timestamp),
+        ("time", pa.types.is_time),
+    )
+    return next((name for name, test in checks if test(t)), None)
+
+
+def _duckdb_family(type_name: str) -> str | None:
+    t = type_name.upper().split("(")[0].strip()
+    if t in {"BOOLEAN", "BOOL"}:
+        return "bool"
+    if t.endswith("INT") or t in {"BIGINT", "SMALLINT", "TINYINT", "HUGEINT", "INTEGER"}:
+        return "int"
+    if t in {"DOUBLE", "FLOAT", "REAL"}:
+        return "float"
+    if t in {"DECIMAL", "NUMERIC"}:
+        return "decimal"
+    if t in {"VARCHAR", "TEXT", "STRING", "UUID"} or t.startswith("ENUM"):
+        return "string"
+    if t == "DATE":
+        return "date"
+    if t.startswith("TIMESTAMP"):
+        return "timestamp"
+    if t.startswith("TIME"):
+        return "time"
+    return None
+
+
+def _schema_matches(schema: pa.Schema, version: DatasetVersion) -> bool:
+    """Column names and (where both sides are a known family) column types must agree."""
+    if list(schema.names) != [c.name for c in version.columns]:
+        return False
+    for field, column in zip(schema, version.columns, strict=True):
+        actual, claimed = _arrow_family(field.type), _duckdb_family(column.type)
+        if actual is not None and claimed is not None and actual != claimed:
+            return False
+    return True
+
+
 def _sanitize(dataset: Dataset, version: DatasetVersion, new_dataset_id: str, rel: str) -> Dataset:
     """Rebuild a catalog entry from an allowlist of fields; paths are never carried over."""
     name = dataset.name.strip()[:200] or "Imported dataset"
@@ -314,7 +360,11 @@ def _import(
             mapping: dict[str, str] = {}
             imported: list[str] = []
             warnings: list[str] = []
+            seen_ids: set[str] = set()
             for item in manifest.datasets:
+                if item.id in seen_ids:
+                    raise InvalidSpecError(f"manifest: dataset id {item.id} is listed twice")
+                seen_ids.add(item.id)
                 if not _UUID.fullmatch(item.id):
                     raise InvalidSpecError(f"manifest: invalid dataset id {item.id!r}")
                 if not item.versions:
@@ -346,9 +396,9 @@ def _import(
                     meta = pq.read_metadata(staged)
                 except (pa.ArrowException, OSError) as exc:
                     raise InvalidSpecError(f"{data.file} is not a Parquet file") from exc
-                if meta.num_rows != version.row_count or list(meta.schema.names) != [
-                    c.name for c in version.columns
-                ]:
+                if meta.num_rows != version.row_count or not _schema_matches(
+                    meta.schema.to_arrow_schema(), version
+                ):
                     raise InvalidSpecError(f"{data.file} does not match its dataset.json")
 
                 if _same_as_catalog(db, storage, item.id, size, sha.hexdigest()):
