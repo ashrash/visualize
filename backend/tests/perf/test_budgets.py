@@ -99,14 +99,36 @@ def test_import_and_grid_budgets(client: TestClient, tmp_path: Path) -> None:
         "search page": {"search": "region_3"},
     }
     views = client.app.state.row_views  # type: ignore[attr-defined]
+    engine = client.app.state.engine  # type: ignore[attr-defined]
     cold: dict[str, float] = {}
+    scroll: dict[str, float] = {}
     build_ms: dict[str, float] = {}
     results: dict[str, float] = {}
     for name, body in cases.items():
-        # First request: answered directly; starts a view build for sorted/filtered views.
-        cold[name] = timed_ms(lambda b=body: page(**b))
+        # First page: answered directly. The next page (the user scrolls) is direct too and
+        # queues a view build for sorted/filtered views; after it, pages are range reads.
+        first = {**body, "offset": 0}
+        cold[name] = timed_ms(lambda b=first: page(**b))
+        scroll[name] = timed_ms(lambda b=body: page(**{**b, "offset": b.get("offset", 0) + 200}))
         build_ms[name] = timed_ms(views.wait_idle)
         results[name] = statistics.median(timed_ms(lambda b=body: page(**b)) for _ in range(5))
+
+    # A chart-style aggregate, alone and while a grid-view build runs in the background.
+    parquet = client.app.state.storage.resolve(  # type: ignore[attr-defined]
+        dataset["versions"][0]["parquetPath"]
+    )
+    agg_sql = (
+        "SELECT category, sum(amount) AS s, count(*) AS n "
+        f"FROM read_parquet('{parquet.as_posix()}')"
+        " GROUP BY category"
+    )
+    alone = [timed_ms(lambda: engine.query_arrow(agg_sql)) for _ in range(10)]
+    page(sort=[{"field": "price", "descending": True}], offset=200)  # queues a ~2 s build
+    during_build: list[float] = []
+    build_done = threading.Event()
+    threading.Thread(target=lambda: (views.wait_idle(), build_done.set())).start()
+    while not build_done.is_set() and len(during_build) < 100:
+        during_build.append(timed_ms(lambda: engine.query_arrow(agg_sql)))
 
     # Pages while a second import of the same file runs as a job.
     response = client.post("/api/datasets/import", json={"path": str(csv_path)})
@@ -132,9 +154,14 @@ def test_import_and_grid_budgets(client: TestClient, tmp_path: Path) -> None:
     print(f"import job (CSV -> Parquet + profile): {import_s:.1f}s (budget {IMPORT_BUDGET_S}s)")
     for name, ms in results.items():
         print(
-            f"  {name:<20} first {cold[name]:7.1f} ms | view build {build_ms[name]:7.1f} ms"
-            f" | then p50 {ms:6.1f} ms"
+            f"  {name:<20} first {cold[name]:7.1f} | next {scroll[name]:7.1f} | "
+            f"view build {build_ms[name]:7.1f} | then p50 {ms:6.1f} ms"
         )
+    print(
+        f"  chart aggregate alone p50 {statistics.median(alone):.1f} ms; during a view build "
+        f"n={len(during_build)} p50 {statistics.median(during_build or [0]):.1f} ms "
+        f"max {max(during_build or [0]):.1f} ms"
+    )
     if during:
         print(
             f"  during import: n={len(during)} p50 {statistics.median(during):.1f} ms "

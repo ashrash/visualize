@@ -306,3 +306,17 @@ path imports in place; (b) no pruning in Wave 1; (c) yes.
   later pages are `file_row_number` range reads (~25 ms). Views live in `temp/views/`, are
   LRU-limited (8), dropped with their dataset and wiped at startup.
 - Sync `POST /datasets/upload` and `/import-path` now run the same import job and wait for it.
+
+## After the xhigh review
+- Engine: request owners (contextvar) with arrival tickets from one global counter
+  (`next_generation()`), `cancel_owner`, conditional `cancel(key, generation)`; supersede at
+  arrival; sticky interrupts and timeouts via a 50 ms reaper; interrupt/close under the engine
+  lock; `FatalException` recreates the instance (503 for affected requests); `SET GLOBAL
+  TimeZone='UTC'`. Jobs and view builds run on a background instance (cores/4 threads) by
+  default (`VIZ_JOB_DUCKDB_THREADS=0` shares the main one).
+- Sorted pages, views and exports order by the sort keys and then `file_row_number`
+  (explicit `read_parquet(..., file_row_number := true)` column).
+- Views: built only once a page past the first is requested, one build per dataset (newer
+  supersedes), byte budget `VIZ_GRID_VIEWS_MB`, start after interactive queries go quiet.
+- Imports roll back on failure (staged upload kept, `sources/<id>`/`datasets/<id>` removed);
+  startup sweep for orphans; hourly expiry sweep; streamed multipart uploads.

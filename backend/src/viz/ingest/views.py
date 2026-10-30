@@ -183,6 +183,11 @@ class RowViews:
         with self._lock:
             if self._views.get(view.vid) is not view:
                 return
+        # Let a burst of interactive queries (a dashboard refresh, a page fetch) finish first.
+        self.engine.wait_interactive_idle()
+        with self._lock:
+            if self._views.get(view.vid) is not view:
+                return
         tmp = view.path.with_name(f".{view.path.name}.{uuid.uuid4().hex[:8]}.tmp")
         try:
             with self.engine.background_cursor(f"view:{view.vid}") as cur:

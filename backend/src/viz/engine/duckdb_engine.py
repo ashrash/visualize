@@ -15,11 +15,15 @@ Keys, generations and request owners (cancelling stale work)
 - `key` names a slot such as "chart:<id>". A newer query on a key supersedes the older one
   *as soon as it arrives* (before it waits for a slot): the older one is interrupted and
   fails with `QueryInterruptedError("superseded")` (HTTP 409).
-- `generation` orders requests on one key. Generations must be monotonic per key. A request
-  whose generation is older than the newest seen for its key is refused as superseded and
-  never interrupts the newer query; an equal generation (several queries of one request)
-  is allowed. Without an explicit generation, a request's *ticket* is used (see below).
-  Don't mix explicit generations and tickets on one key.
+- `generation` orders requests on one key. Take generations from `next_generation()`: one
+  process-wide monotonic counter shared with request tickets, never reset per key, so
+  explicit generations and tickets compare correctly on the same key. A request whose
+  generation is older than the newest seen for its key is refused as superseded and never
+  interrupts the newer query; an equal generation (several queries of one request) is
+  allowed. Without an explicit generation, the request's ticket is used (see below).
+- `cancel(key, generation)` is the conditional cancel: it interrupts the query on `key` only
+  if it belongs to `generation` and that generation is still the newest for the key. So when
+  client A aborts after B was sent on the same key, A's cancel is a no-op and B runs.
 - A request owner is per-request state in a contextvar. `request_scope()` (or
   `run_cancellable`, which uses it) creates one with a ticket from a process-wide monotonic
   counter taken at arrival, so a stale request can never supersede a newer one. anyio's
@@ -91,9 +95,14 @@ _tickets_lock = threading.Lock()
 _owner_var: ContextVar[RequestOwner | None] = ContextVar("viz_request_owner", default=None)
 
 
-def new_owner() -> RequestOwner:
+def next_generation() -> int:
+    """A fresh value from the process-wide monotonic counter (tickets use it too)."""
     with _tickets_lock:
-        return RequestOwner(next(_tickets))
+        return next(_tickets)
+
+
+def new_owner() -> RequestOwner:
+    return RequestOwner(next_generation())
 
 
 def current_owner() -> RequestOwner | None:
@@ -148,6 +157,8 @@ class _Instance:
             self.con.execute(f"SET threads = {int(threads)}")
         self.con.execute(f"SET memory_limit = {_sql_string(memory_limit)}")
         self.con.execute(f"SET temp_directory = {_sql_string(str(temp_dir))}")
+        # Results must not depend on the server's zone (TIMESTAMPTZ casts and comparisons).
+        self.con.execute("SET GLOBAL TimeZone = 'UTC'")  # GLOBAL: cursors inherit it
 
     def fresh(self) -> _Instance:
         return _Instance(self.threads, self.memory_limit, self.temp_dir)
@@ -167,6 +178,7 @@ class _Entry:
     deadline: float | None = None
     cancelled: str | None = None
     started: float = field(default_factory=time.monotonic)
+    interactive: bool = False
 
 
 # -- engine ---------------------------------------------------------------------------------
@@ -257,6 +269,19 @@ class Engine:
             self._cancel_locked(entry, reason)
         return True
 
+    def cancel(self, key: str, generation: int, reason: str = "cancelled") -> bool:
+        """Cancel the query on `key` only if it belongs to `generation` and no newer
+        generation has arrived for the key. Returns whether anything was cancelled."""
+        with self._lock:
+            latest = self._latest_generation.get(key)
+            if latest is not None and generation < latest:
+                return False
+            entry = self._by_key.get(key)
+            if entry is None or entry.generation != generation:
+                return False
+            self._cancel_locked(entry, reason)
+        return True
+
     def cancel_owner(self, owner: RequestOwner, reason: str = "cancelled") -> int:
         """Cancel every cursor of one request; its later cursors refuse to start."""
         with self._lock:
@@ -295,13 +320,15 @@ class Engine:
 
     # -- registration ---------------------------------------------------------------------
 
-    def _register(self, key: str | None, generation: int | None) -> _Entry:
+    def _register(
+        self, key: str | None, generation: int | None, *, interactive: bool = False
+    ) -> _Entry:
         owner = current_owner()
         if owner is not None and owner.cancelled:
             raise QueryInterruptedError("cancelled")
         if generation is None and owner is not None and key is not None:
             generation = owner.ticket
-        entry = _Entry(key, generation, owner)
+        entry = _Entry(key, generation, owner, interactive=interactive)
         with self._lock:
             if key is not None and generation is not None:
                 latest = self._latest_generation.get(key)
@@ -397,7 +424,7 @@ class Engine:
         self, key: str | None = None, generation: int | None = None
     ) -> Iterator[duckdb.DuckDBPyConnection]:
         """A private cursor for one interactive query. Fully consume results inside the block."""
-        entry = self._register(key, generation)
+        entry = self._register(key, generation, interactive=True)
         acquired = False
         try:
             self._acquire_slot(entry)
@@ -422,7 +449,19 @@ class Engine:
     def active_interactive(self) -> int:
         """Interactive cursors currently holding or waiting for a slot."""
         with self._lock:
-            return sum(1 for e in self._live if e.deadline is not None or e.cur is None)
+            return sum(1 for e in self._live if e.interactive)
+
+    def wait_interactive_idle(self, quiet_s: float = 0.3, max_wait_s: float = 10.0) -> None:
+        """Block until no interactive query has run for `quiet_s` (or `max_wait_s` passes).
+        Background work that can wait (grid-view builds) calls this before starting."""
+        deadline = time.monotonic() + max_wait_s
+        quiet_since = time.monotonic()
+        while time.monotonic() < deadline and not self._closed.is_set():
+            if self.active_interactive():
+                quiet_since = time.monotonic()
+            elif time.monotonic() - quiet_since >= quiet_s:
+                return
+            time.sleep(0.02)
 
     # -- queries ------------------------------------------------------------------------
 

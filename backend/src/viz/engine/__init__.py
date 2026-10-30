@@ -4,7 +4,8 @@ Public API (data-core; see docs/plans/data-core.md):
 - `Engine.cursor(key, generation)` / `query_arrow(...)`: interactive queries (slot + timeout).
 - `Engine.query_arrow_cached(..., versions=[version_token(...)])`: same, through the LRU.
 - `Engine.background_cursor(key)`: job work (no slot, no timeout).
-- `Engine.interrupt(key)`, `Engine.cancel_owner(owner)`, `Engine.progress(key)`.
+- `Engine.interrupt(key)`, `Engine.cancel(key, generation)` (conditional),
+  `Engine.cancel_owner(owner)`, `Engine.progress(key)`, `next_generation()`.
 - `request_scope()`: per-request owner + arrival ticket (implicit generation).
 - `Engine.cache` (`ResultCache.get_or_compute`) and `Engine.pool` (`ProcessPool.run`).
 - `run_cancellable(request, engine, key, fn)`: interrupt on client disconnect.
@@ -18,6 +19,7 @@ from viz.engine.duckdb_engine import (
     RequestOwner,
     current_owner,
     new_owner,
+    next_generation,
     request_scope,
 )
 from viz.engine.pool import ProcessPool
@@ -32,6 +34,7 @@ __all__ = [
     "ipc_bytes",
     "js_friendly",
     "new_owner",
+    "next_generation",
     "request_scope",
     "run_cancellable",
     "version_token",
