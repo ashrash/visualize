@@ -11,7 +11,8 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from viz.contracts.base import AggFn, Contract, Scalar, SourceRef
+from viz.contracts.base import AggFn, Contract, Scalar, SortKey, SourceRef
+from viz.contracts.dataset import ColumnSemantic
 from viz.contracts.predicate import Predicate
 
 
@@ -27,12 +28,6 @@ class FilterStep(StepBase):
     predicates: list[Predicate] = Field(default_factory=list)
     # Optional formula (validated DuckDB expression subset), ANDed with the predicates.
     expression: str | None = None
-
-
-class SortKey(Contract):
-    field: str
-    descending: bool = False
-    nulls_last: bool = True
 
 
 class SortStep(StepBase):
@@ -190,3 +185,108 @@ class Pipeline(Contract):
     name: str = "Untitled pipeline"
     source: SourceRef
     steps: list[Step] = Field(default_factory=list)
+
+
+class SchemaField(Contract):
+    name: str
+    # DuckDB type name.
+    type: str
+    semantic: ColumnSemantic
+
+
+class StepError(Contract):
+    message: str
+    field: str | None = None
+    # Character offsets into the step's formula.
+    start: int | None = None
+    end: int | None = None
+
+
+class StepSchema(Contract):
+    """Server-produced."""
+
+    step_id: str
+    status: Literal["ok", "error", "blocked", "disabled"]
+    columns: list[SchemaField]
+    error: StepError | None
+    materialized: Literal["none", "ready", "pending"]
+
+
+class PipelineInspectRequest(Contract):
+    pipeline: Pipeline
+    # Pipelines referenced by the source, joins or unions (unsaved edits included).
+    pipelines: list[Pipeline] = Field(default_factory=list)
+    include_sql: bool = False
+
+
+class PipelineInspectResult(Contract):
+    """Server-produced."""
+
+    ok: bool
+    source_columns: list[SchemaField]
+    steps: list[StepSchema]
+    columns: list[SchemaField]
+    sql: str | None
+
+
+class PipelinePreviewRequest(Contract):
+    pipeline: Pipeline
+    pipelines: list[Pipeline] = Field(default_factory=list)
+    # Data after this step; None = the final output.
+    step_id: str | None = None
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=200, ge=1)
+    sort: list[SortKey] = Field(default_factory=list)
+    filters: list[Predicate] = Field(default_factory=list)
+
+
+class PipelinePreviewMeta(Contract):
+    """Server-produced; travels as viz.meta in the Arrow schema."""
+
+    step_id: str | None
+    offset: int
+    limit: int
+    total_rows: int
+    columns: list[SchemaField]
+    ms: float
+    warnings: list[str]
+
+
+class FormulaCheckRequest(Contract):
+    expression: str
+    pipeline: Pipeline
+    pipelines: list[Pipeline] = Field(default_factory=list)
+    # Validate against this step's input; None = the final output.
+    before_step_id: str | None = None
+
+
+class FormulaCheckResult(Contract):
+    """Server-produced."""
+
+    ok: bool
+    error: StepError | None
+    output_type: str | None
+    fields: list[str]
+
+
+class FormulaFunction(Contract):
+    """Server-produced; feeds formula autocomplete."""
+
+    name: str
+    category: Literal["math", "string", "date", "conditional", "null", "type"]
+    signature: str
+    description: str
+
+
+class MaterializeRequest(Contract):
+    pipeline: Pipeline
+    pipelines: list[Pipeline] = Field(default_factory=list)
+
+
+class MaterializeResult(Contract):
+    """Server-produced."""
+
+    # Step id -> job id (started, or already running).
+    jobs: dict[str, str]
+    # Step ids already materialized.
+    ready: list[str]

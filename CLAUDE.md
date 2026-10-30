@@ -204,7 +204,7 @@ Most parallelism comes from the libraries. Our job is to **limit it and cancel s
 
 ### Cross-platform
 - Use `pathlib` everywhere and never hard-code separators. Test paths with spaces and non-ASCII characters.
-- Windows locks files that are open in Excel. Copy sources into `sources/` before reading, and on `PermissionError` show a clear "close the file in Excel" message.
+- Windows locks files that are open in Excel. Uploads, and path imports up to `VIZ_COPY_SOURCE_MAX_MB` (default 512), are copied into `sources/` before reading. Larger path imports are read in place, so a multi-GB file isn't duplicated on disk. On `PermissionError`, show a clear "close the file in Excel" message.
 - `.gitattributes` enforces LF line endings.
 - New Python dependencies must ship wheels for win_amd64, macOS arm64 and macOS x86_64; check before adding one.
 
@@ -362,7 +362,8 @@ Backend paths are relative to `backend/src/viz/`, with tests mirrored under `bac
 - openapi-typescript marks a field required when its schema has a `default`. A `default_factory` emits no default, so those fields stay optional.
 - Server-only response models (e.g. `ChartDataMeta`) have no defaults, so every field is required on the frontend.
 - FastAPI runs with `separate_input_output_schemas=False`: one schema per model.
-- The server fills defaults when it saves a document (e.g. `agg: null`). Compare round-trips on the fields you set, not whole objects.
+- The server fills defaults when it saves a document (e.g. `agg: null`). Compare round-trips on the fields you set, not whole objects. The same applies to Arrow `viz.meta` dicts: an added optional field breaks a whole-dict assert.
+- Each contract model name must be unique across `contracts/`: OpenAPI keys schemas by class name. Shared small types (`SortKey`, `SourceRef`, `Scalar`) live in `base.py`.
 
 **Frontend**
 - TypeScript 7 is the new natively compiled release, and openapi-typescript 7.x still requires TypeScript 5 as a peer dependency. Stay on TS 5 until that changes.
