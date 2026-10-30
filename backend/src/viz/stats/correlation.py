@@ -17,6 +17,11 @@ Missing values: `pairwise` uses, for each pair, the rows where both are present 
 pandas' DataFrame.corr); `listwise` only the rows where every field is present. Rank
 correlations run on one shared random sample, capped so that rows x pairs stays within
 RANK_BUDGET (1M rows for a single pair, at least 5,000 rows).
+
+Cost: DuckDB evaluates every pair's aggregate on every row (O(rows x pairs); 1,225 pairs
+over 2M rows took 1.8 s). Pearson is exact while rows x pairs <= PEARSON_BUDGET (e.g. 10M
+rows and up to 21 fields); beyond that the same query runs on a Bernoulli sample of about
+PEARSON_BUDGET / pairs rows (still >= 1.6M rows for 50 fields), marked as sampled.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ from viz.stats.sql import alias, count_if, count_star, fn, num
 
 RANK_BUDGET = 5_000_000
 RANK_MIN_ROWS = 5_000
+PEARSON_BUDGET = 2_000_000_000
 
 _METHOD = {
     "pearson": "Pearson correlation",
@@ -235,12 +241,25 @@ def _pearson(
         z = scaled if s is None else exp.Sub(this=scaled, expression=num(s[1]))
         inner.append(alias(exp.cast(z, "DOUBLE"), f"z{i}"))
     pairs = [(i, j) for i in range(k) for j in range(i + 1, k)]
-    outer: list[exp.Expr] = []
+    outer: list[exp.Expr] = [alias(count_star(), "_rows")]
+    outer += [alias(exp.Count(this=exp.column(f"z{i}")), f"c{i}") for i in range(k)]
     for i, j in pairs:
         outer.append(alias(fn("corr", exp.column(f"z{i}"), exp.column(f"z{j}")), f"r{i}_{j}"))
         outer.append(alias(fn("regr_count", exp.column(f"z{i}"), exp.column(f"z{j}")), f"n{i}_{j}"))
-    subquery = base.select(*inner).subquery("_z")
-    result = rel.arrow(exp.select(*outer).from_(subquery)).to_pylist()[0]
+    rows_from = base.select(*inner).sql(dialect="duckdb")
+    # Above the budget the coefficients come from a Bernoulli sample of about `cap` rows.
+    cap = PEARSON_BUDGET // max(1, len(pairs))
+    sampled = rows > cap
+    if sampled:
+        # Unseeded: DuckDB runs a seeded sample on one thread (12.5 s vs 1.3 s for 50 fields
+        # at 10M rows). Results are cached per data version, so a chart doesn't change.
+        percent = 100.0 * cap / rows
+        rows_from = (
+            f"SELECT * FROM ({rows_from}) AS _s USING SAMPLE {percent:.10f} PERCENT (bernoulli)"
+        )
+    aggregates = ", ".join(e.sql(dialect="duckdb") for e in outer)
+    result = rel.arrow(f"SELECT {aggregates} FROM ({rows_from}) AS _z").to_pylist()[0]
+    used = int(result["_rows"])
     matrix = CorrelationMatrix(
         fields=names,
         method="pearson",
@@ -249,11 +268,13 @@ def _pearson(
         ci_low=_empty(k),
         ci_high=_empty(k),
         n=np.zeros((k, k), dtype=np.int64),
-        rows=rows,
+        rows=used,
+        n_total=rows if sampled else None,
         n_missing=total - rows if missing == "listwise" else 0,
+        sampled=sampled,
     )
     for i in range(k):
-        matrix.n[i, i] = int(first[f"n{i}"])
+        matrix.n[i, i] = int(result[f"c{i}"])
         matrix.coefficient[i, i] = 1.0 if scales[i] is not None else np.nan
     for i, j in pairs:
         r = result[f"r{i}_{j}"]
@@ -334,7 +355,7 @@ def correlation(rel: Relation, req: CorrelationRequest) -> StatResult:
         ci_high=grid(matrix.ci_high),
         n=matrix.n.tolist(),
     )
-    exact = " (exact)" if req.method == "pearson" else ""
+    exact = " (exact)" if req.method == "pearson" and not matrix.sampled else ""
     return stat_result(
         values.model_dump(by_alias=True),
         method=f"{_METHOD[req.method]}{exact}, {req.missing} deletion",

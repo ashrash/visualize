@@ -125,6 +125,22 @@ def test_rank_correlation_samples_large_inputs(
     assert any("random sample of 200 of 2,000" in w for w in result.warnings)
 
 
+def test_wide_pearson_samples_above_the_budget(
+    table_relation: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(corr_module, "PEARSON_BUDGET", 3 * 1500)
+    rng = np.random.default_rng(8)
+    x = rng.normal(0, 1, 6000)
+    y = 0.7 * x + rng.normal(0, 0.7, 6000)
+    rel = table_relation({"x": x, "y": y, "z": rng.normal(0, 1, 6000)})
+    result, v = _run(rel, fields=["x", "y", "z"])
+    assert result.sampled and result.n_total == 6000
+    assert 1200 < result.n < 1800 and v.n[0][1] == result.n == v.n[0][0]
+    assert v.coefficient[0][1] == pytest.approx(np.corrcoef(x, y)[0, 1], abs=0.05)
+    assert result.method == "Pearson correlation, pairwise deletion"
+    assert any("random sample" in w for w in result.warnings)
+
+
 @pytest.mark.parametrize("method", ["spearman", "kendall"])
 def test_rank_intervals_cover(method: str) -> None:
     """Bonett-Wright / Fieller intervals cover the population value about 95% of the time."""

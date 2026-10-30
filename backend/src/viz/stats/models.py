@@ -493,7 +493,7 @@ CiStatistic = Literal["mean", "median", "std", "quantile"]
 class ConfidenceIntervalRequest(StatsSourceRequest):
     """Confidence intervals: t (the mean, exact) or bootstrap (any statistic).
 
-    `auto` uses t for the mean and the bootstrap otherwise. Above 10,000 values per group
+    `auto` uses t for the mean and the bootstrap otherwise. Above 5,000 values per group
     the bootstrap runs on a random sample and its interval is rescaled to the full data.
     """
 

@@ -40,8 +40,10 @@ from viz.stats.results import stat_result
 from viz.stats.sampling import DEFAULT_SEED, reservoir_sample
 from viz.stats.sql import alias, fn, num
 
-BOOTSTRAP_CAP = 10_000
-BOOTSTRAP_TOTAL = 100_000
+# BCa's jackknife costs O(m^2) per group (a median at m = 10,000 took ~1 s), and the
+# sqrt(m/n) rescaling makes m a cost knob rather than an accuracy one.
+BOOTSTRAP_CAP = 5_000
+BOOTSTRAP_TOTAL = 20_000
 
 Key = tuple[Any, ...]
 
