@@ -160,3 +160,6 @@ class DescribeRequest(Contract):
 - **transform:** build `Relation` (with pipelines) in chartdata and call `run_plot_stat`. Until then I import `where_sql`/`parquet_source` from `chartdata/sql.py`, read-only.
 - **data-core:** expose the process pool as a `concurrent.futures.Executor` (e.g. `app.state.process_pool`).
 - **lead:** should `/api/plots` publish each plot's channels and params JSON schema, so the frontend registry can't drift from backend validation?
+
+## 9. Handoff notes
+- Categorical modes come back as text for non-VARCHAR nominal columns (e.g. an integer id column marked nominal returns its modes as strings); numeric fields return numbers, booleans `true`/`false`, dates ISO-8601 text.

@@ -10,10 +10,13 @@ read (~25 ms) and the total row count is free.
 Bounds
 - Builds run one at a time on the engine's background DuckDB instance (fewer threads), so
   they don't starve interactive queries.
-- At most one build per dataset is queued or running: a newer view of the same dataset (the
-  user changed the sort) drops the older unfinished one.
-- Ready views are LRU-evicted to stay under `max_bytes` (a 10M-row sorted view is ~320 MB);
-  a dataset whose Parquet file alone exceeds the budget never gets views.
+- Builds are keyed by view (dataset + sort + filters + search). A running build always
+  finishes; per dataset at most `MAX_QUEUED_PER_DATASET` builds wait behind it, and a newer
+  view drops the oldest *waiting* one. So the user changing the sort doesn't pile up work,
+  and two grids with different sorts on one dataset don't keep cancelling each other.
+- Ready views are LRU-evicted to stay under `max_bytes` (a 10M-row sorted view is ~350 MB,
+  1.5x its 233 MB source); a view whose estimated size (source x `SIZE_MARGIN`) exceeds the
+  budget is never built.
 - Views are deleted with their dataset and wiped at startup. They're a cache.
 """
 
@@ -26,7 +29,7 @@ import shutil
 import threading
 import time
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +46,9 @@ log = logging.getLogger(__name__)
 # Views are only worth building for datasets at least this large.
 DEFAULT_MIN_ROWS = 500_000
 DEFAULT_MAX_BYTES = 1024 * 2**20
+# A sorted view compresses worse than its source (346 MB vs 233 MB measured).
+SIZE_MARGIN = 1.6
+MAX_QUEUED_PER_DATASET = 2
 
 
 @dataclass(eq=False)
@@ -53,6 +59,7 @@ class _View:
     rows: int | None = None  # set when ready
     size: int = 0
     failed: bool = False
+    started: bool = False
     last_used: float = 0.0
     future: Future[None] | None = None
 
@@ -89,15 +96,17 @@ class RowViews:
         self.directory.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._views: dict[str, _View] = {}
-        # dataset id -> the view being built (queued or running) for it.
-        self._building: dict[str, _View] = {}
+        # dataset id -> views queued or being built for it, oldest first.
+        self._building: dict[str, list[_View]] = {}
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="viz-views")
         self._closed = False
 
     def _eligible(self, version: DatasetVersion, request: RowsRequest) -> bool:
         if not needs_view(request) or version.row_count < self.min_rows:
             return False
-        return version.size_bytes is None or version.size_bytes <= self.max_bytes
+        if version.size_bytes is None:
+            return True
+        return version.size_bytes * SIZE_MARGIN <= self.max_bytes
 
     def page(
         self,
@@ -131,21 +140,25 @@ class RowViews:
         if request.offset == 0 or not self._eligible(version, request):
             return
         vid = view_id(dataset.id, version.n, request)
-        superseded: _View | None = None
+        dropped: list[_View] = []
         with self._lock:
             if vid in self._views or self._closed:
                 return
-            superseded = self._building.get(dataset.id)
-            if superseded is not None:
-                self._views.pop(superseded.vid, None)
+            pending = self._building.setdefault(dataset.id, [])
+            waiting = [v for v in pending if not v.started]
+            while len(waiting) >= MAX_QUEUED_PER_DATASET:
+                oldest = waiting.pop(0)
+                pending.remove(oldest)
+                self._views.pop(oldest.vid, None)
+                dropped.append(oldest)
             view = _View(
                 vid, self.directory / f"{vid}.parquet", dataset.id, last_used=time.monotonic()
             )
             self._views[vid] = view
-            self._building[dataset.id] = view
+            pending.append(view)
             view.future = self._executor.submit(self._build, view, select_sql.copy())
-        if superseded is not None:
-            self._discard(superseded)
+        for old in dropped:
+            self._discard(old)
 
     def _discard(self, view: _View) -> None:
         if view.future is not None:
@@ -188,6 +201,7 @@ class RowViews:
         with self._lock:
             if self._views.get(view.vid) is not view:
                 return
+            view.started = True
         tmp = view.path.with_name(f".{view.path.name}.{uuid.uuid4().hex[:8]}.tmp")
         try:
             with self.engine.background_cursor(f"view:{view.vid}") as cur:
@@ -202,12 +216,10 @@ class RowViews:
             tmp.unlink(missing_ok=True)
             with self._lock:
                 view.failed = True
-                if self._building.get(view.dataset_id) is view:
-                    del self._building[view.dataset_id]
+                self._unqueue(view)
             return
         with self._lock:
-            if self._building.get(view.dataset_id) is view:
-                del self._building[view.dataset_id]
+            self._unqueue(view)
             if self._views.get(view.vid) is not view:  # dropped while building
                 view.path.unlink(missing_ok=True)
                 return
@@ -215,6 +227,13 @@ class RowViews:
             victims = self._evict_locked()
         for victim in victims:
             victim.path.unlink(missing_ok=True)
+
+    def _unqueue(self, view: _View) -> None:
+        pending = self._building.get(view.dataset_id)
+        if pending and view in pending:
+            pending.remove(view)
+        if not pending:
+            self._building.pop(view.dataset_id, None)
 
     def _evict_locked(self) -> list[_View]:
         """Drop least recently used ready views until the total fits in `max_bytes`."""
@@ -249,13 +268,17 @@ class RowViews:
             self._discard(view)
 
     def wait_idle(self, timeout_s: float = 60.0) -> None:
-        """Block until queued builds finish (tests and benchmarks)."""
-        self._executor.submit(lambda: None).result(timeout=timeout_s)
+        """Block until queued builds finish (tests and benchmarks). Returns quietly if the
+        executor is shutting down."""
+        try:
+            self._executor.submit(lambda: None).result(timeout=timeout_s)
+        except (CancelledError, RuntimeError):
+            return
 
     def close(self) -> None:
         with self._lock:
             self._closed = True
-            building = list(self._building.values())
+            building = [v for pending in self._building.values() for v in pending]
         for view in building:
             self._discard(view)
         self._executor.shutdown(wait=True, cancel_futures=True)

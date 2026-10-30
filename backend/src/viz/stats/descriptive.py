@@ -35,7 +35,7 @@ from viz.stats.errors import StatsInputError
 from viz.stats.groups import cap_groups
 from viz.stats.relation import Relation, col
 from viz.stats.results import dedupe, finite_or_none, stat_result
-from viz.stats.sql import alias, count_star, fn, is_boolean, is_float, num, num_list
+from viz.stats.sql import alias, count_star, fn, is_boolean, is_float, num_list
 
 Kind = Literal["numeric", "temporal", "categorical", "boolean"]
 GroupKey = tuple[Any, ...] | None  # None = the overall row
@@ -43,9 +43,10 @@ ModeInfo = tuple[int, int, list[Any], bool]  # distinct, mode count, first modes
 
 _QUARTILES = (0.25, 0.5, 0.75)
 _MAX_MODES = 5
-# Above this magnitude the moments are computed on rescaled values (DuckDB's kurtosis
-# overflows from about 1e77, skewness from about 1e103).
+# Outside these magnitudes the moments are computed on rescaled values (DuckDB's kurtosis
+# overflows from about 1e77, skewness from about 1e103; below ~1e-50 x^4 underflows).
 _RESCALE_ABOVE = 1e50
+_RESCALE_BELOW = 1e-50
 _NUMERIC_PREFIXES = (
     "TINYINT",
     "SMALLINT",
@@ -297,37 +298,87 @@ def _moments(
     grouping_sets: bool,
     warnings: _Warnings,
 ) -> list[dict[str, Any]]:
-    """Moments per group; rescaled and retried when DuckDB overflows on huge values."""
+    """Moments per group, recomputed on rescaled values where magnitudes are extreme.
+
+    DuckDB's kurtosis/skewness overflow above ~1e77 (raising an error) and lose precision
+    below ~1e-50 (x^4 underflows). Fields with any group outside [1e-50, 1e50] get their
+    moments recomputed with each group divided by its own power of two near max|x|: exact,
+    and safe however far apart the groups' magnitudes are.
+    """
+    numeric = [i for i, name in enumerate(fields) if kinds[name] == "numeric"]
     try:
-        return _aggregate(rel, fields, kinds, groups, probs, grouping_sets, {})
+        rows = _aggregate(rel, fields, kinds, groups, probs, grouping_sets, frozenset())
+        extreme = [i for i in numeric if any(_extreme(row[f"_{i}_absmax"]) for row in rows)]
     except duckdb.OutOfRangeException:
-        pass
-    scales = _scales(rel, fields, kinds)
+        extreme = numeric
+        rows = _aggregate(rel, fields, kinds, groups, probs, grouping_sets, frozenset(extreme))
+    if not extreme:
+        return rows
+    # A grouping-sets pass needs the groups and the overall row rescaled separately.
+    passes = [groups, _Groups.none(rel)] if grouping_sets and groups.by else [groups]
+    scaled: dict[GroupKey, dict[str, Any]] = {}
     try:
-        rows = _aggregate(rel, fields, kinds, groups, probs, grouping_sets, scales)
+        for pass_groups in passes:
+            scaled.update(_scaled_moments(rel, fields, extreme, pass_groups))
     except duckdb.OutOfRangeException as exc:
         raise StatsInputError("The values are too large to summarise.") from exc
-    for i in scales:
-        warnings.plain.append(
-            f"'{fields[i]}': values are huge, so the moments were computed on rescaled values."
-        )
+    for row in rows:
+        values = scaled.get(row["_key"], {})
+        for i in extreme:
+            for stat, _ in _MOMENTS:
+                row[f"_{i}_{stat}"] = values.get(f"_{i}_{stat}")
+    for i in extreme:  # after an overflow every field is recomputed; name only the extreme
+        if any(_extreme(row[f"_{i}_absmax"]) for row in rows):
+            warnings.plain.append(
+                f"'{fields[i]}': moments were computed on rescaled values "
+                "(magnitudes beyond 1e+/-50)."
+            )
     return rows
 
 
-def _scales(rel: Relation, fields: Sequence[str], kinds: dict[str, Kind]) -> dict[int, float]:
-    """Field index -> power of two near max|x| (exact to divide by), for huge fields."""
-    numeric = [i for i, name in enumerate(fields) if kinds[name] == "numeric"]
-    selects = [
-        alias(fn("max", fn("abs", _value(rel, fields[i], "numeric"))), f"_a{i}") for i in numeric
-    ]
-    row = rel.arrow(rel.select(*selects)).to_pylist()[0]
-    scales: dict[int, float] = {}
-    for i in numeric:
-        biggest = row[f"_a{i}"]
-        if biggest is not None and math.isfinite(biggest) and biggest > _RESCALE_ABOVE:
-            # 2^(e-1) <= max|x| < 2^e, so |x / scale| < 2 (and 2^1024 would overflow).
-            scales[i] = math.ldexp(1.0, math.frexp(biggest)[1] - 1)
-    return scales
+def _extreme(biggest: float | None) -> bool:
+    if biggest is None or not biggest > 0:
+        return False
+    return bool(biggest > _RESCALE_ABOVE or biggest < _RESCALE_BELOW)
+
+
+def _scaled_moments(
+    rel: Relation, fields: Sequence[str], indices: Sequence[int], groups: _Groups
+) -> dict[GroupKey, dict[str, Any]]:
+    """Moments of x / s, s = 2^floor(log2(max|x|)) within each group, scaled back by s."""
+    keys = [alias(e, f"_g{k}") for k, e in enumerate(groups.exprs(rel))]
+    values = [alias(_value(rel, fields[i], "numeric"), f"_v{i}") for i in indices]
+    inner = rel.select(*keys, *values).sql(dialect="duckdb")
+    key_names = [f"_g{k}" for k in range(len(groups.by))]
+    over = f"PARTITION BY {', '.join(key_names)}" if key_names else ""
+    peaks = ", ".join(f"max(abs(_v{i})) OVER ({over}) AS _m{i}" for i in indices)
+    powers = ", ".join(
+        f"CASE WHEN _m{i} > 0 THEN pow(2.0, floor(log2(_m{i}))) ELSE 1.0 END AS _s{i}"
+        for i in indices
+    )
+    aggregates: list[str] = []
+    for i in indices:
+        aggregates += [f"{function}(_v{i} / _s{i}) AS _{i}_{stat}" for stat, function in _MOMENTS]
+        aggregates.append(f"any_value(_s{i}) AS _{i}_scale")
+    gid = ["0 AS _gid"] if key_names else []
+    selects = ", ".join([*key_names, *gid, *aggregates])
+    group_by = f" GROUP BY {', '.join(key_names)}" if key_names else ""
+    sql = (
+        f"SELECT {selects} FROM (SELECT *, {powers} FROM (SELECT *, {peaks} FROM ({inner}) "
+        f"AS _a) AS _b) AS _c{group_by}"
+    )
+    out: dict[GroupKey, dict[str, Any]] = {}
+    for row in rel.arrow(sql).to_pylist():
+        for i in indices:
+            scale = row[f"_{i}_scale"]
+            for stat, power in _SCALE_POWER.items():
+                value = row[f"_{i}_{stat}"]
+                if value is not None and scale is not None:
+                    for _ in range(power):
+                        value *= scale
+                    row[f"_{i}_{stat}"] = value
+        out[groups.key(row)] = row
+    return out
 
 
 def _aggregate(
@@ -337,7 +388,7 @@ def _aggregate(
     groups: _Groups,
     probs: Sequence[float],
     grouping_sets: bool,
-    scales: dict[int, float],
+    skip_moments: frozenset[int],
 ) -> list[dict[str, Any]]:
     selects = [*_key_selects(rel, groups), alias(count_star(), "_rows")]
     for i, name in enumerate(fields):
@@ -345,9 +396,11 @@ def _aggregate(
         v = _value(rel, name, kind)
         selects.append(alias(exp.Count(this=v), f"_{i}_count"))
         if kind == "numeric":
-            scaled = exp.Div(this=v, expression=num(scales[i])) if i in scales else v
+            # min and max never overflow, so they're computed even when moments are skipped;
+            # max|x| = max(|min|, |max|) decides whether the moments need rescaling.
             for stat, function in _MOMENTS:
-                selects.append(alias(fn(function, scaled), f"_{i}_{stat}"))
+                if i not in skip_moments or stat in ("min", "max"):
+                    selects.append(alias(fn(function, v), f"_{i}_{stat}"))
         elif kind == "temporal":
             selects.append(alias(_text(fn("min", v)), f"_{i}_min"))
             selects.append(alias(_text(fn("max", v)), f"_{i}_max"))
@@ -361,13 +414,10 @@ def _aggregate(
     rows: list[dict[str, Any]] = rel.arrow(query).to_pylist()
     for row in rows:
         row["_key"] = groups.key(row)
-        for i, scale in scales.items():
-            for stat, power in _SCALE_POWER.items():
-                value = row[f"_{i}_{stat}"]
-                if value is not None:
-                    for _ in range(power):
-                        value *= scale
-                    row[f"_{i}_{stat}"] = value
+        for i, name in enumerate(fields):
+            if kinds[name] == "numeric":
+                low, high = row[f"_{i}_min"], row[f"_{i}_max"]
+                row[f"_{i}_absmax"] = None if low is None else max(abs(low), abs(high))
     return rows
 
 
@@ -536,15 +586,17 @@ def _summary(
         by_prob = dict(zip(probs, (finite_or_none(q) for q in quantile_values), strict=True))
         if count < 2:
             warnings.add(name, "standard deviation and variance need at least 2 values", where)
-        elif stats["std"] == 0:
+        elif stats["min"] is not None and stats["min"] == stats["max"]:
             warnings.add(
                 name, "all values are equal, so skewness and kurtosis are undefined", where
             )
-        else:
+        elif skewness is None or kurtosis is None:
             if count < 3:
                 warnings.add(name, "skewness needs at least 3 values", where)
             if count < 4:
                 warnings.add(name, "kurtosis needs at least 4 values", where)
+            if count >= 4:
+                warnings.add(name, "skewness and kurtosis could not be computed", where)
     elif kind == "temporal" and count > 0:
         stats["min"] = _iso(row[f"_{i}_min"], zoned)
         stats["max"] = _iso(row[f"_{i}_max"], zoned)

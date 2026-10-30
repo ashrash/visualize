@@ -225,10 +225,21 @@ def test_fatal_exception_recreates_the_instance(eng: Engine) -> None:
     assert eng.query_arrow("SELECT current_setting('memory_limit') AS m").num_rows == 1
 
 
-def test_in_flight_query_on_a_replaced_instance_gets_503(eng: Engine) -> None:
-    with pytest.raises(EngineBusyError), eng.cursor() as cur:
-        eng._recover(eng._main)  # another request hit a fatal error meanwhile
-        cur.sql("SELECT 1").fetchall()
+def test_in_flight_query_on_a_replaced_instance_finishes(eng: Engine) -> None:
+    """Another request's fatal error replaces the instance; work already running on the old
+    (still healthy) one completes, new cursors use the new one, and the old one is closed
+    after its last cursor is released."""
+    old = eng._main
+    with eng.cursor() as cur:
+        with eng._lock:
+            eng._recover(old)
+        assert eng._main is not old
+        assert cur.sql("SELECT 7").fetchall() == [(7,)]
+        with eng.cursor() as fresh:  # resolved under the lock: the new instance
+            assert fresh.sql("SELECT 1").fetchall() == [(1,)]
+    assert old.active == 0 and old.retired
+    with pytest.raises(duckdb.Error):
+        old.con.sql("SELECT 1").fetchall()  # closed once released
     assert eng.query_arrow("SELECT 1 AS x").num_rows == 1
 
 

@@ -73,16 +73,22 @@ def rownum_source(path: Path) -> exp.Expr:
     )
 
 
+def _fold(expr: exp.Expr) -> exp.Expr:
+    """Case- and accent-insensitive form: strip_accents(lower(x))."""
+    return exp.Anonymous(this="strip_accents", expressions=[exp.Lower(this=expr)])
+
+
 def search_sql(version: DatasetVersion, search: str | None) -> exp.Expr | None:
-    """Case-insensitive "contains" across text (VARCHAR/ENUM) columns only; numbers and dates
-    aren't searched (filter them with predicates)."""
+    """Case- and accent-insensitive "contains" ("zur" finds "Zürich") across text
+    (VARCHAR/ENUM) columns only; numbers and dates aren't searched (filter them with
+    predicates)."""
     if not search:
         return None
-    needle = exp.Lower(this=lit(search))
+    needle = _fold(lit(search))
     parts: list[exp.Expr] = [
         exp.Anonymous(
             this="contains",
-            expressions=[exp.Lower(this=col(c.name)), needle],
+            expressions=[_fold(col(c.name)), needle],
         )
         for c in version.columns
         if c.type.upper().startswith(_TEXT_PREFIXES)

@@ -1,17 +1,17 @@
-import { ApiError, api, detailOf, unwrap } from "./client";
-import { deleteRequest, enc, getJson, patchJson, postForm, postJson } from "./http";
+import { api, unwrap } from "./client";
 import type {
   ColumnValues,
   ColumnValuesRequest,
   Dataset,
-  DatasetUpdate,
   ExportRequest,
-  ImportFromPathRequest,
   ImportRequest,
   Job,
   RefreshRequest,
   StagedFile,
 } from "./types";
+
+// JSON data-core endpoints, on the typed client. Arrow-returning ones (rows, preview) are in
+// datasetRows.ts so the Arrow reader stays out of the entry chunk.
 
 export async function listDatasets(signal?: AbortSignal): Promise<Dataset[]> {
   return unwrap(await api.GET("/api/datasets", { signal }));
@@ -23,68 +23,107 @@ export async function getDataset(id: string, signal?: AbortSignal): Promise<Data
   );
 }
 
-// ---- Legacy synchronous endpoints (kept by the backend for compatibility) ----
-
-export async function importFromPath(
-  body: ImportFromPathRequest,
-  signal?: AbortSignal,
-): Promise<Dataset> {
-  return unwrap(await api.POST("/api/datasets/import-path", { body, signal }));
-}
-
-/** Multipart upload. The form is built by `buildUploadForm` (data/requests.ts). */
-export async function uploadDataset(form: FormData, signal?: AbortSignal): Promise<Dataset> {
-  const response = await fetch("/api/datasets/upload", { method: "POST", body: form, signal });
-  const body: unknown = await response.json().catch(() => undefined);
-  if (!response.ok) {
-    throw new ApiError(detailOf(body) ?? `Upload failed (${response.status})`, response.status);
-  }
-  return body as Dataset;
-}
-
-// ---- data-core: staged import, preview, jobs (flags `stagedImport`, `serverRows`, ...) ----
-
 /** POST /api/datasets/staged (multipart `file`) -> StagedFile */
-export function stageFile(file: File, signal?: AbortSignal): Promise<StagedFile> {
+export async function stageFile(file: File, signal?: AbortSignal): Promise<StagedFile> {
   const form = new FormData();
   form.append("file", file);
-  return postForm<StagedFile>("/api/datasets/staged", form, signal);
+  return unwrap(
+    await api.POST("/api/datasets/staged", {
+      // The client would JSON-encode a multipart body; hand it the prepared form instead.
+      body: { file: "" },
+      bodySerializer: () => form,
+      signal,
+    }),
+  );
 }
 
 /** DELETE /api/datasets/staged/{stagedId} */
-export const deleteStaged = (stagedId: string, signal?: AbortSignal) =>
-  deleteRequest(`/api/datasets/staged/${enc(stagedId)}`, signal);
+export async function deleteStaged(stagedId: string, signal?: AbortSignal): Promise<void> {
+  const result = await api.DELETE("/api/datasets/staged/{staged_id}", {
+    params: { path: { staged_id: stagedId } },
+    signal,
+  });
+  if (result.error !== undefined) unwrap(result);
+}
 
-/** POST /api/datasets/import -> 202 Job */
-export const startImport = (body: ImportRequest, signal?: AbortSignal) =>
-  postJson<ImportRequest, Job>("/api/datasets/import", body, signal);
+/** POST /api/datasets/import -> 202 Job. A staged file is consumed by the import. */
+export async function startImport(body: ImportRequest, signal?: AbortSignal): Promise<Job> {
+  return unwrap(await api.POST("/api/datasets/import", { body, signal }));
+}
 
 /** POST /api/datasets/{id}/refresh -> 202 Job */
-export const startRefresh = (id: string, body: RefreshRequest, signal?: AbortSignal) =>
-  postJson<RefreshRequest, Job>(`/api/datasets/${enc(id)}/refresh`, body, signal);
+export async function startRefresh(
+  id: string,
+  body: RefreshRequest,
+  signal?: AbortSignal,
+): Promise<Job> {
+  return unwrap(
+    await api.POST("/api/datasets/{dataset_id}/refresh", {
+      params: { path: { dataset_id: id } },
+      body,
+      signal,
+    }),
+  );
+}
 
 /** PATCH /api/datasets/{id} {name} -> Dataset */
-export const renameDataset = (id: string, name: string, signal?: AbortSignal) =>
-  patchJson<DatasetUpdate, Dataset>(`/api/datasets/${enc(id)}`, { name }, signal);
+export async function renameDataset(
+  id: string,
+  name: string,
+  signal?: AbortSignal,
+): Promise<Dataset> {
+  return unwrap(
+    await api.PATCH("/api/datasets/{dataset_id}", {
+      params: { path: { dataset_id: id } },
+      body: { name },
+      signal,
+    }),
+  );
+}
 
 /** DELETE /api/datasets/{id}?force= -> 204; 409 when a project uses it and force is false. */
-export const deleteDataset = (id: string, force: boolean, signal?: AbortSignal) =>
-  deleteRequest(`/api/datasets/${enc(id)}?force=${force}`, signal);
+export async function deleteDataset(
+  id: string,
+  force: boolean,
+  signal?: AbortSignal,
+): Promise<void> {
+  const result = await api.DELETE("/api/datasets/{dataset_id}", {
+    params: { path: { dataset_id: id }, query: { force } },
+    signal,
+  });
+  if (result.error !== undefined) unwrap(result);
+}
 
-/** POST /api/datasets/{id}/values -> distinct values with counts, for filter checklists. */
-export const fetchColumnValues = (id: string, body: ColumnValuesRequest, signal?: AbortSignal) =>
-  postJson<ColumnValuesRequest, ColumnValues>(`/api/datasets/${enc(id)}/values`, body, signal);
+/** POST /api/datasets/{id}/values -> distinct values with counts (null counts as a value). */
+export async function fetchColumnValues(
+  id: string,
+  body: ColumnValuesRequest,
+  signal?: AbortSignal,
+): Promise<ColumnValues> {
+  return unwrap(
+    await api.POST("/api/datasets/{dataset_id}/values", {
+      params: { path: { dataset_id: id } },
+      body,
+      signal,
+    }),
+  );
+}
 
 /** POST /api/exports -> 202 Job; on success `result.export.downloadUrl` is the file. */
-export const startExport = (body: ExportRequest, signal?: AbortSignal) =>
-  postJson<ExportRequest, Job>("/api/exports", body, signal);
+export async function startExport(body: ExportRequest, signal?: AbortSignal): Promise<Job> {
+  return unwrap(await api.POST("/api/exports", { body, signal }));
+}
 
 // ---- jobs ----
 
 /** GET /api/jobs?active=true */
-export const listActiveJobs = (signal?: AbortSignal) =>
-  getJson<Job[]>("/api/jobs?active=true", signal);
+export async function listActiveJobs(signal?: AbortSignal): Promise<Job[]> {
+  return unwrap(await api.GET("/api/jobs", { params: { query: { active: true } }, signal }));
+}
 
 /** POST /api/jobs/{id}/cancel */
-export const cancelJob = (id: string, signal?: AbortSignal) =>
-  postJson<Record<string, never>, Job>(`/api/jobs/${enc(id)}/cancel`, {}, signal);
+export async function cancelJob(id: string, signal?: AbortSignal): Promise<Job> {
+  return unwrap(
+    await api.POST("/api/jobs/{job_id}/cancel", { params: { path: { job_id: id } }, signal }),
+  );
+}

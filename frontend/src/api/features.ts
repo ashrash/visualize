@@ -5,14 +5,6 @@
  * override in the browser console: localStorage.setItem("viz.features", '{"stagedImport":true}').
  */
 export interface Features {
-  /** data-core: staged upload, live preview, import/refresh as jobs, jobs list + SSE. */
-  stagedImport: boolean;
-  /** data-core: dataset rename, delete (with force) and refresh. */
-  datasetManagement: boolean;
-  /** data-core: POST rows with sort/filters/search, and column values for filter popovers. */
-  serverRows: boolean;
-  /** data-core: POST /api/exports. */
-  exports: boolean;
   /** transform: inspect, preview, formula check/functions, materialize. */
   pipelineApi: boolean;
   /** platform: rename, duplicate, delete, restore, version preview, .vizproj import/export. */
@@ -20,10 +12,6 @@ export interface Features {
 }
 
 const DEFAULTS: Features = {
-  stagedImport: false,
-  datasetManagement: false,
-  serverRows: false,
-  exports: false,
   pipelineApi: false,
   platformProjects: true,
 };

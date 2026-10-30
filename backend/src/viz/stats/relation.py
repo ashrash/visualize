@@ -10,10 +10,10 @@ chartdata and transform can depend on it without cycles.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 import duckdb
 import pyarrow as pa
@@ -56,7 +56,9 @@ class Relation:
     version_key: str
     # Engine interrupt slot (e.g. "chart:<id>"): a newer query in the slot cancels older ones.
     query_key: str | None = None
-    # Request generation within the slot; an older generation never cancels a newer one.
+    # Request generation within the slot (an older one never cancels a newer one). Take it
+    # only from viz.engine.next_generation(), never from a client-supplied value. None uses
+    # the request ticket from request_scope().
     generation: int | None = None
 
     def from_item(self) -> exp.Expr:
@@ -108,10 +110,4 @@ class Relation:
         return column
 
     def _cursor(self) -> AbstractContextManager[duckdb.DuckDBPyConnection]:
-        # TODO(data-core): drop the shim once Engine.cursor takes `generation`.
-        open_cursor = cast(
-            Callable[..., AbstractContextManager[duckdb.DuckDBPyConnection]], self.engine.cursor
-        )
-        if self.generation is None:
-            return open_cursor(self.query_key)
-        return open_cursor(self.query_key, generation=self.generation)
+        return self.engine.cursor(self.query_key, generation=self.generation)

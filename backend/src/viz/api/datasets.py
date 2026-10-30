@@ -244,10 +244,10 @@ async def upload_dataset(
             staged_id=upload.staged_id, name=upload.fields.get("name"), kind=kind, options=parsed
         )
         job = await run_sync(submit_import, jobs, storage, settings, body)
-    except BaseException:
+        # One-shot endpoint: nobody else knows the staged id, so drop it when done.
+        return await run_sync(_wait_for_dataset, jobs, job, db)
+    finally:
         storage.delete_staged(upload.staged_id)
-        raise
-    return await run_sync(_wait_for_dataset, jobs, job, db)
 
 
 @router.post("/import-path", response_model=Dataset, status_code=201)
