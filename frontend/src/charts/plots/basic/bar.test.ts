@@ -32,6 +32,9 @@ function data(columns: ChartData["columns"], fields: Record<string, string>): Ch
       cached: false,
       ms: 1,
       warnings: [],
+      rowsMatched: null,
+      params: {},
+      xDomain: null,
     },
   };
 }
