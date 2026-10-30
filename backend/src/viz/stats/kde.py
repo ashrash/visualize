@@ -5,13 +5,17 @@ convolution with the Gaussian kernel, zero-padded so it doesn't wrap. Cost is
 O(n + M log M), so 20 groups of 100k values stay fast. The fine grid is chosen with spacing
 at most bandwidth / 8, which keeps the binning error far below plotting resolution.
 
-That needs (range / bandwidth) * 8 grid points. When the range is too wide for the grid cap
-(very skewed data: e.g. lognormal with sigma = 3), the binned estimate would be wrong, so
-the output is computed exactly instead, as the KDE's mass in each output point's cell
-divided by the cell width (method "cell_average"): a windowed smoothed CDF over sorted data
-in 1-D, a separable product of per-axis cell probabilities in 2-D. On a grid finer than the
-bandwidth that equals the point density; on a coarse grid it still integrates to the KDE's
-mass, where point values would miss the narrow peaks. A warning suggests a log scale.
+The binned curve is then interpolated at the output points, which is right only when the
+output grid resolves the kernel. So whenever the output spacing exceeds h/2, or the range is
+too wide for the fine-grid cap (skewed data: lognormal, heavy tails), the output is
+computed exactly instead, as the KDE's mass in each output point's cell divided by the cell
+width (method "cell_average"). If the fine grid exists, the cells integrate its density
+(a cumulative sum in 1-D, a summed-area table in 2-D); if the range is too wide for it, the
+cells are computed exactly (a windowed smoothed CDF over sorted data in 1-D, separable
+per-axis cell probabilities in 2-D). On a fine grid that equals the point density; on a
+coarse grid it still integrates to the KDE's mass, where point values would miss narrow
+peaks. Groups sharing one grid (violins, ridgelines) all use the same method. Data
+spanning more than 1000 bandwidths gets a log-scale warning.
 direct_density() gives exact point values when those are wanted.
 
 Bandwidth rules (R's, both robust to outliers via the IQR):
@@ -205,16 +209,35 @@ def cell_density(x: np.ndarray, at: np.ndarray, h: float) -> np.ndarray:
 
     On a grid finer than the bandwidth this equals the point density; on a coarse grid it
     keeps the curve's total mass (point values there would miss narrow peaks entirely).
+    Repeated points share one cell (a zero-width cell would be undefined).
     """
     data = np.sort(x)
-    order = np.argsort(at, kind="stable")
-    points = at[order]
+    points, inverse = np.unique(np.asarray(at, dtype=float), return_inverse=True)
     a, b = _cells(points, h)
     edges = np.concatenate([a, b[-1:]])
     cdf = _smoothed_cdf(data, edges, h)
-    density = np.empty(len(points))
-    density[order] = (cdf[1:] - cdf[:-1]) / (b - a)
+    density: np.ndarray = ((cdf[1:] - cdf[:-1]) / (b - a))[inverse.ravel()]
     return density
+
+
+def coarse_grid(points: np.ndarray, h: float) -> bool:
+    """True when some gap between neighbouring output points exceeds h/2.
+
+    A curve sampled that sparsely misses the shape of a kernel bump, so its point values
+    don't integrate to the KDE's mass; cell averages do.
+    """
+    unique = np.unique(points)
+    return len(unique) > 1 and float(np.max(np.diff(unique))) > h / 2
+
+
+KdeMethod = Literal["auto", "binned", "cell_average"]
+
+# Data ranges wider than this many bandwidths can't be shown well on a linear axis.
+_WIDE_RATIO = 1000.0
+
+
+def _wide(span: float, h: float) -> bool:
+    return span / h > _WIDE_RATIO
 
 
 def kde(
@@ -226,11 +249,16 @@ def kde(
     cut: float = 3.0,
     clip: tuple[float | None, float | None] = (None, None),
     grid: np.ndarray | None = None,
+    method: KdeMethod = "auto",
 ) -> KdeCurve:
     """Gaussian KDE evaluated on `grid`, or on grid_size points over [min - cut*h, max + cut*h].
 
     `clip` limits the evaluation range (e.g. (0, None) for non-negative data); the density is
     not renormalised. Non-finite values are ignored.
+
+    method="auto" uses cell averages when the output spacing exceeds h/2 or the fine grid
+    can't reach h/8, and the binned FFT otherwise (the two agree on fine output grids).
+    "binned" is overridden when the fine grid can't be built.
     """
     x = _finite(values)
     if adjust <= 0:
@@ -247,20 +275,33 @@ def kde(
     lo = min(float(x.min()), float(out_x.min())) - 4 * h
     hi = max(float(x.max()), float(out_x.max())) + 4 * h
     m, capped = _fine_size(hi - lo, h, max(_MIN_FINE, 2 * len(out_x)), _MAX_FINE)
-    if capped:
-        out = cell_density(x, out_x, h)
-        method, warnings = "cell_average", [WIDE_RANGE_WARNING]
+    use_cells = capped or method == "cell_average" or (method == "auto" and coarse_grid(out_x, h))
+    warnings = [WIDE_RANGE_WARNING] if _wide(float(np.ptp(x)), h) else []
+    if use_cells and capped:
+        out = cell_density(x, out_x, h)  # exact: the fine grid can't resolve h
+        method_used = "cell_average"
     else:
         delta = (hi - lo) / (m - 1)
-        density = _smooth(_linear_bin(x, lo, delta, m), delta, h) / len(x)
+        density = np.maximum(_smooth(_linear_bin(x, lo, delta, m), delta, h) / len(x), 0.0)
         fine_x = lo + delta * np.arange(m)
-        out = np.interp(out_x, fine_x, np.maximum(density, 0.0))
-        method, warnings = "binned", []
+        if use_cells:
+            # Cell averages from the fine (h/8) density: integrate it over each output cell.
+            cumulative = np.concatenate([[0.0], np.cumsum((density[1:] + density[:-1]) / 2)])
+            points, inverse = np.unique(out_x, return_inverse=True)
+            a, b = _cells(points, h)
+            mass = np.interp(b, fine_x, cumulative) - np.interp(a, fine_x, cumulative)
+            out = (mass * delta / (b - a))[inverse.ravel()]
+            method_used = "cell_average"
+        else:
+            out = np.interp(out_x, fine_x, density)
+            method_used = "binned"
     if clip[0] is not None:
         out[out_x < clip[0]] = 0.0
     if clip[1] is not None:
         out[out_x > clip[1]] = 0.0
-    return KdeCurve(x=out_x, density=out, bandwidth=h, n=len(x), method=method, warnings=warnings)
+    return KdeCurve(
+        x=out_x, density=out, bandwidth=h, n=len(x), method=method_used, warnings=warnings
+    )
 
 
 def kde_by_group(
@@ -312,6 +353,7 @@ def kde_by_group(
         members[key] = part
         widths[key] = pooled_h if pooled_h is not None else bandwidth(part, bw) * adjust
     grid = None
+    method: KdeMethod = "auto"
     if common_grid and members:
         lo = min(float(p.min()) - cut * widths[k] for k, p in members.items())
         hi = max(float(p.max()) + cut * widths[k] for k, p in members.items())
@@ -320,11 +362,22 @@ def kde_by_group(
         if clip[1] is not None:
             hi = min(hi, float(clip[1]))
         grid = np.linspace(lo, hi, grid_size)
+        # One rule for every group on the shared grid: cell averages if it's too coarse for
+        # the narrowest bandwidth, so all curves on a violin/ridgeline are comparable.
+        method = "cell_average" if coarse_grid(grid, min(widths.values())) else "binned"
     curves = [
         GroupCurve(
             key=key,
             n=len(part),
-            curve=kde(part, bw=widths[key], grid_size=grid_size, cut=cut, clip=clip, grid=grid),
+            curve=kde(
+                part,
+                bw=widths[key],
+                grid_size=grid_size,
+                cut=cut,
+                clip=clip,
+                grid=grid,
+                method=method,
+            ),
         )
         for key, part in members.items()
     ]
@@ -361,9 +414,12 @@ def kde2d(
     lo_y, hi_y = float(ys[0]) - 4 * hy, float(ys[-1]) + 4 * hy
     mx, capped_x = _fine_size(hi_x - lo_x, hx, max(256, 2 * grid_size[0]), _MAX_FINE_2D)
     my, capped_y = _fine_size(hi_y - lo_y, hy, max(256, 2 * grid_size[1]), _MAX_FINE_2D)
-    if capped_x or capped_y:
+    wide = _wide(float(np.ptp(x)), hx) or _wide(float(np.ptp(y)), hy)
+    warnings = [WIDE_RANGE_WARNING] if wide else []
+    if capped_x or capped_y:  # exact: the fine grid can't resolve the bandwidth
         density = _cell_density_2d(x, y, xs, ys, hx, hy)
-        return Kde2d(xs, ys, density, hx, hy, len(x), "cell_average", [WIDE_RANGE_WARNING])
+        return Kde2d(xs, ys, density, hx, hy, len(x), "cell_average", warnings)
+    use_cells = coarse_grid(xs, hx) or coarse_grid(ys, hy)
 
     dx, dy = (hi_x - lo_x) / (mx - 1), (hi_y - lo_y) / (my - 1)
     tx, ty = (x - lo_x) / dx, (y - lo_y) / dy
@@ -376,13 +432,49 @@ def kde2d(
             cells = (iy + ddy) * mx + (ix + ddx)
             counts += np.bincount(cells, weight_y * weight_x, minlength=my * mx)
     grid = counts.reshape(my, mx)
-    grid = _smooth(_smooth(grid, dx, hx, axis=1), dy, hy, axis=0) / len(x)
+    grid = np.maximum(_smooth(_smooth(grid, dx, hx, axis=1), dy, hy, axis=0) / len(x), 0.0)
     fine_x = lo_x + dx * np.arange(mx)
     fine_y = lo_y + dy * np.arange(my)
-    interpolate = RegularGridInterpolator((fine_y, fine_x), np.maximum(grid, 0.0))
+    if use_cells:
+        density = _cells_from_fine_2d(grid, fine_x, fine_y, xs, ys, hx, hy)
+        return Kde2d(xs, ys, density, hx, hy, len(x), "cell_average", warnings)
+    interpolate = RegularGridInterpolator((fine_y, fine_x), grid)
     yy, xx = np.meshgrid(ys, xs, indexing="ij")
     density = interpolate(np.stack([yy.ravel(), xx.ravel()], axis=1)).reshape(len(ys), len(xs))
-    return Kde2d(xs=xs, ys=ys, density=density, bw_x=hx, bw_y=hy, n=len(x))
+    return Kde2d(xs, ys, density, hx, hy, len(x), "binned", warnings)
+
+
+def _cells_from_fine_2d(
+    fine: np.ndarray,
+    fine_x: np.ndarray,
+    fine_y: np.ndarray,
+    xs: np.ndarray,
+    ys: np.ndarray,
+    hx: float,
+    hy: float,
+) -> np.ndarray:
+    """Cell averages of a fine-grid density: a summed-area table, read at the cell corners."""
+    dx, dy = fine_x[1] - fine_x[0], fine_y[1] - fine_y[0]
+    # Trapezoid cumulative integral along each axis (row 0 / column 0 are zero).
+    along_x = np.concatenate(
+        [np.zeros((fine.shape[0], 1)), np.cumsum((fine[:, 1:] + fine[:, :-1]) / 2, axis=1)],
+        axis=1,
+    )
+    table = np.concatenate(
+        [np.zeros((1, fine.shape[1])), np.cumsum((along_x[1:] + along_x[:-1]) / 2, axis=0)],
+        axis=0,
+    ) * (dx * dy)
+    corners = RegularGridInterpolator((fine_y, fine_x), table)
+    ax, bx = _cells(xs, hx)
+    ay, by = _cells(ys, hy)
+    cx = np.clip(np.concatenate([ax, bx[-1:]]), fine_x[0], fine_x[-1])
+    cy = np.clip(np.concatenate([ay, by[-1:]]), fine_y[0], fine_y[-1])
+    yy, xx = np.meshgrid(cy, cx, indexing="ij")
+    s = corners(np.stack([yy.ravel(), xx.ravel()], axis=1)).reshape(len(cy), len(cx))
+    mass = s[1:, 1:] - s[:-1, 1:] - s[1:, :-1] + s[:-1, :-1]
+    area: np.ndarray = np.outer(by - ay, bx - ax)
+    density: np.ndarray = mass / area
+    return density
 
 
 def _cell_density_2d(

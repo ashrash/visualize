@@ -9,6 +9,8 @@ import pytest
 from sqlglot import exp
 
 from viz.contracts import ColumnSemantic
+from viz.engine import Engine, next_generation
+from viz.errors import QueryInterruptedError
 from viz.stats.errors import StatsInputError
 from viz.stats.relation import Relation, col
 
@@ -97,7 +99,9 @@ class _RecordingEngine:
             cur.close()
 
 
-@pytest.mark.parametrize(("generation", "expected_kwargs"), [(None, {}), (7, {"generation": 7})])
+@pytest.mark.parametrize(
+    ("generation", "expected_kwargs"), [(None, {"generation": None}), (7, {"generation": 7})]
+)
 def test_cursor_passes_key_and_generation(
     generation: int | None, expected_kwargs: dict[str, object]
 ) -> None:
@@ -114,3 +118,23 @@ def test_cursor_passes_key_and_generation(
     )
     assert rel.count() == 3
     assert engine.calls == [(("chart:1",), expected_kwargs)]
+
+
+def test_stale_generations_are_refused(engine: Engine) -> None:
+    def relation(generation: int) -> Relation:
+        return Relation(
+            engine=engine,
+            source=exp.Anonymous(this="range", expressions=[exp.Literal.number(3)]),
+            where=None,
+            columns={},
+            row_count=3,
+            version_key="r@1",
+            query_key="chart:gen",
+            generation=generation,
+        )
+
+    older, newer = next_generation(), next_generation()
+    assert relation(newer).count() == 3
+    assert relation(newer).count() == 3  # several queries of one request share a generation
+    with pytest.raises(QueryInterruptedError, match="superseded"):
+        relation(older).count()

@@ -314,11 +314,37 @@ def test_huge_values_are_rescaled(table_relation: Any) -> None:
     assert (v.min, v.max) == (values.min(), values.max())
     assert v.skewness == pytest.approx(sps.skew(scaled, bias=False), rel=1e-10)
     assert v.kurtosis == pytest.approx(sps.kurtosis(scaled, bias=False), rel=1e-10)
-    assert (
-        "'v': values are huge, so the moments were computed on rescaled values." in result.warnings
-    )
+    rescaled = "'{}': moments were computed on rescaled values (magnitudes beyond 1e+/-50)."
+    assert rescaled.format("v") in result.warnings
+    assert rescaled.format("k") not in result.warnings
     k = _one(result, "k")  # other fields are unaffected
     assert k.kurtosis == pytest.approx(sps.kurtosis(np.arange(6.0), bias=False), rel=1e-12)
+
+
+def test_groups_of_very_different_magnitudes(table_relation: Any) -> None:
+    big = np.array([1e200, 5e199, -3e199, 1e200, 3.0, 2e199])
+    small = np.array([1.0, 2.0, 3.0, 4.0])
+    rel = table_relation({"v": np.concatenate([big, small]), "g": ["a"] * 6 + ["b"] * 4})
+    result = describe(rel, _request(["v"], group_by=["g"]))
+    a, b = _one(result, "v", ["a"]), _one(result, "v", ["b"])
+    assert a.skewness == pytest.approx(sps.skew(big / 1e200, bias=False), rel=1e-9)
+    assert a.kurtosis == pytest.approx(sps.kurtosis(big / 1e200, bias=False), rel=1e-9)
+    assert a.variance is None  # ~1e399 doesn't fit a double
+    assert b.std == pytest.approx(small.std(ddof=1), rel=1e-12)
+    assert b.skewness == pytest.approx(sps.skew(small, bias=False), abs=1e-12)
+    assert b.kurtosis == pytest.approx(sps.kurtosis(small, bias=False), rel=1e-12)
+    assert not any("all values are equal" in w for w in result.warnings)
+    overall = _one(result, "v")
+    both = np.concatenate([big, small])
+    assert overall.skewness == pytest.approx(sps.skew(both / 1e200, bias=False), rel=1e-9)
+
+
+def test_tiny_values_are_rescaled(table_relation: Any) -> None:
+    values = np.array([1e-90, 5e-91, -3e-91, 1e-90, 2e-91])
+    v = _one(describe(table_relation({"v": values}), _request(["v"])), "v")
+    assert v.kurtosis == pytest.approx(sps.kurtosis(values * 1e90, bias=False), rel=1e-10)
+    assert v.skewness == pytest.approx(sps.skew(values * 1e90, bias=False), rel=1e-10)
+    assert v.std == pytest.approx(values.std(ddof=1), rel=1e-12)
 
 
 def test_values_at_the_top_of_the_double_range(table_relation: Any) -> None:

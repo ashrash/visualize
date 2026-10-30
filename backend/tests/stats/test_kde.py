@@ -105,8 +105,8 @@ def test_kde2d_matches_direct_sum() -> None:
     rng = np.random.default_rng(9)
     x = rng.normal(0, 1, 600)
     y = 0.5 * x + rng.normal(0, 0.5, 600)
-    result = kde2d(x, y, grid_size=(40, 30))
-    assert result.density.shape == (30, 40)
+    result = kde2d(x, y, grid_size=(120, 90))
+    assert result.density.shape == (90, 120) and result.method == "binned"
     xx, yy = np.meshgrid(result.xs, result.ys)
     direct = np.zeros_like(xx)
     for xi, yi in zip(x, y, strict=True):
@@ -137,7 +137,7 @@ def _exact_mass(x: np.ndarray, h: float, lo: float, hi: float) -> float:
     return float(np.mean(sps.norm.cdf((hi - x) / h) - sps.norm.cdf((lo - x) / h)))
 
 
-@pytest.mark.parametrize("sigma", [1.5, 3.0, 4.0])
+@pytest.mark.parametrize("sigma", [1.5, 2.0, 3.0, 4.0])
 def test_kde_mass_on_skewed_data(sigma: float) -> None:
     """Lognormal data: the range is up to ~1e6 bandwidths wide (the fine-grid cap binds)."""
     x = np.random.default_rng(13).lognormal(0.0, sigma, 100_000)
@@ -146,14 +146,40 @@ def test_kde_mass_on_skewed_data(sigma: float) -> None:
     curve = kde(x, grid=grid)
     mass = np.trapezoid(curve.density, grid)
     assert mass == pytest.approx(_exact_mass(x, h, grid[0], grid[-1]), abs=2e-3), sigma
+    # The default 512-point grid can't resolve the bandwidth: cell averages keep the mass.
     default = kde(x)
-    if sigma >= 3.0:
-        assert default.method == "cell_average" and default.warnings == [WIDE_RANGE_WARNING]
-        # Cell averages keep the mass even though 512 points can't resolve the bandwidth.
-        step = default.x[1] - default.x[0]
-        assert default.density.sum() * step == pytest.approx(1.0, abs=1e-3), sigma
-    else:
-        assert default.method == "binned" and default.warnings == []
+    assert default.method == "cell_average" and default.warnings == [WIDE_RANGE_WARNING]
+    step = default.x[1] - default.x[0]
+    assert default.density.sum() * step == pytest.approx(1.0, abs=1e-3), sigma
+    # The peak cell holds the mass the exact KDE puts there.
+    top = int(np.argmax(default.density))
+    lo, hi = default.x[top] - step / 2, default.x[top] + step / 2
+    assert default.density[top] * step == pytest.approx(_exact_mass(x, h, lo, hi), rel=1e-3)
+
+
+def test_shared_grid_uses_one_method_and_keeps_mass() -> None:
+    rng = np.random.default_rng(17)
+    values = np.concatenate([rng.lognormal(0.0, 2.0, 3000), rng.normal(5.0, 1.0, 3000)])
+    groups = ["lognormal"] * 3000 + ["normal"] * 3000
+    result = kde_by_group(values, groups)
+    assert {c.curve.method for c in result.curves} == {"cell_average"}
+    for c in result.curves:
+        step = c.curve.x[1] - c.curve.x[0]
+        assert c.curve.density.sum() * step == pytest.approx(1.0, abs=2e-3), c.key
+    fine = kde_by_group(rng.normal(size=4000), ["a"] * 2000 + ["b"] * 2000)
+    assert {c.curve.method for c in fine.curves} == {"binned"} and fine.warnings == []
+
+
+def test_duplicate_grid_points() -> None:
+    x = np.random.default_rng(18).lognormal(0.0, 3.0, 5000)
+    h = bandwidth(x)
+    points = np.array([1.0, 1.0, 2.0, 0.5, 2.0])
+    out = cell_density(x, points, h)
+    assert np.all(np.isfinite(out))
+    assert out[0] == out[1] and out[2] == out[4]
+    np.testing.assert_allclose(out[[3, 0, 2]], cell_density(x, np.array([0.5, 1.0, 2.0]), h))
+    curve = kde(x, grid=points)
+    assert np.all(np.isfinite(curve.density))
 
 
 def test_direct_and_cell_densities_are_exact() -> None:
