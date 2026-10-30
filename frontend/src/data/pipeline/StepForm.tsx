@@ -17,9 +17,8 @@ import {
   formatScalar,
   PREDICATE_OPS,
   type PredicateOp,
-  parseList,
-  parseScalar,
 } from "./predicates";
+import { ScalarInput } from "./ScalarInput";
 
 export interface FormContext {
   /** Columns visible to this step (after the steps above it). */
@@ -96,12 +95,12 @@ function PredicateRow({
       {predicate.op === "eq" ? (
         <Field label="Value">
           {(p) => (
-            <Input
-              {...p}
-              value={formatScalar(predicate.value)}
-              onChange={(e) =>
-                onChange({ ...predicate, value: parseScalar(e.target.value, column) })
-              }
+            <ScalarInput
+              id={p.id}
+              aria-describedby={p["aria-describedby"]}
+              column={column}
+              value={predicate.value}
+              onChange={(value) => onChange({ ...predicate, value })}
             />
           )}
         </Field>
@@ -109,12 +108,13 @@ function PredicateRow({
       {predicate.op === "in" || predicate.op === "not_in" ? (
         <Field label="Values" hint="Separate with commas">
           {(p) => (
-            <Input
-              {...p}
-              value={predicate.values.map(formatScalar).join(", ")}
-              onChange={(e) =>
-                onChange({ ...predicate, values: parseList(e.target.value, column) })
-              }
+            <ScalarInput
+              list
+              id={p.id}
+              aria-describedby={p["aria-describedby"]}
+              column={column}
+              value={predicate.values}
+              onChange={(values) => onChange({ ...predicate, values })}
             />
           )}
         </Field>
@@ -433,17 +433,13 @@ function FillMissingForm({ step, columns, onChange }: FormProps<"fill_missing">)
           {fill.strategy === "value" ? (
             <Field label="Value">
               {(p) => (
-                <Input
-                  {...p}
-                  value={formatScalar(fill.value)}
-                  onChange={(e) =>
-                    onChange({
-                      ...step,
-                      fills: replaceAt(step.fills, i, {
-                        ...fill,
-                        value: parseScalar(e.target.value, colOf(columns, fill.field)),
-                      }),
-                    })
+                <ScalarInput
+                  id={p.id}
+                  aria-describedby={p["aria-describedby"]}
+                  column={colOf(columns, fill.field)}
+                  value={fill.value ?? null}
+                  onChange={(value) =>
+                    onChange({ ...step, fills: replaceAt(step.fills, i, { ...fill, value }) })
                   }
                 />
               )}

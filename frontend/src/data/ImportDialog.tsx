@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { featureOn } from "../api/features";
 import type { Dataset, ImportOptions } from "../api/types";
 import { Button } from "../components/ui/button";
@@ -8,8 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { toast } from "../components/ui/toast";
 import { useImportFromPath, useUploadDataset } from "./hooks";
 import { ImportOptionsForm } from "./ImportOptionsForm";
-import { ImportWizardDialog } from "./ImportWizard";
 import { describeImportError, hasOptions } from "./requests";
+
+// The wizard pulls in the grid and Arrow reader; load it only when it is used.
+const ImportWizardDialog = lazy(() =>
+  import("./ImportWizard").then((m) => ({ default: m.ImportWizardDialog })),
+);
 
 function LegacyImportDialog({
   open,
@@ -27,6 +31,7 @@ function LegacyImportDialog({
   const [path, setPath] = useState("");
   const [name, setName] = useState("");
   const [options, setOptions] = useState<ImportOptions>({});
+  const controller = useRef<AbortController | null>(null);
   const busy = upload.isPending || importPath.isPending;
   const error = tab === "upload" ? upload.error : importPath.error;
 
@@ -40,14 +45,26 @@ function LegacyImportDialog({
   };
 
   const submit = () => {
-    if (tab === "upload" && file) upload.mutate({ file, options, name }, { onSuccess: done });
+    controller.current = new AbortController();
+    const signal = controller.current.signal;
+    if (tab === "upload" && file)
+      upload.mutate({ file, options, name, signal }, { onSuccess: done });
     else if (tab === "path" && path.trim())
-      importPath.mutate({ path, options, name }, { onSuccess: done });
+      importPath.mutate({ path, options, name, signal }, { onSuccess: done });
+  };
+
+  /** Close the dialog, abandoning any import in flight and clearing the previous result. */
+  const close = () => {
+    controller.current?.abort();
+    controller.current = null;
+    upload.reset();
+    importPath.reset();
+    onOpenChange(false);
   };
   const ready = tab === "upload" ? file !== null : path.trim() !== "";
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (busy ? undefined : onOpenChange(next))}>
+    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
       <DialogContent
         title="Import data"
         description="CSV, TSV, JSON or Excel. Settings are detected automatically; override them below if needed."
@@ -109,9 +126,7 @@ function LegacyImportDialog({
             </p>
           ) : null}
           <div className="flex justify-end gap-2">
-            <Button onClick={() => onOpenChange(false)} disabled={busy}>
-              Cancel
-            </Button>
+            <Button onClick={close}>{busy ? "Cancel import" : "Cancel"}</Button>
             <Button type="submit" variant="primary" disabled={busy || !ready}>
               {busy ? "Importing…" : "Import"}
             </Button>
@@ -133,9 +148,10 @@ interface ImportDialogProps {
 /** The staged wizard (preview, jobs) when data-core is merged; the one-shot form until then. */
 
 export function ImportDialog(props: ImportDialogProps) {
-  return featureOn("stagedImport") ? (
-    <ImportWizardDialog {...props} />
-  ) : (
-    <LegacyImportDialog {...props} />
+  if (!featureOn("stagedImport")) return <LegacyImportDialog {...props} />;
+  return (
+    <Suspense fallback={null}>
+      <ImportWizardDialog {...props} />
+    </Suspense>
   );
 }

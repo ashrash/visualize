@@ -22,8 +22,17 @@ export function attachToProject(dataset: Dataset): void {
 export function useUploadDataset() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, options, name }: { file: File; options: ImportOptions; name?: string }) =>
-      uploadDataset(buildUploadForm(file, options, name)),
+    mutationFn: ({
+      file,
+      options,
+      name,
+      signal,
+    }: {
+      file: File;
+      options: ImportOptions;
+      name?: string;
+      signal?: AbortSignal;
+    }) => uploadDataset(buildUploadForm(file, options, name), signal),
     onSuccess: (dataset) => {
       attachToProject(dataset);
       return queryClient.invalidateQueries({ queryKey: ["datasets"] });
@@ -39,7 +48,8 @@ export function useImportFromPath() {
       options: ImportOptions;
       name?: string;
       kind?: SourceKind;
-    }) => importFromPath(buildImportPathBody(input.path, input.options, input)),
+      signal?: AbortSignal;
+    }) => importFromPath(buildImportPathBody(input.path, input.options, input), input.signal),
     onSuccess: (dataset) => {
       attachToProject(dataset);
       return queryClient.invalidateQueries({ queryKey: ["datasets"] });

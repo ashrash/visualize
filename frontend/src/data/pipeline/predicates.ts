@@ -26,9 +26,38 @@ export function createPredicate(op: PredicateOp, field: string): Predicate {
   }
 }
 
-/** Switch operator, keeping the field. Values that don't carry over are reset. */
+/**
+ * Switch operator, keeping the field and any values that still make sense: eq <-> in/not_in
+ * keep the value(s), range <-> between_dates keep the bounds.
+ */
 export function changePredicateOp(predicate: Predicate, op: PredicateOp): Predicate {
-  return predicate.op === op ? predicate : createPredicate(op, predicate.field);
+  if (predicate.op === op) return predicate;
+  const next = createPredicate(op, predicate.field);
+  const values: Scalar[] | null =
+    predicate.op === "in" || predicate.op === "not_in"
+      ? predicate.values
+      : predicate.op === "eq" && predicate.value !== null
+        ? [predicate.value]
+        : null;
+  if (values && (next.op === "in" || next.op === "not_in")) return { ...next, values };
+  if (values && next.op === "eq") return { ...next, value: values[0] ?? null };
+  const isRange = predicate.op === "range" || predicate.op === "between_dates";
+  if (isRange && (next.op === "range" || next.op === "between_dates")) {
+    const bound = (v: string | number | null | undefined) =>
+      v === null || v === undefined || v === ""
+        ? null
+        : next.op === "range"
+          ? Number(v)
+          : String(v);
+    const min = bound(predicate.min);
+    const max = bound(predicate.max);
+    return {
+      ...next,
+      min: typeof min === "number" && Number.isNaN(min) ? null : min,
+      max: typeof max === "number" && Number.isNaN(max) ? null : max,
+    };
+  }
+  return next;
 }
 
 /** Text typed into a value box -> JSON scalar; numbers for numeric columns, else strings. */
@@ -48,6 +77,8 @@ export function parseList(text: string, column?: Column): (string | number | boo
     .map((part) => parseScalar(part, column))
     .filter((v) => v !== null);
 }
+
+export type Scalar = string | number | boolean | null;
 
 export function formatScalar(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);

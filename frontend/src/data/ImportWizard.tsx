@@ -1,14 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { ColumnarResult } from "../api/arrow";
-import {
-  cancelJob,
-  deleteStaged,
-  getDataset,
-  previewImport,
-  stageFile,
-  startImport,
-} from "../api/datasets";
+import { previewImport } from "../api/datasetRows";
+import { cancelJob, deleteStaged, getDataset, stageFile, startImport } from "../api/datasets";
 import { isTerminal } from "../api/jobs";
 import type { Dataset, ImportPreviewMeta } from "../api/types";
 import { Button } from "../components/ui/button";
@@ -261,6 +255,7 @@ export function ImportWizardDialog({
   const storeJobs = useJobsStore((s) => s.jobs);
   const stagedRef = useRef<string | null>(null);
   const finished = useRef(false);
+  const startCtl = useRef<AbortController | null>(null);
 
   // Upload to staging as soon as a file is chosen. The File itself is not serialisable state,
   // so it is parked in a ref and the machine only learns its name.
@@ -310,6 +305,7 @@ export function ImportWizardDialog({
 
   const close = (next: boolean) => {
     if (!next) {
+      startCtl.current?.abort(); // abandon import requests that have not returned a job yet
       // Free the staged upload if it was never imported.
       if (stagedRef.current && state.phase !== "done" && state.phase !== "importing") {
         void deleteStaged(stagedRef.current).catch(() => undefined);
@@ -323,11 +319,13 @@ export function ImportWizardDialog({
 
   const start = async () => {
     if (state.phase !== "configure") return;
+    startCtl.current = new AbortController();
+    const { signal } = startCtl.current;
     try {
       const jobs = await Promise.all(
         buildImportRequests(state).map(async ({ sheet, request }) => ({
           sheet,
-          job: await startImport(request),
+          job: await startImport(request, signal),
         })),
       );
       dispatch({ type: "importStarted", jobs });

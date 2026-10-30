@@ -1,3 +1,5 @@
+// biome-ignore-all lint/a11y/useSemanticElements: explicit ARIA roles on divs, because display:grid on real table elements drops their native roles in WebKit.
+// biome-ignore-all lint/a11y/useFocusableInteractive: the rows and headers are structural; interaction happens in the buttons inside them.
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   columnResizingFeature,
@@ -6,19 +8,20 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ArrowUpDown, Filter } from "lucide-react";
-import { type ReactNode, useMemo, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnarResult } from "../api/arrow";
 import { formatValue } from "../api/format";
 import type { Column, Predicate, SortKey } from "../api/types";
+import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
 import { ColumnFilter, type LoadValues } from "./ColumnFilter";
 import type { FilterMap } from "./filters";
 import { filterList } from "./filters";
+import { scrollTopForRow, scrollWindow } from "./scrollMap";
 
 // Header model, column sizing and resizing come from TanStack Table; the body is windowed by
-// TanStack Virtual with 200-row pages fetched as they scroll into view, so the table itself never
+// `scrollWindow` (scaled scrolling for 10M rows) with 200-row pages fetched as they scroll into view, so the table itself never
 // holds the data (`data` is empty). The parent decides where pages come from (dataset rows,
 // pipeline preview, an import preview), so this one grid serves all three.
 
@@ -101,6 +104,8 @@ export function GridView({
   toolbar,
 }: GridViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [scroll, setScroll] = useState({ top: 0, viewport: 600 });
+  const [goTo, setGoTo] = useState("");
   const visible = useMemo(() => columns.filter((c) => !hidden.has(c.name)), [columns, hidden]);
   const filterPredicates = useMemo(() => filterList(filters), [filters]);
 
@@ -124,15 +129,34 @@ export function GridView({
   const gridColumns = `${INDEX_WIDTH}px ${widths.map((w) => `${w}px`).join(" ")}`;
   const width = INDEX_WIDTH + widths.reduce((a, b) => a + b, 0);
 
-  const virtualizer = useVirtualizer({
-    count: totalRows,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 20,
+  // Track the scroll position and viewport height. The body is windowed by `scrollWindow`, which
+  // also maps the scrollbar onto the row index when the dataset is too tall for one element.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const read = () => setScroll({ top: el.scrollTop, viewport: el.clientHeight || 600 });
+    read();
+    el.addEventListener("scroll", read, { passive: true });
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", read);
+      observer.disconnect();
+    };
+  }, []);
+
+  const win = scrollWindow({
+    scrollTop: scroll.top,
+    viewportPx: scroll.viewport,
+    totalRows,
+    rowHeight: ROW_HEIGHT,
   });
-  const items = virtualizer.getVirtualItems();
-  const firstPage = Math.floor((items[0]?.index ?? 0) / PAGE_SIZE);
-  const lastPage = Math.floor((items.at(-1)?.index ?? 0) / PAGE_SIZE);
+  const rowIndexes = Array.from(
+    { length: Math.max(win.end - win.start, 0) },
+    (_, k) => win.start + k,
+  );
+  const firstPage = Math.floor(win.start / PAGE_SIZE);
+  const lastPage = Math.floor(Math.max(win.end - 1, 0) / PAGE_SIZE);
   const pages = Array.from({ length: lastPage - firstPage + 1 }, (_, i) => firstPage + i);
 
   const results = useQueries({
@@ -146,12 +170,24 @@ export function GridView({
   });
   const pageData = new Map(pages.map((page, i) => [page, results[i]?.data]));
   const failed = results.find((r) => r.isError);
+  const loading = results.some((r) => r.isPending && r.fetchStatus !== "idle");
 
   const toggleSort = (field: string) => {
     const existing = sort.find((s) => s.field === field);
     if (!existing) onSortChange?.([{ field, descending: false, nullsLast: true }]);
     else if (!existing.descending) onSortChange?.([{ ...existing, descending: true }]);
     else onSortChange?.([]);
+  };
+
+  const jumpToRow = () => {
+    const row = Number(goTo);
+    const el = scrollRef.current;
+    if (!el || !Number.isFinite(row)) return;
+    el.scrollTop = scrollTopForRow(row - 1, {
+      viewportPx: el.clientHeight,
+      totalRows,
+      rowHeight: ROW_HEIGHT,
+    });
   };
 
   return (
@@ -169,21 +205,37 @@ export function GridView({
         aria-label={`${label} data grid`}
         className="min-h-0 flex-1 overflow-auto rounded-md border border-line"
       >
-        <table
-          className="grid font-mono text-xs"
+        {/* Divs with explicit roles: display:grid on real table elements loses their roles in WebKit. */}
+        <div
+          role="table"
+          className="font-mono text-xs"
           style={{ width }}
           aria-label={`${label}: ${totalRows.toLocaleString()} rows`}
           aria-rowcount={totalRows + 1}
+          aria-colcount={visible.length + 1}
+          aria-busy={loading}
         >
-          <thead className="sticky top-0 z-10 grid border-b border-line bg-surface">
-            <tr className="grid" style={{ gridTemplateColumns: gridColumns }} aria-rowindex={1}>
-              <th className="px-2 py-1.5 text-right font-normal text-muted">#</th>
+          <div
+            role="rowgroup"
+            className="sticky top-0 z-10 border-b border-line bg-surface"
+            style={{ width }}
+          >
+            <div
+              role="row"
+              className="grid"
+              style={{ gridTemplateColumns: gridColumns }}
+              aria-rowindex={1}
+            >
+              <div role="columnheader" className="px-2 py-1.5 text-right font-normal text-muted">
+                #
+              </div>
               {headers.map((header) => {
                 const column = visible.find((c) => c.name === header.column.id);
                 const active = sort.find((s) => s.field === header.column.id);
                 const SortIcon = active ? (active.descending ? ArrowDown : ArrowUp) : ArrowUpDown;
                 return (
-                  <th
+                  <div
+                    role="columnheader"
                     key={header.id}
                     className="relative flex min-w-0 items-center gap-1 px-2 py-1 text-left font-sans"
                     aria-sort={
@@ -224,7 +276,6 @@ export function GridView({
                         <Filter size={13} aria-hidden="true" />
                       </HeaderButton>
                     )}
-                    {/* biome-ignore lint/a11y/useSemanticElements: a focusable separator is the ARIA window-splitter pattern. */}
                     <div
                       role="separator"
                       aria-orientation="vertical"
@@ -245,51 +296,76 @@ export function GridView({
                       }}
                       className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize select-none hover:bg-accent focus-visible:bg-accent"
                     />
-                  </th>
+                  </div>
                 );
               })}
-            </tr>
-          </thead>
-          <tbody className="relative grid" style={{ height: virtualizer.getTotalSize() }}>
-            {items.map((item) => {
-              const page = pageData.get(Math.floor(item.index / PAGE_SIZE));
-              const offset = item.index % PAGE_SIZE;
+            </div>
+          </div>
+          <div role="rowgroup" className="relative" style={{ height: win.totalPx }}>
+            {rowIndexes.map((index) => {
+              const page = pageData.get(Math.floor(index / PAGE_SIZE));
+              const offset = index % PAGE_SIZE;
               return (
-                <tr
-                  key={item.key}
-                  aria-rowindex={item.index + 2}
+                <div
+                  role="row"
+                  key={index}
+                  aria-rowindex={index + 2}
                   className="absolute left-0 grid border-b border-line/50"
                   style={{
                     gridTemplateColumns: gridColumns,
                     height: ROW_HEIGHT,
-                    transform: `translateY(${item.start}px)`,
+                    transform: `translateY(${win.startTop + (index - win.start) * ROW_HEIGHT}px)`,
                     width,
                   }}
                 >
-                  <td className="px-2 py-1.5 text-right text-muted">
-                    {(item.index + 1).toLocaleString()}
-                  </td>
+                  <div role="cell" className="px-2 py-1.5 text-right text-muted">
+                    {(index + 1).toLocaleString()}
+                  </div>
                   {visible.map((column) => {
                     const kind = page?.kinds[column.name];
                     const value = page?.columns[column.name]?.[offset];
                     const isNull = page !== undefined && (value === null || value === undefined);
                     const text = page && !isNull ? formatValue(value, kind) : "";
                     return (
-                      <td
+                      <div
+                        role="cell"
                         key={column.name}
                         className={`truncate px-2 py-1.5 ${kind === "number" ? "text-right" : ""}`}
                         title={text}
                       >
                         {isNull ? <span className="text-muted">null</span> : text}
-                      </td>
+                      </div>
                     );
                   })}
-                </tr>
+                </div>
               );
             })}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </section>
+      {win.scaled || totalRows > 1000 ? (
+        <form
+          className="flex items-center gap-1 text-xs text-muted"
+          onSubmit={(event) => {
+            event.preventDefault();
+            jumpToRow();
+          }}
+        >
+          <label htmlFor={`${gridKey}-goto`}>Go to row</label>
+          <input
+            id={`${gridKey}-goto`}
+            type="number"
+            min={1}
+            max={totalRows}
+            value={goTo}
+            onChange={(event) => setGoTo(event.target.value)}
+            className="h-6 w-28 rounded border border-line bg-bg px-1 text-fg"
+          />
+          <Button size="sm" type="submit" disabled={goTo === ""}>
+            Go
+          </Button>
+        </form>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,5 @@
-import { type ColumnarResult, fetchArrow } from "./arrow";
 import { ApiError, api, detailOf, unwrap } from "./client";
-import { deleteRequest, enc, getJson, patchJson, postArrow, postForm, postJson } from "./http";
+import { deleteRequest, enc, getJson, patchJson, postForm, postJson } from "./http";
 import type {
   ColumnValues,
   ColumnValuesRequest,
@@ -8,13 +7,9 @@ import type {
   DatasetUpdate,
   ExportRequest,
   ImportFromPathRequest,
-  ImportPreviewMeta,
-  ImportPreviewRequest,
   ImportRequest,
   Job,
   RefreshRequest,
-  RowsPageMeta,
-  RowsRequest,
   StagedFile,
 } from "./types";
 
@@ -47,15 +42,6 @@ export async function uploadDataset(form: FormData, signal?: AbortSignal): Promi
   return body as Dataset;
 }
 
-/** Legacy GET rows: offset and limit only. `query` comes from `buildRowsQuery`. */
-export function fetchRowsPage(
-  datasetId: string,
-  query: URLSearchParams,
-  signal?: AbortSignal,
-): Promise<ColumnarResult<RowsPageMeta>> {
-  return fetchArrow<RowsPageMeta>(`/api/datasets/${enc(datasetId)}/rows?${query}`, { signal });
-}
-
 // ---- data-core: staged import, preview, jobs (flags `stagedImport`, `serverRows`, ...) ----
 
 /** POST /api/datasets/staged (multipart `file`) -> StagedFile */
@@ -68,10 +54,6 @@ export function stageFile(file: File, signal?: AbortSignal): Promise<StagedFile>
 /** DELETE /api/datasets/staged/{stagedId} */
 export const deleteStaged = (stagedId: string, signal?: AbortSignal) =>
   deleteRequest(`/api/datasets/staged/${enc(stagedId)}`, signal);
-
-/** POST /api/datasets/preview -> Arrow, meta = ImportPreviewMeta */
-export const previewImport = (body: ImportPreviewRequest, signal?: AbortSignal) =>
-  postArrow<ImportPreviewRequest, ImportPreviewMeta>("/api/datasets/preview", body, signal);
 
 /** POST /api/datasets/import -> 202 Job */
 export const startImport = (body: ImportRequest, signal?: AbortSignal) =>
@@ -88,10 +70,6 @@ export const renameDataset = (id: string, name: string, signal?: AbortSignal) =>
 /** DELETE /api/datasets/{id}?force= -> 204; 409 when a project uses it and force is false. */
 export const deleteDataset = (id: string, force: boolean, signal?: AbortSignal) =>
   deleteRequest(`/api/datasets/${enc(id)}?force=${force}`, signal);
-
-/** POST /api/datasets/{id}/rows -> Arrow, meta = RowsPageMeta (totalRows is after filters). */
-export const postRows = (id: string, body: RowsRequest, signal?: AbortSignal) =>
-  postArrow<RowsRequest, RowsPageMeta>(`/api/datasets/${enc(id)}/rows`, body, signal);
 
 /** POST /api/datasets/{id}/values -> distinct values with counts, for filter checklists. */
 export const fetchColumnValues = (id: string, body: ColumnValuesRequest, signal?: AbortSignal) =>

@@ -8,7 +8,11 @@ import {
 } from "../api/projects";
 import { autosaver } from "../state/autosave";
 import { useProjectStore } from "../state/projectStore";
-import { openProject, rememberProject } from "./useProjectSession";
+import { openProject, rememberProject, UnsavedChangesError } from "./useProjectSession";
+
+async function requireSaved(): Promise<void> {
+  if (!(await autosaver.flush(true))) throw new UnsavedChangesError();
+}
 
 // Actions behind the project menu (flag `platformProjects`). Each one saves pending edits first
 // so the server's copy is current, then replaces the open project with the server's answer.
@@ -21,14 +25,14 @@ function current() {
 }
 
 export async function renameCurrentProject(name: string): Promise<void> {
-  await autosaver.flush(true);
+  await requireSaved();
   const { project, revision } = current();
   const saved = await renameProject(project.id, name.trim(), revision);
   useProjectStore.getState().load(saved);
 }
 
 export async function duplicateCurrentProject(name: string | null): Promise<void> {
-  await autosaver.flush(true);
+  await requireSaved();
   const copy = await duplicateProject(current().project.id, name?.trim() || null);
   useProjectStore.getState().load(copy);
   rememberProject(copy.id);
@@ -41,7 +45,7 @@ export async function deleteCurrentProject(): Promise<void> {
   await deleteProject(project.id);
   const rest = (await listProjects()).filter((p) => p.id !== project.id);
   const next = rest[0];
-  if (next) await openProject(next.id);
+  if (next) await openProject(next.id, { discard: true });
   else {
     const fresh = await createProject("My project");
     useProjectStore.getState().load(fresh);
@@ -51,7 +55,7 @@ export async function deleteCurrentProject(): Promise<void> {
 }
 
 export async function restoreProjectVersion(versionId: number): Promise<void> {
-  await autosaver.flush(true);
+  await requireSaved();
   const { project, revision } = current();
   const restored = await restoreVersion(project.id, versionId, revision);
   useProjectStore.getState().load(restored);

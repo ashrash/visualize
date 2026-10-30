@@ -1,5 +1,4 @@
-import type { ColumnarResult } from "./arrow";
-import { getJson, postArrow, postJson } from "./http";
+import { getJson, postJson } from "./http";
 import type {
   FormulaCheckRequest,
   FormulaCheckResult,
@@ -8,8 +7,6 @@ import type {
   MaterializeResult,
   PipelineInspectRequest,
   PipelineInspectResult,
-  PipelinePreviewMeta,
-  PipelinePreviewRequest,
 } from "./types";
 
 // transform endpoints (flag `pipelineApi`). All are stateless: the pipeline and every project
@@ -18,13 +15,6 @@ import type {
 /** POST /api/pipelines/inspect */
 export const inspectPipeline = (body: PipelineInspectRequest, signal?: AbortSignal) =>
   postJson<PipelineInspectRequest, PipelineInspectResult>("/api/pipelines/inspect", body, signal);
-
-/** POST /api/pipelines/preview -> Arrow, meta = PipelinePreviewMeta */
-export const previewPipeline = (
-  body: PipelinePreviewRequest,
-  signal?: AbortSignal,
-): Promise<ColumnarResult<PipelinePreviewMeta>> =>
-  postArrow<PipelinePreviewRequest, PipelinePreviewMeta>("/api/pipelines/preview", body, signal);
 
 /** POST /api/pipelines/formula/check */
 export const checkFormula = (body: FormulaCheckRequest, signal?: AbortSignal) =>

@@ -18,6 +18,10 @@ interface ProjectState {
   markSaved: (saved: Project, sent?: Project) => void;
 }
 
+/** Edits closer together than this are one undo step (typing is not 100 steps). */
+export const COALESCE_MS = 800;
+let lastEdit = 0;
+
 export const useProjectStore = create<ProjectState>()(
   temporal(
     (set) => ({
@@ -27,19 +31,31 @@ export const useProjectStore = create<ProjectState>()(
       load: (project) => {
         set({ project, revision: project.revision, dirty: false });
         useProjectStore.temporal.getState().clear();
+        lastEdit = 0;
       },
       update: (edit) =>
         set((state) => (state.project ? { project: edit(state.project), dirty: true } : state)),
       markSaved: (saved, sent) =>
-        set((state) => ({
-          revision: saved.revision,
-          dirty: sent !== undefined && state.project !== sent,
-        })),
+        set((state) =>
+          // A late response for a project that is no longer open must not touch this one.
+          state.project?.id !== saved.id
+            ? state
+            : { revision: saved.revision, dirty: sent !== undefined && state.project !== sent },
+        ),
     }),
     {
       partialize: (state) => ({ project: state.project }),
       // Only a changed project is an undo step (dirty/revision updates are not).
       equality: (past, current) => past.project === current.project,
+      handleSet: (handleSet) => (past, replace, current, delta) => {
+        const changed = (past as Partial<ProjectState>).project !== current.project;
+        if (!changed) return;
+        const now = Date.now();
+        const quiet = now - lastEdit >= COALESCE_MS;
+        lastEdit = now; // a continuous burst stays one step until a pause
+        // zundo types this callback as setState; at runtime it takes (past, replace, current, delta).
+        if (quiet) (handleSet as (...args: unknown[]) => void)(past, replace, current, delta);
+      },
       limit: 100,
     },
   ),
@@ -47,11 +63,13 @@ export const useProjectStore = create<ProjectState>()(
 
 // Undo/redo mark the project dirty first so subscribers (autosave) see a dirty change.
 export function undo(): void {
+  if (useProjectStore.temporal.getState().pastStates.length === 0) return;
   useProjectStore.setState({ dirty: true });
   useProjectStore.temporal.getState().undo();
 }
 
 export function redo(): void {
+  if (useProjectStore.temporal.getState().futureStates.length === 0) return;
   useProjectStore.setState({ dirty: true });
   useProjectStore.temporal.getState().redo();
 }

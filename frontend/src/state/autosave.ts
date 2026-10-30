@@ -8,13 +8,24 @@ export type SaveStatus = "saved" | "saving" | "unsaved" | "error" | "conflict";
 interface SaveState {
   status: SaveStatus;
   message: string | null;
+  /** The conflict dialog; opens on a conflict and can be reopened from the indicator. */
+  conflictOpen: boolean;
   setStatus: (status: SaveStatus, message?: string | null) => void;
+  setConflictOpen: (open: boolean) => void;
 }
 
 export const useSaveState = create<SaveState>((set) => ({
   status: "saved",
   message: null,
-  setStatus: (status, message = null) => set({ status, message }),
+  conflictOpen: false,
+  setStatus: (status, message = null) =>
+    set((state) => ({
+      status,
+      message,
+      conflictOpen:
+        status === "conflict" ? (state.status === "conflict" ? state.conflictOpen : true) : false,
+    })),
+  setConflictOpen: (conflictOpen) => set({ conflictOpen }),
 }));
 
 export const AUTOSAVE_DELAY_MS = 2000;
@@ -38,6 +49,7 @@ export function createAutosaver({
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inflight: Promise<void> | undefined;
   let paused = false;
+  let failed = false;
 
   const clear = () => {
     if (timer !== undefined) clearTimeout(timer);
@@ -46,6 +58,7 @@ export function createAutosaver({
 
   async function run(autosave: boolean): Promise<void> {
     setStatus("saving");
+    failed = false;
     try {
       await save(autosave);
       inflight = undefined; // before rescheduling, so schedule() sees no save in flight
@@ -57,6 +70,7 @@ export function createAutosaver({
       }
     } catch (error) {
       inflight = undefined;
+      failed = true;
       if (error instanceof ApiError && error.status === 409) {
         paused = true;
         setStatus("conflict", error.message);
@@ -78,13 +92,24 @@ export function createAutosaver({
     timer = setTimeout(() => void flush(true), delayMs);
   }
 
-  async function flush(autosave = false): Promise<void> {
-    clear();
-    if (inflight) return inflight;
-    // A manual save of a clean project is allowed: it records a snapshot.
-    if (autosave && !isDirty()) return;
-    inflight = run(autosave);
-    return inflight;
+  /**
+   * Save now and report whether the project ended up clean. Waits for any save in flight and
+   * keeps saving while edits made meanwhile remain; a manual save always runs (it records a
+   * snapshot) even right after an autosave. Returns false after a failure or conflict.
+   */
+  async function flush(autosave = false): Promise<boolean> {
+    for (;;) {
+      clear();
+      while (inflight) await inflight;
+      clear();
+      if (paused) return !isDirty();
+      if (autosave && !isDirty()) return !failed;
+      inflight = run(autosave);
+      await inflight;
+      if (failed || paused) return false;
+      if (!isDirty()) return true;
+      autosave = true; // edits arrived during the save: finish them as autosaves
+    }
   }
 
   return {
@@ -93,6 +118,7 @@ export function createAutosaver({
     /** Resume after the user reloaded the project from the server. */
     resume: () => {
       paused = false;
+      failed = false;
       clear();
       setStatus("saved");
     },

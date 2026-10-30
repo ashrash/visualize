@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { fetchColumnValues, fetchRowsPage, postRows } from "../api/datasets";
+import { fetchRowsPage, postRows } from "../api/datasetRows";
+import { fetchColumnValues } from "../api/datasets";
 import { featureOn } from "../api/features";
 import type { Dataset, ExportRequest, RowsPageMeta, SortKey } from "../api/types";
 import { Button } from "../components/ui/button";

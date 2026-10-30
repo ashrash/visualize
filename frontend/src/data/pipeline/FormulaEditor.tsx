@@ -12,6 +12,7 @@ export function FormulaEditor(props: FormulaEditorProps) {
         <Input
           id={props.id}
           aria-label={props.label}
+          aria-describedby={props.describedBy}
           value={props.value}
           onChange={(event) => props.onChange(event.target.value)}
           placeholder={props.placeholder}

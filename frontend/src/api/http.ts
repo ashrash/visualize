@@ -1,4 +1,3 @@
-import { type ColumnarResult, fetchArrow } from "./arrow";
 import { ApiError, detailOf } from "./client";
 
 /**
@@ -16,7 +15,7 @@ async function parse<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-const jsonInit = (method: string, body: unknown, signal?: AbortSignal): RequestInit => ({
+export const jsonInit = (method: string, body: unknown, signal?: AbortSignal): RequestInit => ({
   method,
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
@@ -53,15 +52,6 @@ export async function postForm<Res>(
   signal?: AbortSignal,
 ): Promise<Res> {
   return parse<Res>(await fetch(path, { method: "POST", body: form, signal }));
-}
-
-/** POST a JSON body and read an Arrow IPC response (its JSON metadata arrives as `meta`). */
-export function postArrow<Req, Meta>(
-  path: string,
-  body: Req,
-  signal?: AbortSignal,
-): Promise<ColumnarResult<Meta>> {
-  return fetchArrow<Meta>(path, jsonInit("POST", body, signal));
 }
 
 export const enc = encodeURIComponent;

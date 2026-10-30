@@ -14,11 +14,18 @@ const DELIMITERS = [
   { value: ";", label: "Semicolon (;)" },
   { value: "|", label: "Pipe (|)" },
 ];
+// Values are Python codec names: data-core reads utf-8, utf-16 and latin-1 natively and
+// transcodes the rest to UTF-8 while copying.
 const ENCODINGS = [
   { value: "utf-8", label: "UTF-8" },
   { value: "utf-16", label: "UTF-16" },
-  { value: "latin-1", label: "Latin-1" },
+  { value: "latin-1", label: "Latin-1 (ISO 8859-1)" },
   { value: "cp1252", label: "Windows-1252" },
+  { value: "cp1251", label: "Windows-1251 (Cyrillic)" },
+  { value: "iso8859-15", label: "Latin-9 (ISO 8859-15)" },
+  { value: "shift_jis", label: "Shift JIS" },
+  { value: "gb18030", label: "GB 18030 (Chinese)" },
+  { value: "euc_kr", label: "EUC-KR" },
 ];
 
 const auto = (detected?: string) => ({

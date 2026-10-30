@@ -1,5 +1,5 @@
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
-import type { Column } from "../../api/types";
+import type { Column, FormulaFunction } from "../../api/types";
 
 /** DuckDB identifiers that need no quoting. */
 const PLAIN_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -19,12 +19,24 @@ export function columnCompletions(columns: Column[]): Completion[] {
   }));
 }
 
+export function functionCompletions(functions: FormulaFunction[]): Completion[] {
+  return functions.map((f) => ({
+    label: f.name,
+    apply: `${f.name}(`,
+    type: "function",
+    detail: f.signature,
+    info: f.description,
+  }));
+}
+
 /**
  * Completion source offering the dataset's columns. Matches a word or the start of a quoted
  * identifier, so `"Unit pr` also completes.
  */
-export function columnCompletionSource(columns: Column[]) {
-  const options = columnCompletions(columns);
+export function columnCompletionSource(columns: Column[], functions: FormulaFunction[] = []) {
+  const columnOptions = columnCompletions(columns);
+  const functionOptions = functionCompletions(functions);
+  const options = [...columnOptions, ...functionOptions];
   return (context: CompletionContext): CompletionResult | null => {
     const quoted = context.matchBefore(/"[^"]*/);
     const word = quoted ?? context.matchBefore(/[A-Za-z_][A-Za-z0-9_]*/);
@@ -32,7 +44,8 @@ export function columnCompletionSource(columns: Column[]) {
     const from = word?.from ?? context.pos;
     return {
       from,
-      options: quoted ? options.map((o) => ({ ...o, label: `"${o.label}` })) : options,
+      // Inside an open quote only column names make sense.
+      options: quoted ? columnOptions.map((o) => ({ ...o, label: `"${o.label}` })) : options,
       validFor: quoted ? /^"[^"]*$/ : /^[A-Za-z0-9_]*$/,
     };
   };
