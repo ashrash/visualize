@@ -309,6 +309,7 @@ function RenameForm({ step, columns, onChange }: FormProps<"rename">) {
             label="Column"
             columns={columns}
             value={from}
+            exclude={entries.map(([name]) => name).filter((_, j) => j !== i)}
             onChange={(next) => write(replaceAt(entries, i, [next, to]))}
           />
           <Field label="New name">
@@ -600,7 +601,13 @@ function GroupAggregateForm({ step, columns, onChange }: FormProps<"group_aggreg
                     {...p}
                     value={agg.fn}
                     options={AGG_OPTIONS}
-                    onChange={(e) => set({ fn: e.target.value as AggFn })}
+                    onChange={(e) => {
+                      const fn = e.target.value as AggFn;
+                      // count works on rows; every other function needs a column.
+                      const needsField = fn !== "count" && agg.field === null;
+                      const pick = columns.find((c) => c.semantic === "quantitative") ?? columns[0];
+                      set({ fn, field: needsField ? (pick?.name ?? null) : agg.field });
+                    }}
                   />
                 )}
               </Field>

@@ -22,12 +22,15 @@ export function ColumnSelect({
   value,
   onChange,
   empty,
+  exclude,
 }: {
   label: string;
   columns: Column[];
   value: string;
   onChange: (value: string) => void;
   empty?: string;
+  /** Columns already taken elsewhere (e.g. other renames of the same column). */
+  exclude?: string[];
 }) {
   return (
     <Field label={label}>
@@ -35,7 +38,15 @@ export function ColumnSelect({
         <Select
           {...p}
           value={value}
-          options={withCurrent(columnOptions(columns, empty), value)}
+          options={withCurrent(
+            columnOptions(
+              exclude
+                ? columns.filter((c) => c.name === value || !exclude.includes(c.name))
+                : columns,
+              empty,
+            ),
+            value,
+          )}
           onChange={(e) => onChange(e.target.value)}
         />
       )}

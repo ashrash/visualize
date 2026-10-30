@@ -51,8 +51,8 @@ describe("PipelineEditor", () => {
         dispatch={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText("Move step 1 up")).toHaveProperty("disabled", true);
-    expect(screen.getByLabelText("Move step 2 down")).toHaveProperty("disabled", true);
+    expect(screen.getByLabelText("Move step 1 up").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByLabelText("Move step 2 down").getAttribute("aria-disabled")).toBe("true");
   });
 
   it("edits the selected step through its form", () => {

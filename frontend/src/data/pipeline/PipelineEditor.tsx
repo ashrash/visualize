@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Column, Dataset, Pipeline } from "../../api/types";
 import { Button } from "../../components/ui/button";
 import {
@@ -25,6 +25,30 @@ export function PipelineEditor({
 }) {
   const steps = pipeline.steps ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  // Where focus should land after the next render (moving or deleting re-renders the list).
+  const pendingFocus = useRef<{ id: string; act: string } | { index: number } | null>(null);
+
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (!target) return;
+    pendingFocus.current = null;
+    const items = Array.from(
+      listRef.current?.querySelectorAll<HTMLElement>("[data-step-id]") ?? [],
+    );
+    if ("index" in target) {
+      // After a delete: the step now at that position, else the one before, else the add button.
+      const next = items[Math.min(target.index, items.length - 1)];
+      (next?.querySelector<HTMLElement>("[data-act=select]") ?? addRef.current)?.focus();
+      return;
+    }
+    const item = items.find((el) => el.dataset.stepId === target.id);
+    (
+      item?.querySelector<HTMLElement>(`[data-act=${target.act}]`) ??
+      item?.querySelector<HTMLElement>("[data-act=select]")
+    )?.focus();
+  });
   const selected = steps.find((s) => s.id === selectedId) ?? steps.at(-1);
 
   const add = (op: (typeof STEP_OPS)[number]) => {
@@ -45,7 +69,7 @@ export function PipelineEditor({
           </h3>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="primary">
+              <Button ref={addRef} size="sm" variant="primary">
                 <Plus size={14} aria-hidden="true" />
                 Add step
               </Button>
@@ -65,12 +89,13 @@ export function PipelineEditor({
         {steps.length === 0 ? (
           <p className="text-sm text-muted">No steps yet. Add one to transform the data.</p>
         ) : (
-          <ol className="flex flex-col gap-1 overflow-y-auto">
+          <ol ref={listRef} className="flex flex-col gap-1 overflow-y-auto">
             {steps.map((step, index) => {
               const active = step.id === selected?.id;
               return (
                 <li
                   key={step.id}
+                  data-step-id={step.id}
                   className={`flex items-center gap-1 rounded-md border p-1 ${active ? "border-accent bg-surface-2" : "border-line"}`}
                 >
                   <input
@@ -82,6 +107,7 @@ export function PipelineEditor({
                   />
                   <button
                     type="button"
+                    data-act="select"
                     aria-current={active ? "step" : undefined}
                     onClick={() => setSelectedId(step.id)}
                     className={`min-w-0 flex-1 rounded px-1 text-left ${step.enabled ? "" : "opacity-50"}`}
@@ -94,26 +120,40 @@ export function PipelineEditor({
                   <Button
                     size="icon"
                     variant="ghost"
+                    data-act="up"
                     aria-label={`Move step ${index + 1} up`}
-                    disabled={index === 0}
-                    onClick={() => dispatch({ type: "move", id: step.id, to: index - 1 })}
+                    aria-disabled={index === 0}
+                    onClick={() => {
+                      if (index === 0) return;
+                      pendingFocus.current = { id: step.id, act: "up" };
+                      dispatch({ type: "move", id: step.id, to: index - 1 });
+                    }}
                   >
                     <ArrowUp size={14} aria-hidden="true" />
                   </Button>
                   <Button
                     size="icon"
                     variant="ghost"
+                    data-act="down"
                     aria-label={`Move step ${index + 1} down`}
-                    disabled={index === steps.length - 1}
-                    onClick={() => dispatch({ type: "move", id: step.id, to: index + 1 })}
+                    aria-disabled={index === steps.length - 1}
+                    onClick={() => {
+                      if (index === steps.length - 1) return;
+                      pendingFocus.current = { id: step.id, act: "down" };
+                      dispatch({ type: "move", id: step.id, to: index + 1 });
+                    }}
                   >
                     <ArrowDown size={14} aria-hidden="true" />
                   </Button>
                   <Button
                     size="icon"
                     variant="ghost"
+                    data-act="delete"
                     aria-label={`Delete step ${index + 1}`}
-                    onClick={() => dispatch({ type: "remove", id: step.id })}
+                    onClick={() => {
+                      pendingFocus.current = { index };
+                      dispatch({ type: "remove", id: step.id });
+                    }}
                   >
                     <Trash2 size={14} aria-hidden="true" />
                   </Button>

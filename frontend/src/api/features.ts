@@ -25,7 +25,7 @@ const DEFAULTS: Features = {
   serverRows: false,
   exports: false,
   pipelineApi: false,
-  platformProjects: false,
+  platformProjects: true,
 };
 
 function overrides(): Partial<Features> {

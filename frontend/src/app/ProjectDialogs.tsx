@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import { Field, Input } from "../components/ui/input";
 import { toast } from "../components/ui/toast";
+import { Tooltip } from "../components/ui/tooltip";
 import { useProjectStore } from "../state/projectStore";
 import {
   deleteCurrentProject,
@@ -15,6 +16,7 @@ import {
 } from "./projectActions";
 import { openProject, useInvalidateProjects } from "./useProjectSession";
 
+const unavailable = "Needs project version support (not available yet)";
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Something went wrong";
 
@@ -290,14 +292,16 @@ export function VersionsDialog({
                   {new Date(v.createdAt).toLocaleString()}
                   {v.label ? ` · ${v.label}` : ""}
                 </span>
-                <Button
-                  size="sm"
-                  disabled={!platform}
-                  aria-expanded={previewId === v.id}
-                  onClick={() => setPreviewId(previewId === v.id ? null : v.id)}
-                >
-                  Preview
-                </Button>
+                <Tooltip content={platform ? "Show what this version contains" : unavailable}>
+                  <Button
+                    size="sm"
+                    aria-disabled={!platform}
+                    aria-expanded={previewId === v.id}
+                    onClick={() => platform && setPreviewId(previewId === v.id ? null : v.id)}
+                  >
+                    Preview
+                  </Button>
+                </Tooltip>
                 {confirmId === v.id ? (
                   <Button
                     size="sm"
@@ -316,9 +320,15 @@ export function VersionsDialog({
                     Confirm restore
                   </Button>
                 ) : (
-                  <Button size="sm" disabled={!platform} onClick={() => setConfirmId(v.id)}>
-                    Restore
-                  </Button>
+                  <Tooltip content={platform ? "Restore this version" : unavailable}>
+                    <Button
+                      size="sm"
+                      aria-disabled={!platform}
+                      onClick={() => platform && setConfirmId(v.id)}
+                    >
+                      Restore
+                    </Button>
+                  </Tooltip>
                 )}
               </div>
               {previewId === v.id && id ? <VersionPreview projectId={id} version={v} /> : null}
