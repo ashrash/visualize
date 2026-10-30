@@ -40,8 +40,13 @@ items in their final report and the lead updates this file. Status values: `todo
 - 2026-10-30: stats Wave 1 merged (bd5649f): shared kernels (sampling incl. stratified with group
   caps, quantiles, ECDF, histogram bins, Q-Q, KDE 1-D/2-D, OLS/LOWESS fits, bootstrap) and
   `/api/stats/describe`. Reviewer: approve with nits after one fix round. Describe (10M rows, 10
-  fields): 1.6 s, with modes 2.6 s; grouped with modes 7-8 s (Wave 4 perf item). Follow-ups in
-  progress: stratified n_missing, KDE method on coarse grids, mixed-magnitude rescale.
+  fields): 1.6 s, with modes 2.6 s; grouped with modes 7-8 s (Wave 4 perf item). Follow-up
+  merged (492f0a7): stratified n_missing, KDE cell averages on coarse grids, per-group rescale.
+- 2026-10-30: ui-data follow-up merged (a63e9b4): staged import wizard (upload/path, live preview,
+  per-sheet import jobs with SSE progress and cancel), server rows (sort/filter/search), CSV/Excel
+  export jobs, rename/refresh/delete with 409-then-force. Data-core flags removed; `pipelineApi`
+  still off. Reviewer: approve with nits. Follow-ups in progress: mount the jobs indicator (per-tab
+  job ownership), single staging for multi-sheet imports, wizard focus and tab stops.
 
 ## MVP.md
 
@@ -49,11 +54,11 @@ items in their final report and the lead updates this file. Status values: `todo
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| CSV / TSV import | data-core · ui-data | partial | Backend done: staged upload/path, preview, options, import job. UI: staged wizard behind `stagedImport` until ui-data flips it. |
-| Excel import | data-core · ui-data | partial | Backend done (fastexcel, sheets, header row, skip rows). UI: sheet selection behind `stagedImport`. |
+| CSV / TSV import | data-core · ui-data | partial | Backend done: staged upload/path, preview, options, import job. UI: staged wizard with live preview and per-sheet jobs. Remaining: jobs indicator, focus nits. |
+| Excel import | data-core · ui-data | partial | Backend done (fastexcel, sheets, header row, skip rows). UI: sheet selection, one dataset per sheet. Remaining: stage once for all sheets. |
 | JSON import | data-core · ui-data | partial | Backend done (array/NDJSON, nested-JSON hint). Not exercised in the UI yet. |
-| Data preview | data-core · ui-data | partial | Backend done: rows with sort/filter/search, values, materialized views for deep pages. UI behind `serverRows` until ui-data flips it. |
-| Data refresh | data-core · ui-data | partial | Backend done (new version, cache invalidation). UI: dataset menu refresh behind flag. |
+| Data preview | data-core · ui-data | partial | Backend done: rows with sort/filter/search, values, materialized views for deep pages. UI: server sort/filter/search, filtered counts, columns menu. |
+| Data refresh | data-core · ui-data | partial | Backend done (new version, cache invalidation). UI: dataset menu refresh (verified against the backend). |
 | Large dataset handling | data-core · ui-data | partial | Jobs with SSE + cancel, background DuckDB instance, import from path. 10M rows: import 5.0 s, pages ~20 ms. First sorted page 190 ms cold (budget 150 ms). |
 
 ### 2. Data Preparation & Transformation
@@ -179,8 +184,8 @@ Tracked per plot under Plots.md below.
 | Export as SVG | ui-charts | done | Offscreen SVG render. |
 | Export as PDF | ui-charts | done | Vector via lazy jsPDF + svg2pdf; raster fallback for non-Latin-1 text. |
 | Export as JPEG | ui-charts | done |  |
-| Export as CSV | data-core · ui-data | partial | Backend done (DuckDB COPY, job + download). Pipeline sources wait on transform. UI behind `exports`. |
-| Export underlying data to Excel | data-core · ui-data | partial | Backend done (streamed xlsxwriter, row-limit warning). UI behind `exports`. |
+| Export as CSV | data-core · ui-data | partial | Backend done (DuckDB COPY, job + download). Pipeline sources wait on transform. UI: export job + download. |
+| Export underlying data to Excel | data-core · ui-data | partial | Backend done (streamed xlsxwriter, row-limit warning). UI: export job + download; warning toast must persist. |
 | Copy chart to clipboard | ui-charts | done | ClipboardItem PNG. |
 | Share dashboard through URL | platform · ui-dashboard | todo |  |
 | Embed visualizations | platform · ui-dashboard | todo |  |

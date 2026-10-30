@@ -34,6 +34,18 @@ def safe_file_name(name: str) -> str:
     return cleaned or "upload"
 
 
+def _replace_with_retry(src: Path, dst: Path, retry_s: float) -> None:
+    deadline = time.monotonic() + retry_s
+    while True:
+        try:
+            os.replace(src, dst)
+            return
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+
+
 class LocalStorage:
     def __init__(self, root: Path) -> None:
         self.root = root.expanduser().resolve()
@@ -162,11 +174,13 @@ class LocalStorage:
             raise ValueError(f"invalid dataset id {dataset_id!r}")
         return [self.datasets_dir / dataset_id, self.sources_dir / dataset_id]
 
-    def trash_dataset(self, dataset_id: str) -> None:
+    def trash_dataset(self, dataset_id: str, *, retry_s: float = 1.0) -> None:
         """Move a dataset's Parquet versions and source copies to the trash, all or nothing.
 
-        On Windows a directory with an open file can't be renamed; then nothing is moved and
-        `ConflictError` names the folder, so the caller can keep the catalog row."""
+        On Windows a directory with an open file can't be renamed. Each rename is retried for
+        `retry_s` (a query reading the file usually finishes by then); if it still fails,
+        nothing is moved and `ConflictError` names the folder, so the caller can keep the
+        catalog row."""
         self.trash_dir.mkdir(parents=True, exist_ok=True)
         moved: list[tuple[Path, Path]] = []
         for directory in self._dataset_dirs(dataset_id):
@@ -174,13 +188,13 @@ class LocalStorage:
                 continue
             target = self.trash_dir / f"{directory.parent.name}-{dataset_id}-{uuid.uuid4().hex[:8]}"
             try:
-                os.replace(directory, target)
+                _replace_with_retry(directory, target, retry_s)
             except OSError as exc:
                 for original, trashed in reversed(moved):
                     os.replace(trashed, original)
                 raise ConflictError(
-                    f"some files of this dataset are in use ({self.rel(directory)}); close "
-                    "anything reading them and try again"
+                    f"this dataset's files are still in use ({self.rel(directory)}), possibly "
+                    "by a query or grid that is reading it; try again in a moment"
                 ) from exc
             moved.append((directory, target))
         self.empty_trash()

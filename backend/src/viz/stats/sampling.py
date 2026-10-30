@@ -107,6 +107,8 @@ def reservoir_sample(
         rel.select(alias(count_star(), "total"), alias(eligible_count, "eligible"))
     )[0]
     eligible_rel = rel.narrow(condition) if condition is not None else rel
+    # Missing = null/non-finite rows, counted before any groups are dropped.
+    n_missing = int(total - eligible)
     warnings: list[str] = []
     cap_per_group: int | None = None
     if by:
@@ -131,7 +133,7 @@ def reservoir_sample(
         table=table,
         n=table.num_rows,
         n_total=int(eligible),
-        n_missing=int(total - eligible),
+        n_missing=n_missing,
         sampled=table.num_rows < eligible,
         cap_per_group=cap_per_group,
         warnings=warnings,

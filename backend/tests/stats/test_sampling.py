@@ -94,6 +94,18 @@ def test_stratified_without_capping_is_not_sampled(make_relation: Any) -> None:
     assert sample.n == 30 and not sample.sampled
 
 
+def test_dropped_groups_are_not_counted_as_missing(make_relation: Any) -> None:
+    rel = make_relation(
+        "SELECT CASE WHEN range % 10 = 0 THEN NULL ELSE range::DOUBLE END AS x, "
+        "CASE WHEN range < 9000 THEN 'big' WHEN range < 9900 THEN 'mid' ELSE 'small' END AS g "
+        "FROM range(10000)"
+    )
+    sample = reservoir_sample(rel, ["x"], cap=100, by=["g"], max_groups=2)
+    assert sample.n_missing == 1000  # every 10th row is NULL, whichever group it's in
+    assert sample.n_total == 9900 - 990  # eligible rows of the kept groups (big, mid)
+    assert set(sample.values("g")) == {"big", "mid"}
+
+
 def test_stratified_sampling_caps_groups_and_total_rows(make_relation: Any) -> None:
     # 40 groups; group i has 100 + i rows.
     rel = make_relation(

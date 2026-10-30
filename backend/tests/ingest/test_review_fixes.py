@@ -137,10 +137,10 @@ def test_failed_import_keeps_the_upload_and_removes_files(client: TestClient, st
     storage = client.app.state.storage  # type: ignore[attr-defined]
     assert storage.find_staged(staged["stagedId"]) is not None  # can retry with new options
     assert _orphans(client) == []
-    # Retrying with working options succeeds and then removes the staged upload.
+    # Retrying with working options succeeds; the upload stays until deleted or expired.
     job = import_job(client, stagedId=staged["stagedId"])
     assert job.status == "succeeded"
-    assert storage.find_staged(staged["stagedId"]) is None
+    assert storage.find_staged(staged["stagedId"]) is not None
 
 
 def test_failed_refresh_leaves_only_the_old_version(
@@ -262,7 +262,10 @@ def test_late_non_utf8_byte(client: TestClient, stage: Stage) -> None:
         "/api/datasets/preview",
         json={"stagedId": staged["stagedId"], "options": {"encoding": "utf-8"}},
     )
-    assert response.status_code == 422 and "windows-1252" in response.json()["detail"]
+    # An explicit utf-8 reads the file with the bad byte replaced (and says so).
+    assert response.status_code == 200
+    _, meta = read_arrow(response.content)
+    assert any("replaced" in w for w in meta["warnings"])
     job = import_job(client, stagedId=staged["stagedId"])
     assert job.status == "succeeded" and job.result.warnings
     table, meta = rows(client, job.result.dataset_id, offset=20000)

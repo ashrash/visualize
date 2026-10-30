@@ -6,7 +6,7 @@ Public API (data-core; see docs/plans/data-core.md):
 - `Engine.background_cursor(key)`: job work (no slot, no timeout).
 - `Engine.interrupt(key)`, `Engine.cancel(key, generation)` (conditional),
   `Engine.cancel_owner(owner)`, `Engine.progress(key)`, `next_generation()`.
-- `request_scope()`: per-request owner + arrival ticket (implicit generation).
+- `request_scope()` / `RequestScopeMiddleware`: per-request owner + arrival ticket.
 - `Engine.cache` (`ResultCache.get_or_compute`) and `Engine.pool` (`ProcessPool.run`).
 - `run_cancellable(request, engine, key, fn)`: interrupt on client disconnect.
 """
@@ -20,8 +20,10 @@ from viz.engine.duckdb_engine import (
     current_owner,
     new_owner,
     next_generation,
+    observe_generation,
     request_scope,
 )
+from viz.engine.middleware import RequestScopeMiddleware
 from viz.engine.pool import ProcessPool
 
 __all__ = [
@@ -29,12 +31,14 @@ __all__ = [
     "Engine",
     "ProcessPool",
     "RequestOwner",
+    "RequestScopeMiddleware",
     "ResultCache",
     "current_owner",
     "ipc_bytes",
     "js_friendly",
     "new_owner",
     "next_generation",
+    "observe_generation",
     "request_scope",
     "run_cancellable",
     "version_token",
