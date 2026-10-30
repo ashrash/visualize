@@ -1,0 +1,80 @@
+# Lead handoff: Wave 1 (2026-10-30)
+
+Read this together with CLAUDE.md and docs/STATUS.md to resume as lead. Wave 1 is not closed yet.
+
+## Merged on main (all checks green at fafdfb1 / aa9123e)
+- **Merged:** platform (+ follow-up), stats (+ follow-up), data-core (Wave 1 + follow-up round 2), ui-charts (+ follow-up), ui-data (Wave 1, staged wizard, jobs indicator, single staging), transform (4 review rounds; B4 closed).
+- **Last checks on main:**
+  - pytest: 696 passed, 6 skipped
+  - ruff, mypy: clean
+  - vitest: 329 passed
+  - biome, build: clean
+- **Lead commits:**
+  - RequestScopeMiddleware wired in `main.py`.
+  - psutil dev dependency.
+  - Playwright + axe devDeps and the `e2e` script.
+  - CLAUDE.md:
+    - describe budget applies ungrouped;
+    - formula growth rule plus accepted local risks (wide inputs, row multiplication via joins/unpivot/union, per-vector peak).
+
+## In flight: branches not yet merged
+Each builder commits on `worktree-agent-<id>` (worktree in `.claude/worktrees/agent-<id>`). The agent ids below can be continued with SendMessage only from the session that spawned them. From a new session, read the branch and its last commit, or start a fresh agent with the brief in `.claude/agents/<name>.md`.
+
+| Agent | Branch id | State | Next action for lead |
+|---|---|---|---|
+| data-core | af46922c273834353 | **Round 4 running**: keep `.txt` → CSV; remember the staged `?kind=` (sidecar); staged-refresh kind fallback with a synchronous 415; the expiry sweep skips in-use uploads, marked at submit; no view builds while a job runs (the ~610 ms during-import stall); suppress ConflictError in cleanup paths; MAX_INVALID_SHARE 15%; multi-line prose warning. Round 3 (8fe68c7, 9b7f5a9) is approved conditionally and **not merged**. | When it reports: send it to the data-core reviewer (re-review at xhigh). Then merge, run gen:api (`POST /datasets/staged` gains `?kind=`), and brief ui-data on whether a kind picker is needed. |
+| ui-data | a55c14286e9e8cf92 | a6ce1ff (close-while-starting race, axe fixes, save-status role) done but not reviewed. **Now running:** wiring the pipeline editor to the real transform API and removing the `pipelineApi` flag, with a browser check of join + pivot + chart from a pipeline (Wave 1 exit criterion). | When it reports: review a6ce1ff + the pipeline commit together (ui-data reviewer, high), then merge. |
+| stats | ad503027e5fcb4228 | **Running:** swap `stats/source.py` to `viz.transform.resolve_source` (pipeline describe), with 422 propagation. | Small: the lead self-reviews (or reviewer if large), then merge. |
+| qa | a635bea14bed4f784 | **Running review fixes:** B1 setup-uv tag `@v10` → `@v10.3.3`; S1 known-failure ceilings (1.5×); S3 during-import rounds cover the whole import; S4 global cache-bust counter + assert `meta.cached` false; S5 empty table crash; S6 project picker exact match; S7 axe baseline; nits N1–N11. | When it reports: re-review (qa reviewer), then merge. Then have qa turn on the pipeline e2e fixmes after ui-data's pipeline wiring lands. |
+
+Reviewers used, reachable by SendMessage only from the original session:
+
+| Reviewer | Used for | Effort |
+|---|---|---|
+| abca67b9ee33b0f0d | data-core | xhigh |
+| a033632c39102ffaf | transform | xhigh |
+| a0320ecd9fb0ae74c | stats | |
+| aac5e9ca17aae55f9 | ui-data | |
+| a1b08f9ea2b5f4aeb | qa | |
+
+Their repro scripts live in the session scratchpad: `dc_review/`, `transform-review/`, `review-stats/`, `uidata-review4/`, `qa-review/`. These are gone in a new session; reviewers can regenerate them.
+
+## Wave 1 exit check (CLAUDE.md §10): remaining
+1. **A 10M-row CSV imports within budget.** Done: 5–8 s against a 60 s budget.
+2. **Pipelines with join and pivot work.** The backend is done; the UI is waiting on ui-data's pipeline wiring, verified in the browser.
+3. **Basic charts work with full config, themes and PNG/SVG export.** Done (ui-charts; the lead smoke test passed).
+4. **Save, autosave and undo work.** Done (platform + ui-data; qa e2e covers it).
+5. After all merges, run:
+   - the full test suite;
+   - `npm --prefix frontend run e2e` (and `E2E_LARGE=1`);
+   - `uv run python scripts/check_contract_drift.py`;
+   - `uv run python scripts/bench.py` (full 10M, quiet machine);
+   - a lead browser smoke test (import → grid → pipeline join + pivot → chart → save → reload → dark).
+
+   Then update STATUS.md and the CLAUDE.md status line, and report to the user.
+
+## Known items carried to Wave 4 (tracked in STATUS)
+- First sorted page cold: ~190–340 ms. Cold deep pages before their view is built: 1.8–2.7 s sorted, 0.6–0.7 s filtered range.
+- Free-text search: ~620–660 ms (accent folding deferred).
+- Raw-timestamp M4 line: ~250 ms quiet, over 300 ms under load.
+- Grouped describe with modes: 6.5–8 s. Ungrouped describe: 2.6–3.0 s, right at the budget.
+
+## Before Wave 2
+- Add `echarts-custom-series` (frontend dependency; check its bundle cost).
+- Add the `OverlayResult.group` contract (additive).
+- Notes for the plot agents:
+  - 2-D KDE returns cell averages on coarse grids;
+  - categorical modes come back as text;
+  - the engine runs in UTC;
+  - chart-data column naming is in docs/plans/transform.md.
+
+## Housekeeping and open questions for the user
+- 24 stale `viz-e2e-*` folders (about 3 MB each) in `%LOCALAPPDATA%\Temp` from early qa runs are safe to delete. qa wasn't permitted to delete them.
+- Unanswered from earlier sessions:
+  - record the "web-first, optional desktop shell later" decision?
+  - add a localhost Host-header/token check?
+
+## Environment notes
+- uv isn't on the bash PATH. Use `export PATH="/c/Users/Ashwin/AppData/Local/Microsoft/WinGet/Packages/astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe:$PATH"`.
+- Use `uv run python`, not `python`.
+- Write multi-line Python to files, not heredocs.
