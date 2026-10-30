@@ -9,7 +9,7 @@ import { Dialog, DialogContent } from "../components/ui/dialog";
 import { Field, Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "../components/ui/toast";
-import { useJobsStore } from "../state/jobs";
+import { markLocalJob, useJobsStore } from "../state/jobs";
 import { GridView } from "./GridView";
 import { ImportOptionsForm } from "./ImportOptionsForm";
 import {
@@ -336,7 +336,10 @@ export function ImportWizardDialog({
       const started = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
       const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
       // Follow every job that did start, even if a sibling request failed.
-      for (const { job } of started) useJobsStore.getState().track(job);
+      for (const { job } of started) {
+        markLocalJob(job.id);
+        useJobsStore.getState().track(job);
+      }
       if (started.length === 0) {
         dispatch({ type: "importFailedToStart", message: describeImportError(failures[0]) });
         return;

@@ -86,4 +86,34 @@ describe("postArrowOrJson", () => {
     expect(isAbortError(error)).toBe(true);
     expect(error).not.toBeInstanceOf(ApiError);
   });
+
+  it("wraps an undecodable body (HTML proxy page, empty 204) as ApiError with the status", async () => {
+    stub(
+      async () =>
+        new Response("<html>bad gateway</html>", { headers: { "Content-Type": "text/html" } }),
+    );
+    await expect(postArrowOrJson("/x", {})).rejects.toMatchObject({
+      name: "ApiError",
+      status: 200,
+    });
+    stub(async () => new Response("not json", { headers: { "Content-Type": "application/json" } }));
+    await expect(postArrowOrJson("/x", {})).rejects.toBeInstanceOf(ApiError);
+    stub(async () => new Response(null, { status: 204 }));
+    await expect(postArrowOrJson("/x", {})).rejects.toMatchObject({ status: 204 });
+  });
+
+  it("rethrows an abort that happens while reading the body", async () => {
+    const controller = new AbortController();
+    stub(async () => {
+      const response = new Response("{}", { status: 500 });
+      vi.spyOn(response, "json").mockImplementation(async () => {
+        controller.abort();
+        throw new Error("body read failed");
+      });
+      return response;
+    });
+    const error = await postArrowOrJson("/x", {}, controller.signal).catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect(isAbortError(error, controller.signal)).toBe(true);
+  });
 });

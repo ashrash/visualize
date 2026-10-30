@@ -179,13 +179,23 @@ export function ProjectMenu() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             disabled={!platform || !project}
-            onSelect={() => void runGuarded(() => downloadProjectExport(false), "Couldn't export")}
+            onSelect={() =>
+              void runGuarded(
+                (discard) => downloadProjectExport(false, { discard }),
+                "Couldn't export",
+              )
+            }
           >
             Export .vizproj{soon}
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={!platform || !project}
-            onSelect={() => void runGuarded(() => downloadProjectExport(true), "Couldn't export")}
+            onSelect={() =>
+              void runGuarded(
+                (discard) => downloadProjectExport(true, { discard }),
+                "Couldn't export",
+              )
+            }
           >
             Export with data{soon}
           </DropdownMenuItem>

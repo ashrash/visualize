@@ -4,7 +4,7 @@ import { followJob, isTerminal } from "../api/jobs";
 import type { Job } from "../api/types";
 import { queryClient } from "../app/queryClient";
 import { toast } from "../components/ui/toast";
-import { attachToProject } from "./projectStore";
+import { attachToProject, useProjectStore } from "./projectStore";
 
 interface JobsState {
   jobs: Record<string, Job>;
@@ -22,6 +22,13 @@ interface JobsState {
 }
 
 const settled = new Set<string>();
+/** Jobs this tab started, with the project that was open at the time. */
+const startedHere = new Map<string, string | undefined>();
+
+/** Call right after this tab starts an import: only such jobs may attach to a project. */
+export function markLocalJob(jobId: string): void {
+  startedHere.set(jobId, useProjectStore.getState().project?.id);
+}
 
 /**
  * What happens when any import or refresh job finishes, wherever it was started from and whether
@@ -32,10 +39,18 @@ async function settleDataJob(job: Job): Promise<void> {
   const id = job.result?.datasetId;
   if (!id) return;
   try {
-    if (job.kind === "import") attachToProject({ id });
     await queryClient.invalidateQueries({ queryKey: ["datasets"] });
-    // Loading it also warms the cache for the view that is about to show it.
-    await getDataset(id);
+    const dataset = await getDataset(id);
+    if (job.kind === "import") {
+      // Only imports this tab started, from the project still open, join that project. Imports
+      // started in another tab (or before switching projects) just land in the catalog.
+      const owner = startedHere.get(job.id);
+      if (owner !== undefined && owner === useProjectStore.getState().project?.id) {
+        attachToProject({ id });
+      } else {
+        toast(`Imported "${dataset.name}" into the catalog`);
+      }
+    }
   } catch (error) {
     toast("Couldn't load the imported dataset", {
       variant: "error",

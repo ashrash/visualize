@@ -76,6 +76,14 @@ async function lostConnection(entry: Entry): Promise<void> {
       const job = (await response.json()) as Job;
       for (const l of listeners) l.onJob(job);
       if (isTerminal(job.status)) return;
+      // Still running: the stream just dropped. Reconnect rather than calling the job lost.
+      if (listeners.length > 0 && !entries.has(entry.jobId)) {
+        const again: Entry = { ...entry, listeners: new Set(listeners), source: null, last: job };
+        entries.set(entry.jobId, again);
+        if (open < MAX_STREAMS) connect(again);
+        else waiting.push(again);
+        return;
+      }
     }
   } catch {
     // fall through to the error below
