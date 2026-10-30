@@ -76,7 +76,7 @@ items in their final report and the lead updates this file. Status values: `todo
 | JSON import | data-core · ui-data | partial | Backend done (array/NDJSON, nested-JSON hint). Not exercised in the UI yet. |
 | Data preview | data-core · ui-data | partial | Backend done: rows with sort/filter/search, values, materialized views for deep pages. UI: server sort/filter/search, filtered counts, columns menu. |
 | Data refresh | data-core · ui-data | partial | Backend done (new version, cache invalidation). UI: dataset menu refresh (verified against the backend). |
-| Large dataset handling | data-core · ui-data | partial | Jobs with SSE + cancel, background DuckDB instance, import from path. 10M rows: import 5.0 s, pages ~20 ms. First sorted page 190 ms cold (budget 150 ms). |
+| Large dataset handling | data-core · ui-data | partial | Jobs with SSE + cancel, background DuckDB instance, import from path. 10M rows: import 5.0 s, pages ~20 ms. First sorted page ~190-340 ms cold (budget 150 ms). Cold deep pages before their view is built: ~1.8-2.7 s sorted, ~0.6-0.7 s filtered range (Wave 4). Free-text search ~620-660 ms (Wave 4 search pass). |
 
 ### 2. Data Preparation & Transformation
 
