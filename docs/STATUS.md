@@ -191,6 +191,41 @@ tracked below for Wave 4, not blockers.
   registry key, which doesn't change when only `params.level`/`resolution` change, so switching a
   choropleth's resolution leaves the chart blank — tracked as a `TODO(ui-charts)` follow-up.
   pytest 746 passed/6 skipped, ruff/mypy clean, vitest 363 passed/1 skipped, biome/build clean.
+- 2026-10-31: `plots-multivariate-econometric` merged (Plots.md §6 + §8, all 17): radar, parallel
+  coordinates, PCA biplot, factor loadings, cluster, dendrogram, Andrews curves (§6); Kaplan-Meier,
+  forest, ROC, precision-recall, Lorenz, quantile, marginal effects, coefficient, IRF, event study
+  (§8). The agent did a real browser-based visual check (headless Chromium, light/dark) and fixed
+  several rendering bugs itself before review — the only Wave 2 plot agent to do so without being
+  asked. Extensive known-answer tests, independently re-verified by the reviewer: PCA vs
+  sklearn/R prcomp, Kaplan-Meier vs a hand product-limit+Greenwood implementation on Freireich,
+  NIST Longley to 1.4e-11, k-means on iris matching the documented Lloyd optimum, ROC/DeLong SE,
+  Spector logit, a hand-computed BCG meta-analysis forest plot, event-study vs full-dummy OLS to
+  3e-14, IRF vs statsmodels VAR (identical). Review (xhigh, "numerical correctness is the main
+  requirement" per the agent's own brief) found the stored-XSS tooltip pattern (now seen in
+  3 branches this wave) plus 4 should-fix items: Kaplan-Meier's automatic event-coding could
+  silently invert the survival curve for R-style 1/2-coded status data (reproduced: 1=censored/
+  2=dead data fell to S=0 instead of staying at 0.667); factor analysis accepted statistically
+  unidentified models ((p-k)² < p+k) with no warning; factor analysis ran inline instead of
+  through the engine's process pool, ~5s on Heywood cases; the dendrogram's cophenetic-correlation
+  step undid its own O(n²) memory isolation by running back in the API process. All fixed and
+  independently re-verified against the exact original failing reproductions. Three real bugs in
+  already-merged ui-charts code were found, fully diagnosed, and correctly left unfixed (tracked
+  below as follow-ups). pytest 825 passed/6 skipped, vitest 418 passed/1 skipped, biome/build
+  clean.
+
+### ui-charts follow-ups found by plots-multivariate-econometric (not yet fixed)
+- `applyStyle`'s y-axis title gap sizes from the formatted data maximum, not the tick labels — an
+  unrounded value (e.g. 1607.42, 44.53) pushes the title off the left edge. Seen on the cluster
+  elbow view and the quantile plot.
+- `applyStyle` drops array data items whose first entry is <=0 on a log x-axis, assuming element 0
+  is always x — breaks error bars on a category-row layout (worked around locally by wrapping rows
+  as `{value}`, but the filter itself needs fixing for anyone else who hits it).
+- "View as table" shows raw JSON for StatResult-based plots instead of a real table — an
+  accessibility gap; a per-plot table hook would help.
+- Also from `plots-geo`: `ChartView` keys map-readiness on a plot's registry key, which doesn't
+  change when only `params.level`/`resolution` change, so switching a choropleth's map resolution
+  leaves the chart blank after the new map loads. Needs readiness keyed on the prepare inputs
+  (e.g. a `preparedFor: {key, token}` bumped on every resolve), not the registry key.
 
 ## MVP.md
 
@@ -397,28 +432,28 @@ Tracked per plot under Plots.md below.
 | 5 | Sunburst Chart | `sunburst` | plots-composition-specialized | todo |
 | 5 | Mosaic Plot | `mosaic` | plots-composition-specialized | todo |
 | 5 | Marimekko Chart | `marimekko` | plots-composition-specialized | todo |
-| 6 | Radar Chart | `radar` | plots-multivariate-econometric | todo |
-| 6 | Parallel Coordinates Plot | `parallel_coordinates` | plots-multivariate-econometric | todo |
-| 6 | PCA Biplot | `pca_biplot` | plots-multivariate-econometric | todo |
-| 6 | Factor Loading Plot | `factor_loading` | plots-multivariate-econometric | todo |
-| 6 | Cluster Plot | `cluster` | plots-multivariate-econometric | todo |
-| 6 | Dendrogram | `dendrogram` | plots-multivariate-econometric | todo |
-| 6 | Andrews Curves | `andrews_curves` | plots-multivariate-econometric | todo |
+| 6 | Radar Chart | `radar` | plots-multivariate-econometric | done |
+| 6 | Parallel Coordinates Plot | `parallel_coordinates` | plots-multivariate-econometric | done |
+| 6 | PCA Biplot | `pca_biplot` | plots-multivariate-econometric | done |
+| 6 | Factor Loading Plot | `factor_loading` | plots-multivariate-econometric | done |
+| 6 | Cluster Plot | `cluster` | plots-multivariate-econometric | done |
+| 6 | Dendrogram | `dendrogram` | plots-multivariate-econometric | done |
+| 6 | Andrews Curves | `andrews_curves` | plots-multivariate-econometric | done |
 | 7 | Choropleth Map | `choropleth` | plots-geo | done |
 | 7 | Bubble Map | `bubble_map` | plots-geo | done |
 | 7 | Dot Density Map | `dot_density` | plots-geo | done |
 | 7 | Cartogram | `cartogram` | plots-geo | done |
 | 7 | Geographic Heatmap | `geo_heatmap` | plots-geo | done |
-| 8 | Kaplan-Meier Survival Curve | `kaplan_meier` | plots-multivariate-econometric | todo |
-| 8 | Forest Plot | `forest` | plots-multivariate-econometric | todo |
-| 8 | ROC Curve | `roc` | plots-multivariate-econometric | todo |
-| 8 | Precision-Recall Curve | `precision_recall` | plots-multivariate-econometric | todo |
-| 8 | Lorenz Curve | `lorenz` | plots-multivariate-econometric | todo |
-| 8 | Quantile Plot | `quantile` | plots-multivariate-econometric | todo |
-| 8 | Marginal Effects Plot | `marginal_effects` | plots-multivariate-econometric | todo |
-| 8 | Coefficient Plot | `coefficient` | plots-multivariate-econometric | todo |
-| 8 | Impulse Response Function (IRF) | `impulse_response` | plots-multivariate-econometric | todo |
-| 8 | Event Study Plot | `event_study` | plots-multivariate-econometric | todo |
+| 8 | Kaplan-Meier Survival Curve | `kaplan_meier` | plots-multivariate-econometric | done |
+| 8 | Forest Plot | `forest` | plots-multivariate-econometric | done |
+| 8 | ROC Curve | `roc` | plots-multivariate-econometric | done |
+| 8 | Precision-Recall Curve | `precision_recall` | plots-multivariate-econometric | done |
+| 8 | Lorenz Curve | `lorenz` | plots-multivariate-econometric | done |
+| 8 | Quantile Plot | `quantile` | plots-multivariate-econometric | done |
+| 8 | Marginal Effects Plot | `marginal_effects` | plots-multivariate-econometric | done |
+| 8 | Coefficient Plot | `coefficient` | plots-multivariate-econometric | done |
+| 8 | Impulse Response Function (IRF) | `impulse_response` | plots-multivariate-econometric | done |
+| 8 | Event Study Plot | `event_study` | plots-multivariate-econometric | done |
 | 9 | Sankey Diagram | `sankey` | plots-composition-specialized | todo |
 | 9 | Network Graph | `network` | plots-composition-specialized | todo |
 | 9 | Alluvial Diagram | `alluvial` | plots-composition-specialized | todo |
