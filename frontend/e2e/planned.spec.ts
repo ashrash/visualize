@@ -1,0 +1,85 @@
+import { expect, test } from "./fixtures";
+import { sample } from "./helpers/env";
+import { unique } from "./helpers/shots";
+
+/**
+ * Flows whose UI is not ready yet. Each is a `test.fixme` with the reason on one line, so the
+ * report lists them as tracked work. When the feature lands, remove `.fixme` and fill in the steps
+ * (the intended flow is in the title). Owners follow CLAUDE.md section 9.
+ */
+test.describe("planned flows", () => {
+  test.fixme("pipeline: add filter and group-aggregate steps, preview each, chart the pipeline output", {
+    annotation: {
+      type: "blocked",
+      description:
+        "the pipelineApi flag is off and transform's compiler/preview endpoints are not merged (ui-data, transform)",
+    },
+  }, async () => {});
+
+  test.fixme("pipeline: join two datasets and pivot, materialize, see the new dataset in the grid", {
+    annotation: {
+      type: "blocked",
+      description: "needs pipelineApi, join/pivot compiler and the materialize job (transform)",
+    },
+  }, async () => {});
+
+  test.fixme("dashboard: add three charts, drag and resize them, save, reload", {
+    annotation: { type: "blocked", description: "dashboards are Wave 3 (ui-dashboard)" },
+  }, async () => {});
+
+  test.fixme("cross-filter: clicking a bar filters the other charts in its link group", {
+    annotation: {
+      type: "blocked",
+      description: "cross-filter bus and click-to-filter are Wave 3 (ui-dashboard)",
+    },
+  }, async () => {});
+
+  test.fixme("share: create a share token and open /share/:token read-only in a fresh context", {
+    annotation: {
+      type: "blocked",
+      description: "share endpoints and view are Wave 3 (platform, ui-dashboard)",
+    },
+  }, async () => {});
+
+  test.fixme("embed: /embed/:token renders in an iframe snippet without app chrome", {
+    annotation: { type: "blocked", description: "embed view is Wave 3 (platform, ui-dashboard)" },
+  }, async () => {});
+});
+
+test.describe("grid, behind feature flags", () => {
+  test("server-side sort from a column header", async ({ page, app, api }) => {
+    const name = unique("sales");
+    await api.importPath(sample("sales.csv"), { name });
+    await app.open("data");
+    await app.selectDataset(name);
+    const grid = page.getByRole("region", { name: `${name} data grid` });
+    const sort = grid.getByRole("button", { name: "Sort by region", exact: true });
+    await expect(sort).toBeVisible();
+    test.skip(
+      (await sort.getAttribute("aria-disabled")) === "true",
+      "the serverRows flag is off, so sort/filter are disabled (ui-data flips it)",
+    );
+
+    // sales.csv regions: East, North, South, West.
+    const firstRegion = () => grid.getByRole("row").nth(1).getByRole("cell").nth(3);
+    await sort.click();
+    await expect(grid.getByRole("columnheader", { name: /^region/ })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    await expect(firstRegion()).toHaveText("East");
+    await sort.click();
+    await expect(grid.getByRole("columnheader", { name: /^region/ })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+    await expect(firstRegion()).toHaveText("West");
+    await sort.click();
+    await expect(grid.getByRole("columnheader", { name: /^region/ })).not.toHaveAttribute(
+      "aria-sort",
+      /.+/,
+    );
+
+    await api.deleteDatasetByName(name);
+  });
+});
