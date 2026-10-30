@@ -35,17 +35,22 @@ class ProjectRename(Contract):
     name: str
     revision: int
 
+
 class ProjectDuplicate(Contract):
     name: str | None = None
 
+
 class ProjectRestore(Contract):
     revision: int  # live revision the restore is based on
+
 
 class ProjectImportResult(Contract):
     project: Project
     datasets_imported: list[str]  # dataset ids registered from the archive
     datasets_remapped: dict[str, str] = Field(default_factory=dict)  # archived id -> new id
-    datasets_missing: list[str] = Field(default_factory=list)  # referenced, in neither archive nor catalog
+    datasets_missing: list[str] = Field(
+        default_factory=list
+    )  # referenced, in neither archive nor catalog
     warnings: list[str] = Field(default_factory=list)
 ```
 `ProjectVersion` is unchanged (non-null `label` = named snapshot). No `schemaVersion` bump.
