@@ -36,13 +36,15 @@ export function resolveStyle(spec: ChartSpec): ResolvedStyle {
 }
 
 /** A plot-specific setting from `spec.params`, typed by the fallback. */
+type Widen<T> = T extends string ? string : T extends number ? number : boolean;
+
 export function param<T extends string | number | boolean>(
   spec: ChartSpec,
   name: string,
   fallback: T,
-): T {
+): Widen<T> {
   const value = spec.params?.[name];
-  return typeof value === typeof fallback ? (value as T) : fallback;
+  return (typeof value === typeof fallback ? value : fallback) as Widen<T>;
 }
 
 export function isHorizontal(spec: ChartSpec): boolean {

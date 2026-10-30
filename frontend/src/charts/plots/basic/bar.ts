@@ -1,133 +1,95 @@
-import { formatValue } from "../../../api/format";
-import { axisStyle, baseOption } from "../../core/theme";
-import type { ChartData, PlotEntry } from "../../core/types";
+import type { ChartSpec } from "../../../api/types";
+import { definePlot, type PlotEntry, type StyleSection } from "../../core/types";
+import { BAR_PARAMS, cartesianChannels, hasMeasureAndCategory, renderCartesian } from "./cartesian";
 
-interface Series {
-  name: string;
-  data: unknown[];
+const SECTIONS: StyleSection[] = [
+  "title",
+  "legend",
+  "axes",
+  "multiAxis",
+  "labels",
+  "annotations",
+  "refLines",
+  "stack",
+  "orientation",
+  "errorBars",
+  "tooltip",
+  "numberFormat",
+  "palette",
+  "seriesStyle",
+];
+
+const channels = () => cartesianChannels("Category", ["nominal", "ordinal", "temporal", "quantitative"]);
+
+function recommend(columns: Parameters<NonNullable<PlotEntry["recommend"]>>[0]) {
+  const [hasCategory, hasMeasure] = hasMeasureAndCategory(columns, 50);
+  return hasCategory && hasMeasure ? 0.8 : hasCategory ? 0.5 : 0.1;
 }
 
-function seriesFor(data: ChartData): { categories: string[]; series: Series[] } {
-  const { columns, kinds, meta } = data;
-  const xs = columns.x ?? [];
-  const label = (value: unknown) => formatValue(value, kinds.x) || "(blank)";
-
-  const colors = columns.color;
-  if (colors) {
-    // One series per color value, pivoted onto the shared category axis.
-    const categories = [...new Set(xs.map(label))];
-    const groups = [...new Set(colors.map((c) => formatValue(c, kinds.color) || "(blank)"))];
-    const values = columns.y0 ?? [];
-    const lookup = new Map<string, unknown>();
-    xs.forEach((x, i) => {
-      lookup.set(`${label(x)}\u0000${formatValue(colors[i], kinds.color) || "(blank)"}`, values[i]);
-    });
-    return {
-      categories,
-      series: groups.map((group) => ({
-        name: group,
-        data: categories.map((c) => lookup.get(`${c}\u0000${group}`) ?? null),
-      })),
-    };
-  }
-
-  const yKeys = Object.keys(columns).filter((key) => /^y\d+$/.test(key));
-  return {
-    categories: xs.map(label),
-    series: yKeys.map((key) => ({ name: meta.fields[key] ?? key, data: columns[key] ?? [] })),
-  };
+/** Variants are presets of one renderer: they differ in forced style and in defaults. */
+function variant(
+  key: PlotEntry["key"],
+  label: string,
+  description: string,
+  force: (spec: ChartSpec) => ChartSpec["style"],
+  sections: StyleSection[] = SECTIONS,
+): PlotEntry {
+  return definePlot({
+    key,
+    label,
+    family: "basic",
+    description,
+    encodingsSchema: channels(),
+    paramsSchema: BAR_PARAMS,
+    styleSections: sections,
+    defaults: { params: { barWidth: 60, barGap: 10 } },
+    render: (spec, data, theme, ctx) =>
+      renderCartesian("bar", { ...spec, style: force(spec) }, data, theme, ctx),
+    recommend,
+  });
 }
 
-export const bar: PlotEntry = {
-  key: "bar",
-  label: "Bar chart",
-  family: "basic",
-  channels: [
-    {
-      name: "x",
-      label: "Category",
-      required: true,
-      multiple: false,
-      accepts: ["nominal", "ordinal", "temporal", "quantitative"],
-      aggregate: false,
-    },
-    {
-      name: "y",
-      label: "Value",
-      required: false,
-      multiple: true,
-      accepts: ["quantitative"],
-      aggregate: true,
-    },
-    {
-      name: "color",
-      label: "Color",
-      required: false,
-      multiple: false,
-      accepts: ["nominal", "ordinal"],
-      aggregate: false,
-    },
-  ],
+const without = (...omit: StyleSection[]) => SECTIONS.filter((s) => !omit.includes(s));
+const styleOf = (spec: ChartSpec) => spec.style as NonNullable<ChartSpec["style"]>;
+const withStyle = (spec: ChartSpec, patch: Partial<NonNullable<ChartSpec["style"]>>) =>
+  ({
+    orientation: "vertical",
+    stack: "none",
+    showLabels: false,
+    ...spec.style,
+    ...patch,
+  }) as ChartSpec["style"];
 
-  render(spec, data, theme) {
-    const { categories, series } = seriesFor(data);
-    const style = spec.style;
-    const horizontal = style?.orientation === "horizontal";
-    const stacked = style?.stack !== undefined && style.stack !== "none";
-    const showLegend = series.length > 1;
-    const valueName = series.length === 1 ? series[0]?.name : undefined;
+export const bar = variant(
+  "bar",
+  "Bar chart",
+  "Compare values across categories.",
+  (spec) => withStyle(spec, {}),
+);
 
-    // Axis titles sit centred alongside the axis (the default end position gets clipped).
-    const categoryAxis = {
-      type: "category",
-      data: categories,
-      name: data.meta.fields.x,
-      nameLocation: "middle",
-      nameGap: horizontal ? 56 : 28,
-      ...axisStyle(theme),
-    };
-    const valueAxis = {
-      type: style?.yAxes?.[0]?.scale === "log" ? "log" : "value",
-      name: valueName,
-      ...axisStyle(theme),
-      // Left-align the title above a vertical value axis so it isn't clipped at the edge.
-      nameTextStyle: { color: theme.textMuted, align: horizontal ? "right" : "left" },
-    };
+export const horizontalBar = variant(
+  "horizontal_bar",
+  "Horizontal bar chart",
+  "Bars drawn sideways: easier to read long category names.",
+  (spec) => withStyle(spec, { orientation: "horizontal" }),
+  without("orientation"),
+);
 
-    return {
-      ...baseOption(theme),
-      title: style?.title
-        ? {
-            text: style.title,
-            subtext: style.subtitle ?? undefined,
-            textStyle: { color: theme.text },
-          }
-        : undefined,
-      tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-      legend: showLegend ? { top: 0, textStyle: { color: theme.text } } : undefined,
-      grid: {
-        left: horizontal ? 40 : 8,
-        right: 24,
-        top: showLegend ? 36 : 24,
-        bottom: horizontal ? 8 : 28,
-        containLabel: true,
-      },
-      xAxis: horizontal ? valueAxis : categoryAxis,
-      yAxis: horizontal ? categoryAxis : valueAxis,
-      series: series.map((s) => ({
-        type: "bar",
-        name: s.name,
-        data: s.data,
-        stack: stacked ? "total" : undefined,
-        emphasis: { focus: "series" },
-        label: style?.showLabels ? { show: true, color: theme.textMuted } : undefined,
-      })),
-    };
-  },
+export const groupedBar = variant(
+  "grouped_bar",
+  "Grouped bar chart",
+  "Bars side by side for each group within a category.",
+  (spec) => withStyle(spec, { stack: "none" }),
+  without("stack"),
+);
 
-  recommend(columns) {
-    const hasCategory = columns.some((c) => c.semantic === "nominal" && c.approxDistinct <= 50);
-    const hasMeasure = columns.some((c) => c.semantic === "quantitative");
-    return hasCategory && hasMeasure ? 0.8 : hasCategory ? 0.5 : 0.1;
-  },
-};
+export const stackedBar = variant(
+  "stacked_bar",
+  "Stacked bar chart",
+  "Groups stacked within each bar; switch to 100% to compare shares.",
+  (spec) => withStyle(spec, { stack: styleOf(spec)?.stack === "percent" ? "percent" : "stack" }),
+);
+
+// The plain bar chart is a preset too: nothing is forced, so every style control applies.
+// (Variants that force a setting hide that control.)
+export const barEntries = [bar, horizontalBar, groupedBar, stackedBar];

@@ -43,6 +43,9 @@ export function makeData(
     meta: {
       rowsScanned: rowCount,
       rowsReturned: rowCount,
+      rowsMatched: null,
+      params: {},
+      xDomain: null,
       reduction: "aggregated",
       method: "group_by",
       fields,

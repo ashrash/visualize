@@ -260,7 +260,10 @@ export function applyStyle(
     out.title = undefined;
   }
 
-  const named = rawSeries.filter((s) => typeof s.name === "string" && s.name !== "").length;
+  const overlays = ctx?.overlays ?? [];
+  // Trendlines are named series too, so they get a legend entry that says what the dashed line is.
+  const named =
+    rawSeries.filter((s) => typeof s.name === "string" && s.name !== "").length + overlays.length;
   const wantsLegend = option.legend !== undefined || named > 1;
   const dataZoom = asArray(option.dataZoom as Obj | Obj[] | undefined);
   const hasSlider = dataZoom.some((z) => z.type === "slider");
@@ -296,7 +299,6 @@ export function applyStyle(
   }
 
   // Axes.
-  const overlays = ctx?.overlays ?? [];
   const seriesStyles = new Map(style.series.map((s) => [s.index, s]));
   const axisOf = (s: Obj, i: number) =>
     seriesStyles.get((s.yIndex as number | undefined) ?? i)?.yAxis ?? 0;
@@ -456,7 +458,7 @@ export function applyStyle(
       };
     }
     const tooltipFormat = valueFormat(ss?.yAxis ?? 0);
-    if (tooltipFormat && tooltipFormat !== "auto" && type !== "pie" && type !== "custom") {
+    if (tooltipFormat && tooltipFormat !== "auto" && type !== "custom") {
       const fmt = makeFormatter(tooltipFormat);
       result.tooltip = {
         ...(s.tooltip as Obj | undefined),
