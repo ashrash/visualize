@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from viz.config import Settings
@@ -47,6 +47,36 @@ def _stale(project_revision: int, row: ProjectRow) -> ConflictError:
     )
 
 
+MAX_NAME = 200
+
+
+def check_name(name: str) -> str:
+    cleaned = name.strip()
+    if not cleaned:
+        raise InvalidSpecError("name must not be empty")
+    if len(cleaned) > MAX_NAME:
+        raise InvalidSpecError(f"name must be at most {MAX_NAME} characters")
+    return cleaned
+
+
+def _cas_update(db: Session, row: ProjectRow, values: dict[str, Any]) -> None:
+    """Update the project only if nobody changed it since we read `row.revision`.
+
+    The revision check in the WHERE clause makes check-and-write atomic, so two sessions
+    that both read the same revision cannot both write.
+    """
+    expected = row.revision
+    result = db.execute(
+        update(ProjectRow)
+        .where(ProjectRow.id == row.id, ProjectRow.revision == expected)
+        .values(**values)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount == 0:  # type: ignore[attr-defined]
+        db.rollback()
+        raise ConflictError(f"project changed since revision {expected}; reload to continue")
+
+
 def list_projects(db: Session) -> list[ProjectSummary]:
     rows = db.scalars(select(ProjectRow).order_by(ProjectRow.updated_at.desc())).all()
     return [
@@ -70,7 +100,7 @@ def _add_row(db: Session, project: Project) -> None:
 
 def create_project(db: Session, name: str) -> Project:
     now = utcnow()
-    project = Project(id=new_id(), name=name, created_at=now, updated_at=now)
+    project = Project(id=new_id(), name=check_name(name), created_at=now, updated_at=now)
     _add_row(db, project)
     db.commit()
     return project
@@ -107,7 +137,12 @@ def delete_project(db: Session, project_id: str) -> None:
 
 def duplicate_project(db: Session, project_id: str, name: str | None) -> Project:
     source = get_project(db, project_id)
-    return create_from_doc(db, source.model_copy(update={"name": name or f"{source.name} copy"}))
+    if name is not None:
+        new_name = check_name(name)
+    else:
+        suffix = " copy"
+        new_name = f"{source.name[: MAX_NAME - len(suffix)]}{suffix}".strip()
+    return create_from_doc(db, source.model_copy(update={"name": new_name}))
 
 
 def _snapshot(
@@ -159,19 +194,28 @@ def _write(
         }
     )
     doc = saved.model_dump(mode="json")
-    row.name = saved.name
-    row.revision = saved.revision
-    row.doc = doc
-    row.updated_at = now
+    counter = row.autosaves_since_snapshot + 1
+    snapshot_kind: str | None = None
     if kind == "save":
-        _snapshot(db, row.id, saved.revision, "save", doc, label)
-        row.autosaves_since_snapshot = 0
+        snapshot_kind, counter = "save", 0
     else:
-        row.autosaves_since_snapshot += 1
         every = settings.autosave_snapshot_every
-        if every > 0 and row.autosaves_since_snapshot >= every:
-            _snapshot(db, row.id, saved.revision, "autosave", doc, None)
-            row.autosaves_since_snapshot = 0
+        if every > 0 and counter >= every:
+            snapshot_kind, counter = "autosave", 0
+    _cas_update(
+        db,
+        row,
+        {
+            "name": saved.name,
+            "revision": saved.revision,
+            "doc": doc,
+            "updated_at": now,
+            "autosaves_since_snapshot": counter,
+        },
+    )
+    if snapshot_kind is not None:
+        _snapshot(db, row.id, saved.revision, snapshot_kind, doc, label if kind == "save" else None)
+        if snapshot_kind == "autosave":
             db.flush()
             _prune_autosaves(db, row.id, settings.autosave_snapshots_keep)
     db.commit()
@@ -215,15 +259,25 @@ def rename_project(db: Session, project_id: str, name: str, revision: int) -> Pr
     row = _row(db, project_id)
     if revision != row.revision:
         raise _stale(revision, row)
-    project = load_doc(row.doc).model_copy(update={"name": name})
+    project = load_doc(row.doc).model_copy(update={"name": check_name(name)})
     now = utcnow()
     saved = project.model_copy(
-        update={"revision": row.revision + 1, "schema_version": CURRENT_SCHEMA_VERSION}
-    ).model_copy(update={"updated_at": now})
-    row.name = name
-    row.revision = saved.revision
-    row.doc = saved.model_dump(mode="json")
-    row.updated_at = now
+        update={
+            "revision": row.revision + 1,
+            "schema_version": CURRENT_SCHEMA_VERSION,
+            "updated_at": now,
+        }
+    )
+    _cas_update(
+        db,
+        row,
+        {
+            "name": saved.name,
+            "revision": saved.revision,
+            "doc": saved.model_dump(mode="json"),
+            "updated_at": now,
+        },
+    )
     db.commit()
     return saved
 
@@ -267,7 +321,15 @@ def list_versions(
     limit: int | None = None,
 ) -> list[ProjectVersion]:
     _row(db, project_id)
-    stmt = select(ProjectVersionRow).where(ProjectVersionRow.project_id == project_id)
+    # Select only the light columns: the snapshot docs can be large.
+    stmt = select(
+        ProjectVersionRow.id,
+        ProjectVersionRow.project_id,
+        ProjectVersionRow.revision,
+        ProjectVersionRow.kind,
+        ProjectVersionRow.label,
+        ProjectVersionRow.created_at,
+    ).where(ProjectVersionRow.project_id == project_id)
     if kind is not None:
         stmt = stmt.where(ProjectVersionRow.kind == kind)
     stmt = stmt.order_by(ProjectVersionRow.revision.desc(), ProjectVersionRow.id.desc())
@@ -282,7 +344,7 @@ def list_versions(
             label=r.label,
             created_at=_aware(r.created_at),
         )
-        for r in db.scalars(stmt)
+        for r in db.execute(stmt)
     ]
 
 

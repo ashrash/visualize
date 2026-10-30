@@ -29,6 +29,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Note: on SQLite, batch_alter_table recreates `projects`. With foreign_keys=ON that drop
+    # cascades to project_versions (ON DELETE CASCADE), so a downgrade loses version history.
     op.drop_index("ix_project_versions_project_kind_rev", "project_versions")
     with op.batch_alter_table("projects") as batch:
         batch.drop_column("autosaves_since_snapshot")

@@ -20,6 +20,7 @@ from viz.contracts import (
     ProjectSummary,
     ProjectVersion,
 )
+from viz.errors import PayloadTooLargeError
 from viz.projects import service, vizproj
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -39,6 +40,9 @@ def create_project(body: ProjectCreate, db: DbDep) -> Project:
 def import_project(
     db: DbDep, storage: StorageDep, settings: SettingsDep, file: Annotated[UploadFile, File()]
 ) -> ProjectImportResult:
+    limit = settings.max_vizproj_mb * 1024 * 1024
+    if file.size is not None and file.size > limit:
+        raise PayloadTooLargeError(f"archive is larger than {settings.max_vizproj_mb} MB")
     return vizproj.import_project(db, storage, settings, file.file)
 
 
