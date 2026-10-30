@@ -98,5 +98,6 @@ export function useFormulaCheck(args: {
   // The verdict only applies to the text it was computed for (keepPreviousData can hand back
   // the result of an earlier expression).
   const forExpression = (JSON.parse(body) as { expression: string }).expression;
-  return { ...query, data: forExpression === args.expression ? query.data : undefined };
+  const current = forExpression === args.expression && !query.isPlaceholderData;
+  return { ...query, data: current ? query.data : undefined };
 }

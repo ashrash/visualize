@@ -85,6 +85,23 @@ describe("followJob", () => {
     vi.unstubAllGlobals();
   });
 
+  it("re-enqueues the stream when the job is still running instead of reporting it lost", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(job("running", 4)), { status: 200 })),
+    );
+    const onError = vi.fn();
+    const seen: Job[] = [];
+    followJob("j1", { onJob: (j) => seen.push(j), onError }, MockEventSource as never);
+    source().readyState = 2;
+    source().emit("error");
+    await vi.waitFor(() => expect(MockEventSource.instances).toHaveLength(2));
+    expect(onError).not.toHaveBeenCalled();
+    source().emit("job", job("succeeded", 5));
+    expect(seen.map((j) => j.status)).toEqual(["running", "succeeded"]);
+    vi.unstubAllGlobals();
+  });
+
   it("reports a lost connection when the job cannot be found either", async () => {
     vi.stubGlobal(
       "fetch",

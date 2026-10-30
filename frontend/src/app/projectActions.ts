@@ -8,6 +8,7 @@ import {
   renameProject,
   restoreVersion,
 } from "../api/projects";
+import type { Project } from "../api/types";
 import { toast } from "../components/ui/toast";
 import { autosaver } from "../state/autosave";
 import { useProjectStore } from "../state/projectStore";
@@ -30,16 +31,28 @@ function current() {
   return { project, revision };
 }
 
-/** Adopt the server's name and revision without touching local edits or the undo history. */
+/**
+ * Adopt the server's name and revision without touching local edits. The name is rewritten in
+ * every undo and redo snapshot too, otherwise undoing an earlier edit would put the old name back
+ * and the next autosave would quietly rename the project on the server.
+ */
 function adoptServerName(saved: { name: string; revision: number }): void {
-  const temporal = useProjectStore.temporal.getState();
-  temporal.pause();
+  const temporal = useProjectStore.temporal;
+  const rename = <T extends { project?: Project | null }>(snapshot: T): T =>
+    snapshot.project
+      ? { ...snapshot, project: { ...snapshot.project, name: saved.name } }
+      : snapshot;
+  temporal.getState().pause();
   useProjectStore.setState((state) =>
     state.project
       ? { project: { ...state.project, name: saved.name }, revision: saved.revision }
       : state,
   );
-  temporal.resume();
+  temporal.setState((history) => ({
+    pastStates: history.pastStates.map(rename),
+    futureStates: history.futureStates.map(rename),
+  }));
+  temporal.getState().resume();
 }
 
 export async function renameCurrentProject(name: string, options: Options = {}): Promise<void> {
@@ -64,7 +77,13 @@ export async function duplicateCurrentProject(
 export async function deleteCurrentProject(): Promise<void> {
   const { project } = current();
   autosaver.dispose(); // a pending autosave must not resurrect the project being deleted
-  await deleteProject(project.id);
+  try {
+    await deleteProject(project.id);
+  } catch (error) {
+    // The project is still here: keep protecting its unsaved edits.
+    if (useProjectStore.getState().dirty) autosaver.schedule();
+    throw error;
+  }
   const rest = (await listProjects()).filter((p) => p.id !== project.id);
   const next = rest[0];
   if (next) await openProject(next.id, { discard: true });
@@ -88,8 +107,11 @@ export async function restoreProjectVersion(
 }
 
 /** Download the .vizproj, after saving so it includes the last edits. */
-export async function downloadProjectExport(includeData: boolean): Promise<void> {
-  await requireSaved();
+export async function downloadProjectExport(
+  includeData: boolean,
+  options: Options = {},
+): Promise<void> {
+  await requireSaved(options.discard); // with discard, the download is the server's copy
   const { project } = current();
   const a = document.createElement("a");
   a.href = exportProjectUrl(project.id, includeData);
@@ -120,13 +142,19 @@ export const useGuardPrompt = create<GuardState>((set) => ({
 export async function runGuarded(
   action: (discard: boolean) => Promise<void>,
   failure: string,
+  /** Runs after the action succeeds, including after a confirmed discard-and-retry. */
+  onDone?: () => void,
 ): Promise<boolean> {
   try {
     await action(false);
+    onDone?.();
     return true;
   } catch (error) {
     if (error instanceof UnsavedChangesError) {
-      useGuardPrompt.getState().ask(() => action(true));
+      useGuardPrompt.getState().ask(async () => {
+        await action(true);
+        onDone?.();
+      });
     } else {
       toast(failure, {
         variant: "error",

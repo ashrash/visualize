@@ -178,6 +178,13 @@ export function GridView({
     anchorRef.current = { top: el.scrollTop, row: target };
     readScroll();
   };
+  // A new dataset, sort or filter changes what "row N" means: forget the exact position.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on identity changes only.
+  useEffect(() => {
+    anchorRef.current = null;
+    scrollRef.current?.scrollTo({ top: 0 });
+    readScroll();
+  }, [gridKey, totalRows]);
   const moveToRef = useRef(moveTo);
   moveToRef.current = moveTo;
 
@@ -194,27 +201,61 @@ export function GridView({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // Fractional wheel deltas (trackpads) accumulate here until they add up to a whole row.
+    let remainder = 0;
+    /** The row the user is on: the exact anchor while it is still in effect, else the mapped one. */
+    const currentRow = () => {
+      const anchor = anchorRef.current;
+      return anchor && Math.abs(anchor.top - el.scrollTop) < 1
+        ? anchor.row
+        : live.current.firstVisible;
+    };
+    const pageRows = () => Math.max(Math.floor(el.clientHeight / ROW_HEIGHT) - 2, 1);
     const onWheel = (event: WheelEvent) => {
-      if (!live.current.scaled || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      // Ctrl+wheel and pinch are browser zoom; horizontal scrolling stays native.
+      if (
+        event.ctrlKey ||
+        !live.current.scaled ||
+        Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ) {
+        return;
+      }
       event.preventDefault();
-      const unit = event.deltaMode === 1 ? 1 : ROW_HEIGHT; // lines or pixels
-      const rows = Math.sign(event.deltaY) * Math.max(1, Math.round(Math.abs(event.deltaY) / unit));
-      moveToRef.current(live.current.firstVisible + rows);
+      const perUnit =
+        event.deltaMode === 2 ? pageRows() : event.deltaMode === 1 ? 1 : 1 / ROW_HEIGHT;
+      remainder += event.deltaY * perUnit;
+      const rows = Math.trunc(remainder);
+      remainder -= rows;
+      if (rows !== 0) moveToRef.current(currentRow() + rows);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (!live.current.scaled || event.target !== el) return;
-      const page = Math.max(Math.floor(el.clientHeight / ROW_HEIGHT) - 2, 1);
-      const delta: Record<string, number | undefined> = {
-        ArrowDown: 1,
-        ArrowUp: -1,
-        PageDown: page,
-        PageUp: -page,
-      };
+      if (!live.current.scaled || event.target !== el || event.ctrlKey || event.metaKey) return;
       let next: number | undefined;
-      if (event.key in delta) next = live.current.firstVisible + (delta[event.key] ?? 0);
-      else if (event.key === "Home") next = 0;
-      else if (event.key === "End") next = live.current.totalRows;
-      if (next === undefined) return;
+      switch (event.key) {
+        case "ArrowDown":
+          next = currentRow() + 1;
+          break;
+        case "ArrowUp":
+          next = currentRow() - 1;
+          break;
+        case "PageDown":
+          next = currentRow() + pageRows();
+          break;
+        case "PageUp":
+          next = currentRow() - pageRows();
+          break;
+        case " ":
+          next = currentRow() + (event.shiftKey ? -pageRows() : pageRows());
+          break;
+        case "Home":
+          next = 0;
+          break;
+        case "End":
+          next = live.current.totalRows;
+          break;
+        default:
+          return;
+      }
       event.preventDefault();
       moveToRef.current(next);
     };

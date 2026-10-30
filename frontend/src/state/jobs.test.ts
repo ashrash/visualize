@@ -23,7 +23,7 @@ vi.mock("../app/queryClient", () => ({
 
 import { getDataset } from "../api/datasets";
 import { queryClient } from "../app/queryClient";
-import { useJobsStore } from "./jobs";
+import { markLocalJob, useJobsStore } from "./jobs";
 import { useProjectStore } from "./projectStore";
 
 const project: Project = {
@@ -73,6 +73,7 @@ describe("jobs store", () => {
   it("settles an import whose dialog is long gone: attaches the dataset and refreshes the catalog", async () => {
     const started = job();
     const onSettled = vi.fn();
+    markLocalJob(started.id);
     useJobsStore.getState().track(started, onSettled);
     // No component is involved from here on; only the stream talks to the store.
     followers[0]?.handlers.onJob(done(started.id, "d1"));
@@ -85,12 +86,33 @@ describe("jobs store", () => {
   it("attaches every succeeded job of a multi-sheet import", async () => {
     const a = job();
     const b = job();
+    markLocalJob(a.id);
+    markLocalJob(b.id);
     useJobsStore.getState().track(a);
     useJobsStore.getState().track(b);
     followers[0]?.handlers.onJob(done(a.id, "d1"));
     followers[1]?.handlers.onJob(done(b.id, "d2"));
     await flush();
     expect(useProjectStore.getState().project?.datasetIds).toEqual(["d1", "d2"]);
+  });
+
+  it("an import started in another tab only lands in the catalog", async () => {
+    const foreign = job(); // never marked as started here
+    useJobsStore.getState().track(foreign);
+    followers[0]?.handlers.onJob(done(foreign.id, "d1"));
+    await flush();
+    expect(useProjectStore.getState().project?.datasetIds).toEqual([]);
+    expect(queryClient.invalidateQueries).toHaveBeenCalled();
+  });
+
+  it("an import started before switching projects is not attached to the new project", async () => {
+    const mine = job();
+    markLocalJob(mine.id);
+    useProjectStore.getState().load({ ...project, id: "other" });
+    useJobsStore.getState().track(mine);
+    followers[0]?.handlers.onJob(done(mine.id, "d1"));
+    await flush();
+    expect(useProjectStore.getState().project?.datasetIds).toEqual([]);
   });
 
   it("refresh jobs refresh the catalog but do not add a dataset to the project", async () => {
@@ -104,6 +126,7 @@ describe("jobs store", () => {
 
   it("settles a job only once even when it is tracked twice", async () => {
     const j = job();
+    markLocalJob(j.id);
     useJobsStore.getState().track(j);
     useJobsStore.getState().track(j);
     for (const f of followers) f.handlers.onJob(done(j.id, "d1"));

@@ -53,7 +53,8 @@ export function RenameDialog({
             void runGuarded(
               (discard) => renameCurrentProject(value, { discard }),
               "Couldn't rename",
-            ).then((ok) => ok && onOpenChange(false));
+              () => onOpenChange(false),
+            );
           }}
         >
           <Field label="Name">
@@ -195,7 +196,8 @@ export function ImportProjectDialog({
                   void runGuarded(
                     (discard) => openProject(result.project.id, { discard }),
                     "Couldn't open project",
-                  ).then((ok) => ok && onOpenChange(false))
+                    () => onOpenChange(false),
+                  )
                 }
               >
                 Open imported project
@@ -311,11 +313,11 @@ export function VersionsDialog({
                       void runGuarded(
                         (discard) => restoreProjectVersion(v.id, { discard }),
                         "Couldn't restore",
-                      ).then((ok) => {
-                        if (!ok) return;
-                        toast("Version restored", { variant: "success" });
-                        onOpenChange(false);
-                      })
+                        () => {
+                          toast("Version restored", { variant: "success" });
+                          onOpenChange(false);
+                        },
+                      )
                     }
                   >
                     Confirm restore
