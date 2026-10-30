@@ -22,3 +22,14 @@ export type Predicate =
   | Schemas["EqPredicate"]
   | Schemas["RangePredicate"]
   | Schemas["IsNullPredicate"];
+export type ProjectVersion = Schemas["ProjectVersion"];
+export type ImportOptions = Schemas["ImportOptions"];
+export type ImportFromPathRequest = Schemas["ImportFromPathRequest"];
+export type SourceKind = Schemas["SourceKind"];
+export type SourceRef = Schemas["SourceRef"];
+export type Pipeline = Schemas["Pipeline"];
+export type PipelineStep = NonNullable<Pipeline["steps"]>[number];
+export type StepOp = PipelineStep["op"];
+export type StepOf<Op extends StepOp> = Extract<PipelineStep, { op: Op }>;
+export type DataTypeName = Schemas["DataType"];
+export type FillStrategy = Schemas["FillStrategy"];

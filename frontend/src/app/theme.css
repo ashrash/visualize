@@ -16,6 +16,9 @@
   --viz-accent: #2f6fde;
   --viz-accent-text: #ffffff;
   --viz-danger: #c62828;
+  --viz-success: #1b7f4b;
+  --viz-warning: #9a6700;
+  --viz-overlay: rgb(15 18 25 / 0.45);
   --viz-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --viz-font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
   --viz-cat-1: #0072b2;
@@ -26,6 +29,33 @@
   --viz-cat-6: #d55e00;
   --viz-cat-7: #f0e442;
   --viz-cat-8: #000000;
+  /* Chart surface tokens; ui-charts builds the ECharts theme from these. */
+  --viz-chart-bg: var(--viz-bg);
+  --viz-chart-grid: #e3e6eb;
+  --viz-chart-axis: #5b6270;
+  --viz-chart-tooltip-bg: #ffffff;
+  --viz-chart-tooltip-text: #16181d;
+  --viz-font-chart: var(--viz-font-sans);
+  /* Sequential: viridis. */
+  --viz-seq-1: #440154;
+  --viz-seq-2: #472d7b;
+  --viz-seq-3: #3b528b;
+  --viz-seq-4: #2c728e;
+  --viz-seq-5: #21918c;
+  --viz-seq-6: #28ae80;
+  --viz-seq-7: #5ec962;
+  --viz-seq-8: #addc30;
+  --viz-seq-9: #fde725;
+  /* Diverging: blue - light - orange (color-blind safe). */
+  --viz-div-1: #2c7bb6;
+  --viz-div-2: #5b9fcf;
+  --viz-div-3: #9bc5e3;
+  --viz-div-4: #cfe4f1;
+  --viz-div-5: #f5f5f5;
+  --viz-div-6: #fbe0c3;
+  --viz-div-7: #f8b77a;
+  --viz-div-8: #ee8a3a;
+  --viz-div-9: #c85a00;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -40,7 +70,23 @@
     --viz-accent: #6ea0ff;
     --viz-accent-text: #0b0d10;
     --viz-danger: #ff6b6b;
+    --viz-success: #4cc38a;
+    --viz-warning: #e3b341;
+    --viz-overlay: rgb(0 0 0 / 0.6);
     --viz-cat-8: #bbbbbb;
+    --viz-chart-grid: #2e333c;
+    --viz-chart-axis: #9aa1ad;
+    --viz-chart-tooltip-bg: #23272f;
+    --viz-chart-tooltip-text: #e8eaee;
+    --viz-div-1: #4a9bd8;
+    --viz-div-2: #3c78a8;
+    --viz-div-3: #335b80;
+    --viz-div-4: #2f4560;
+    --viz-div-5: #2e333c;
+    --viz-div-6: #5f4a3a;
+    --viz-div-7: #85573a;
+    --viz-div-8: #b8692f;
+    --viz-div-9: #e8832e;
   }
 }
 
@@ -55,7 +101,23 @@
   --viz-accent: #6ea0ff;
   --viz-accent-text: #0b0d10;
   --viz-danger: #ff6b6b;
+  --viz-success: #4cc38a;
+  --viz-warning: #e3b341;
+  --viz-overlay: rgb(0 0 0 / 0.6);
   --viz-cat-8: #bbbbbb;
+  --viz-chart-grid: #2e333c;
+  --viz-chart-axis: #9aa1ad;
+  --viz-chart-tooltip-bg: #23272f;
+  --viz-chart-tooltip-text: #e8eaee;
+  --viz-div-1: #4a9bd8;
+  --viz-div-2: #3c78a8;
+  --viz-div-3: #335b80;
+  --viz-div-4: #2f4560;
+  --viz-div-5: #2e333c;
+  --viz-div-6: #5f4a3a;
+  --viz-div-7: #85573a;
+  --viz-div-8: #b8692f;
+  --viz-div-9: #e8832e;
 }
 
 @theme inline {
@@ -68,6 +130,9 @@
   --color-accent: var(--viz-accent);
   --color-accent-fg: var(--viz-accent-text);
   --color-danger: var(--viz-danger);
+  --color-success: var(--viz-success);
+  --color-warning: var(--viz-warning);
+  --color-overlay: var(--viz-overlay);
   --font-sans: var(--viz-font-sans);
   --font-mono: var(--viz-font-mono);
 }
@@ -83,4 +148,17 @@ body {
   background: var(--viz-bg);
   color: var(--viz-text);
   font-family: var(--viz-font-sans);
+}
+
+/* Visible keyboard focus everywhere; components may refine but never remove it. */
+:focus-visible {
+  outline: 2px solid var(--viz-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
