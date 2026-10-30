@@ -320,3 +320,15 @@ path imports in place; (b) no pruning in Wave 1; (c) yes.
   supersedes), byte budget `VIZ_GRID_VIEWS_MB`, start after interactive queries go quiet.
 - Imports roll back on failure (staged upload kept, `sources/<id>`/`datasets/<id>` removed);
   startup sweep for orphans; hourly expiry sweep; streamed multipart uploads.
+
+## Handoff notes (follow-up round)
+- **The engine runs in UTC** (`SET GLOBAL TimeZone='UTC'`), so TIMESTAMPTZ day/week/month
+  bucketing is in UTC. transform may later need a display time zone for bucketing.
+- Explicit generations advance the shared ticket counter (`observe_generation`);
+  `cancel(key, generation)` is sticky for that generation. `RequestScopeMiddleware` (in
+  `viz.engine`) gives every HTTP request an owner; the lead wires it in `main.py`.
+- Encoding: the whole text file is scanned at import (preview: first 8 MB). Mostly-UTF-8
+  files are read as UTF-8 with the bad bytes replaced (warned); cp1252 only when there is no
+  valid multi-byte UTF-8 at all. The scan adds ~1 s per GB to imports.
+- `receive_upload(request, storage, settings, *, max_bytes=None, accept=None,
+  stage_dir=None) -> Upload` for other streaming uploads (platform's `.vizproj`).

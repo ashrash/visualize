@@ -21,13 +21,12 @@ from viz.engine import Engine
 from viz.errors import InvalidSpecError, NotFoundError
 from viz.ingest import readers
 from viz.ingest.importer import (
-    FALLBACK_ENCODING,
+    EncodingChoice,
     NotUtf8Error,
-    not_utf8_warning,
+    choose_encoding,
     open_relation,
     profile_relation,
     read_error,
-    resolve_text_encoding,
 )
 from viz.ingest.upload import Upload
 from viz.storage import LocalStorage
@@ -87,14 +86,13 @@ def _estimate_rows(path: Path, shown: int, header: bool) -> int | None:
 def preview(
     engine: Engine, storage: LocalStorage, settings: Settings, request: ImportPreviewRequest
 ) -> tuple[pa.Table, ImportPreviewMeta]:
-    """First rows with the given options. A file whose head is UTF-8 but that has a bad byte
-    further in is retried as cp1252 (with a warning) unless the user set an encoding."""
+    """First rows with the given options. The encoding is chosen by the same rules as the
+    import (`choose_encoding`) over the first 8 MB, so preview and import agree. If DuckDB
+    still finds invalid UTF-8 (it shouldn't), the preview is retried with replacement."""
     try:
         return _preview(engine, storage, settings, request, None)
     except NotUtf8Error:
-        if request.options.encoding:
-            raise
-        return _preview(engine, storage, settings, request, FALLBACK_ENCODING)
+        return _preview(engine, storage, settings, request, "utf-8")
 
 
 def _preview(
@@ -114,13 +112,18 @@ def _preview(
     temp: Path | None = None
     try:
         read_path = source
-        encoding = encoding_override or resolve_text_encoding(source, kind, options)
-        if encoding is not None:
+        if encoding_override is not None:
+            choice = EncodingChoice(encoding_override, encoding_override)
+        else:
+            choice = choose_encoding(source, kind, options, max_bytes=_PREVIEW_TRANSCODE_BYTES)
+        encoding = choice.recorded
+        warnings.extend(choice.warnings)
+        if choice.transcode_from is not None:
             temp = storage.temp_dir / f"preview-{uuid.uuid4().hex}{source.suffix}"
-            readers.transcode(source, temp, encoding, max_bytes=_PREVIEW_TRANSCODE_BYTES)
+            readers.transcode(
+                source, temp, choice.transcode_from, max_bytes=_PREVIEW_TRANSCODE_BYTES
+            )
             read_path = temp
-            if not options.encoding:
-                warnings.append(not_utf8_warning(encoding))
 
         excel_table: pa.Table | None = None
         if kind == SourceKind.EXCEL:
