@@ -715,6 +715,54 @@
             "type": "boolean",
             "title": "Grid",
             "default": true
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "start",
+                  "end"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "inverse": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inverse"
+          },
+          "tickRotate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tickrotate"
+          },
+          "logBase": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logbase"
           }
         },
         "additionalProperties": false,
@@ -1126,6 +1174,95 @@
               }
             ],
             "title": "Templateid"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesStyle"
+            },
+            "type": "array",
+            "title": "Series"
+          },
+          "trendlines": {
+            "items": {
+              "$ref": "#/components/schemas/Trendline"
+            },
+            "type": "array",
+            "title": "Trendlines"
+          },
+          "errorBars": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBars"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tooltip": {
+            "$ref": "#/components/schemas/TooltipStyle"
+          },
+          "fontFamily": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fontfamily"
+          },
+          "fontSize": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fontsize"
+          },
+          "smooth": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smooth"
+          },
+          "areaOpacity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Areaopacity"
+          },
+          "labelPosition": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "inside",
+                  "outside",
+                  "top",
+                  "end"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelposition"
           }
         },
         "additionalProperties": false,
@@ -1697,6 +1834,40 @@
           "value"
         ],
         "title": "EqPredicate"
+      },
+      "ErrorBars": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sd",
+              "se",
+              "ci",
+              "fixed"
+            ],
+            "title": "Kind",
+            "default": "sd"
+          },
+          "level": {
+            "type": "number",
+            "title": "Level",
+            "default": 0.95
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ErrorBars"
       },
       "Fill": {
         "properties": {
@@ -3226,6 +3397,92 @@
         ],
         "title": "SelectStep"
       },
+      "SeriesStyle": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "yAxis": {
+            "type": "integer",
+            "title": "Yaxis",
+            "default": 0
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "bar",
+                  "line",
+                  "area",
+                  "scatter"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "marker": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marker"
+          },
+          "lineWidth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linewidth"
+          },
+          "lineStyle": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "solid",
+                  "dashed",
+                  "dotted"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linestyle"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index"
+        ],
+        "title": "SeriesStyle",
+        "description": "Per-series overrides, keyed by index into the y channel."
+      },
       "SortKey": {
         "properties": {
           "field": {
@@ -3412,6 +3669,111 @@
           "minute"
         ],
         "title": "TimeUnit"
+      },
+      "TooltipStyle": {
+        "properties": {
+          "show": {
+            "type": "boolean",
+            "title": "Show",
+            "default": true
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "axis",
+                  "item"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TooltipStyle"
+      },
+      "Trendline": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TrendlineKind",
+            "default": "linear"
+          },
+          "series": {
+            "type": "integer",
+            "title": "Series",
+            "default": 0
+          },
+          "degree": {
+            "type": "integer",
+            "title": "Degree",
+            "default": 2
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          },
+          "ciLevel": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cilevel"
+          },
+          "showEquation": {
+            "type": "boolean",
+            "title": "Showequation",
+            "default": false
+          },
+          "showR2": {
+            "type": "boolean",
+            "title": "Showr2",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Trendline",
+        "description": "A server-computed overlay fitted to one y series."
+      },
+      "TrendlineKind": {
+        "type": "string",
+        "enum": [
+          "linear",
+          "polynomial",
+          "exponential",
+          "logarithmic",
+          "power",
+          "loess",
+          "moving_average"
+        ],
+        "title": "TrendlineKind"
       },
       "UnionStep": {
         "properties": {
