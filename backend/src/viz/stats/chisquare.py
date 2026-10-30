@@ -182,9 +182,8 @@ def _goodness_of_fit(rel: Relation, req: ChiSquareRequest) -> StatResult:
         counts = {int(i): int(n) for i, n in rows}
         levels = list(wanted)
         observed = np.array([counts.get(i, 0) for i in range(len(wanted))], dtype=np.int64)
+        # Each proportion is > 0 (the request model enforces it).
         proportions = np.array([e.proportion for e in req.expected], dtype=float)
-        if (proportions <= 0).any():
-            raise StatsInputError("Every expected proportion must be greater than 0.")
         if abs(proportions.sum() - 1) > 1e-9:
             warnings.append("The expected proportions were rescaled to sum to 1.")
         proportions = proportions / proportions.sum()

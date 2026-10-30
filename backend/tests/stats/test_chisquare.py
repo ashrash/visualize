@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pyarrow as pa
 import pytest
+from pydantic import ValidationError
 from scipy import stats as sps
 
 from viz.contracts import SourceRef
@@ -132,5 +133,5 @@ def test_degenerate_inputs(table_relation: Any) -> None:
     with pytest.raises(StatsInputError, match="'x' needs at least 2 categories"):
         _run(rel, kind="goodness_of_fit", field="x")
     zero = [{"value": "a", "proportion": 1.0}, {"value": "b", "proportion": 0.0}]
-    with pytest.raises(StatsInputError, match="greater than 0"):
+    with pytest.raises(ValidationError, match="greater than 0"):
         _run(rel, kind="goodness_of_fit", field="x", expected=zero)

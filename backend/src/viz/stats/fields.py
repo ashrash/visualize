@@ -101,9 +101,15 @@ def measure_note(rel: Relation, name: str) -> str | None:
 
 
 def key_expr(rel: Relation, name: str) -> exp.Expr:
-    """A group key for output: native values, except dates and times as (UTC) text."""
+    """A group key for output: native values, except dates and times as (UTC) text.
+
+    NaN and +/-inf keys are NULL (missing), as for measures: DuckDB groups NaNs together
+    but NaN != NaN in Python, so a NaN key would split or vanish downstream.
+    """
     rel.require(name)
     column = col(name)
+    if is_float(rel.columns[name]):
+        return exp.If(this=fn("isfinite", column), true=column, false=exp.Null())
     if field_kind(rel, name) != "temporal":
         return column
     if has_zone(rel, name):

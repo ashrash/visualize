@@ -116,16 +116,19 @@ class _Groups:
     # Groups found, and how many were dropped (0 = all kept).
     n_groups: int
     dropped: int
+    # What GROUP BY uses: the columns, with NaN/+-inf float keys as NULL (missing), since
+    # DuckDB groups NaNs together but NaN != NaN when the rows are matched up in Python.
+    keys: list[exp.Expr]
 
     @staticmethod
     def none(rel: Relation) -> _Groups:
-        return _Groups([], [], [], rel, 1, 0)
+        return _Groups([], [], [], rel, 1, 0, [])
 
     def exprs(self, rel: Relation) -> list[exp.Expr]:
         """Group keys as output: native values, except dates/times as text."""
         out: list[exp.Expr] = []
-        for b, temporal in zip(self.by, self.temporal, strict=True):
-            out.append(_text(_value(rel, b, "temporal")) if temporal else col(b))
+        for b, temporal, key in zip(self.by, self.temporal, self.keys, strict=True):
+            out.append(_text(_value(rel, b, "temporal")) if temporal else key.copy())
         return out
 
     def key(self, row: dict[str, Any]) -> GroupKey:
@@ -161,6 +164,7 @@ def describe(rel: Relation, request: DescribeRequest) -> StatResult:
         capped.relation,
         capped.n_groups,
         capped.dropped,
+        [_group_key(rel, b) for b in by],
     )
     warnings = _Warnings()
     if capped.warning:
@@ -219,8 +223,14 @@ def _sort_key(key: GroupKey) -> tuple[Any, ...]:
     return tuple((v is None, "" if v is None else v) for v in key)
 
 
+def _group_key(rel: Relation, name: str) -> exp.Expr:
+    if is_float(rel.columns[name]):
+        return exp.If(this=fn("isfinite", col(name)), true=col(name), false=exp.Null())
+    return col(name)
+
+
 def _group_clause(groups: _Groups, extra: list[exp.Expr], grouping_sets: bool) -> list[exp.Expr]:
-    cols: list[exp.Expr] = [col(b) for b in groups.by]
+    cols: list[exp.Expr] = [k.copy() for k in groups.keys]
     if grouping_sets:
         return [
             exp.GroupingSets(
@@ -236,7 +246,7 @@ def _group_clause(groups: _Groups, extra: list[exp.Expr], grouping_sets: bool) -
 def _key_selects(rel: Relation, groups: _Groups) -> list[exp.Expr]:
     selects: list[exp.Expr] = [alias(e, f"_g{i}") for i, e in enumerate(groups.exprs(rel))]
     if groups.by:
-        selects.append(alias(fn("grouping", *[col(b) for b in groups.by]), "_gid"))
+        selects.append(alias(fn("grouping", *[k.copy() for k in groups.keys]), "_gid"))
     return selects
 
 

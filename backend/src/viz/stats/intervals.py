@@ -1,51 +1,74 @@
-"""Confidence intervals: t for the mean (exact), bootstrap for any statistic.
+"""Confidence intervals for the mean, median, SD or a quantile, per field and group.
 
-- t: mean +/- t(1 - alpha/2, n - 1) * sd / sqrt(n), from exact SQL moments (R's t.test).
-- bootstrap: scipy.stats.bootstrap through stats.bootstrap.bootstrap_ci (BCa up to 10,000
-  values, percentile above). Estimates are always exact on the full data (SQL moments and
-  quantile_cont, R type 7).
+Estimates are always exact on all values (SQL moments; quantile_cont, R type 7). Intervals:
+- t (mean): mean +/- t(1 - alpha/2, n - 1) sd / sqrt(n), exact from SQL moments (R's t.test).
+- order statistic (median, quantiles): the distribution-free interval [x_(l), x_(u)] with
+  binomial ranks (Hahn & Meeker; DescTools::QuantileCI "exact"): coverage is at least the
+  level for any n and any continuous distribution. The ranks are read exactly in SQL.
+- asymptotic (SD): s * exp(-/+ z se / 2) with se^2 = G2 / n + 2 / (n - 1) the variance of
+  ln s^2, using the exact excess kurtosis G2 (the log-scale delta method; Bonett 2006 without
+  his small-sample terms, which vanish above 10,000 values).
+- bootstrap: scipy.stats.bootstrap on all of a group's values (BCa up to 2,000 values,
+  percentile above), never on a subsample.
 
-Large groups: the bootstrap runs on a random sample of m values (BOOTSTRAP_CAP, lowered
-per group so all groups together stay within BOOTSTRAP_TOTAL). An interval computed on m
-values is about sqrt(n / m) times too wide for n values, so the sample's interval offsets
-are rescaled by sqrt(m / n) around the full-data estimate (m-out-of-n bootstrap; valid
-for the root-n consistent statistics offered here: mean, median, sd and quantiles of
-continuous data). The interval's `sampled` flag says when this happened.
+Choice: `auto` uses t for the mean, order statistics for the median and quantiles, and for
+the SD the bootstrap up to 10,000 values (BOOTSTRAP_MAX) and the asymptotic interval above.
+`bootstrap` bootstraps groups of up to 10,000 values and uses the statistic's exact interval
+above (with a warning). Bootstrap work is bounded across groups (BOOTSTRAP_WORK); groups past
+the bound get the exact interval too, with a warning.
+
+Why not subsample: rescaling a bootstrap of m values by sqrt(m/n) undercovered badly for
+SDs of skewed data and extreme quantiles (0.66-0.85 at a nominal 0.95). Simulated coverage
+of the asymptotic SD interval: 0.93-0.97 at n >= 20,000 for normal, exponential and
+lognormal(0, 0.5 and 1) data. For very heavy tails (lognormal(0, 1)) every method,
+bootstrap included, undercovers at moderate n (about 0.87 at 2,000 and 0.92 at 10,000), so
+SD intervals for data with excess kurtosis above 20 carry a warning.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import Executor
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 import numpy as np
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import ColumnSemantic, Scalar, StatResult
+from viz.contracts import Scalar, StatResult
 from viz.stats.bootstrap import bootstrap_ci, quantile
 from viz.stats.errors import StatsInputError
-from viz.stats.fields import derived, field_kind, key_expr, key_value, label, measure_expr
+from viz.stats.fields import key_expr, key_value, label, measure_expr
 from viz.stats.groups import cap_groups
 from viz.stats.models import (
     ConfidenceInterval,
     ConfidenceIntervalRequest,
     ConfidenceIntervalValues,
+    IntervalMethod,
 )
-from viz.stats.moments import cell_moments
+from viz.stats.moments import Cell, CellMoments, cell_moments
 from viz.stats.relation import Relation
 from viz.stats.results import stat_result
-from viz.stats.sampling import DEFAULT_SEED, reservoir_sample
-from viz.stats.sql import alias, fn, num
+from viz.stats.sampling import DEFAULT_SEED
+from viz.stats.sql import alias, fn, lit, num
 
-# BCa's jackknife costs O(m^2) per group (a median at m = 10,000 took ~1 s), and the
-# sqrt(m/n) rescaling makes m a cost knob rather than an accuracy one.
-BOOTSTRAP_CAP = 5_000
-BOOTSTRAP_TOTAL = 20_000
+BOOTSTRAP_MAX = 10_000
+BCA_MAX = 2_000
+# Values x resamples (plus n^2 for BCa's jackknife) bootstrapped per request: ~1.5 s.
+BOOTSTRAP_WORK = 200_000_000
+HEAVY_TAILS = 20.0
 
 Key = tuple[Any, ...]
+Plan = Literal["t", "order", "asymptotic", "bootstrap"]
+_ANALYTIC: dict[str, Plan] = {
+    "mean": "t",
+    "median": "order",
+    "quantile": "order",
+    "std": "asymptotic",
+}
+_ANALYTIC_NAME = {"t": "t", "order": "order-statistic", "asymptotic": "asymptotic"}
 
 
 def _present(*exprs: exp.Expr) -> exp.Expr:
@@ -57,6 +80,39 @@ def _statistic(req: ConfidenceIntervalRequest) -> str | Callable[..., np.ndarray
         assert req.quantile is not None
         return quantile(req.quantile)
     return req.statistic
+
+
+def order_ranks(n: int, p: float, ci_level: float) -> tuple[int | None, int | None, float]:
+    """1-based ranks (l, u) with P(x_(l) <= Q(p) <= x_(u)) >= ci_level, and that coverage.
+
+    Equal tails: l - 1 is the largest k with B(k; n, p) <= alpha/2 and u - 1 the smallest k
+    with B(k; n, p) >= 1 - alpha/2. None marks a side that no rank can bound at this level.
+    """
+    alpha = 1 - ci_level
+    k = int(sps.binom.ppf(alpha / 2, n, p))
+    if sps.binom.cdf(k, n, p) > alpha / 2:
+        k -= 1
+    low = k + 1 if k >= 0 else None
+    upper = int(sps.binom.ppf(1 - alpha / 2, n, p)) + 1
+    high = upper if upper <= n else None
+    below = sps.binom.cdf(low - 1, n, p) if low is not None else 0.0
+    above = sps.binom.cdf(high - 1, n, p) if high is not None else 1.0
+    return low, high, float(above - below)
+
+
+def asymptotic_sd(
+    n: int, var: float, kurtosis: float | None, ci_level: float
+) -> tuple[float, float, float] | None:
+    """(low, high, se of s) from the log-scale delta method; None when undefined."""
+    if n < 4 or kurtosis is None or var <= 0:
+        return None
+    var_log = kurtosis / n + 2 / (n - 1)
+    if var_log <= 0:
+        return None
+    se_log = math.sqrt(var_log)
+    z = float(sps.norm.ppf(0.5 + ci_level / 2))
+    s = math.sqrt(var)
+    return s * math.exp(-z * se_log / 2), s * math.exp(z * se_log / 2), s * se_log / 2
 
 
 def _quantile_by_key(
@@ -85,13 +141,11 @@ def confidence_intervals(
     if req.statistic == "quantile" and req.quantile is None:
         raise StatsInputError("Choose the quantile (between 0 and 1) to estimate.")
     if req.method == "t" and req.statistic != "mean":
-        raise StatsInputError("The t interval is for the mean; use the bootstrap for others.")
-    use_t = req.method == "t" or (req.method == "auto" and req.statistic == "mean")
+        raise StatsInputError("The t interval is for the mean; use another method for others.")
     fields = list(dict.fromkeys(req.fields))
     source = rel
     warnings: list[str] = []
-    keys: list[exp.Expr] = []
-    names: list[str] = []
+    key: exp.Expr | None = None
     if req.group_by is not None:
         rel.require(req.group_by)
         if req.group_by in fields:
@@ -100,174 +154,268 @@ def confidence_intervals(
         source = capped.relation
         if capped.warning:
             warnings.append(capped.warning)
-        keys, names = [key_expr(rel, req.group_by)], [req.group_by]
+        key = key_expr(rel, req.group_by)
     intervals: list[ConfidenceInterval] = []
+    budget = _Budget(BOOTSTRAP_WORK)
     for name in fields:
         value = measure_expr(rel, name)
-        if use_t:
-            intervals += _t_intervals(source, req, name, value, keys)
-        else:
-            intervals += _bootstrap_intervals(
-                source, req, name, value, keys, warnings, seed, executor
-            )
+        intervals += _field(source, req, name, value, key, warnings, budget, seed, executor)
     n = int(rel.rows(rel.select(exp.Count(this=exp.Star())))[0][0])
     statistic = req.statistic if req.statistic != "quantile" else f"{req.quantile:g} quantile"
-    method = (
-        f"t confidence intervals for the {statistic} (exact)"
-        if use_t
-        else f"Bootstrap confidence intervals for the {statistic} ({req.n_resamples:,} resamples)"
-    )
-    for interval in intervals:
-        if interval.n < 2:
-            where = label(names, interval.group) if interval.group is not None else "all rows"
-            warnings.append(f"'{interval.field}' ({where}): an interval needs at least 2 values.")
-    values = ConfidenceIntervalValues(
-        statistic=req.statistic,
-        quantile=req.quantile,
-        ci_level=req.ci_level,
-        group_by=req.group_by,
-        intervals=intervals,
-    )
+    methods = sorted({i.method for i in intervals})
     return stat_result(
-        values.model_dump(by_alias=True),
-        method=method,
+        ConfidenceIntervalValues(
+            statistic=req.statistic,
+            quantile=req.quantile,
+            ci_level=req.ci_level,
+            group_by=req.group_by,
+            intervals=intervals,
+        ).model_dump(by_alias=True),
+        method=f"Confidence intervals for the {statistic} ({', '.join(methods) or 'none'})",
         n=n,
-        sampled=any(i.sampled for i in intervals),
+        sampled=False,
         warnings=warnings,
     )
 
 
-def _group_value(rel: Relation, req: ConfidenceIntervalRequest, key: Key) -> list[Scalar] | None:
-    if req.group_by is None:
-        return None
-    return [key_value(rel, req.group_by, key[0])]
+@dataclass
+class _Budget:
+    left: float
 
 
-def _t_intervals(
+@dataclass
+class _Planned:
+    cell: Cell
+    plan: Plan
+    # Why the bootstrap wasn't used: "size" (over BOOTSTRAP_MAX) or "budget"; None otherwise.
+    fallback: str | None = None
+
+
+def _plans(
+    req: ConfidenceIntervalRequest, cells: Sequence[Cell], budget: _Budget
+) -> list[_Planned]:
+    analytic = _ANALYTIC[req.statistic]
+    wants_bootstrap = req.method == "bootstrap" or (
+        req.method == "auto" and analytic == "asymptotic"
+    )
+    if not wants_bootstrap:
+        return [_Planned(c, analytic) for c in cells]
+    planned: dict[Key, _Planned] = {}
+    for cell in sorted(cells, key=lambda c: c.n):  # smallest first: as many as fit
+        if cell.n > BOOTSTRAP_MAX:
+            planned[cell.key] = _Planned(cell, analytic, "size")
+            continue
+        work = cell.n * req.n_resamples + (cell.n**2 if cell.n <= BCA_MAX else 0)
+        if work > budget.left:
+            planned[cell.key] = _Planned(cell, analytic, "budget")
+            continue
+        budget.left -= work
+        planned[cell.key] = _Planned(cell, "bootstrap")
+    return [planned[c.key] for c in cells]
+
+
+def _field(
     rel: Relation,
     req: ConfidenceIntervalRequest,
     name: str,
     value: exp.Expr,
-    keys: list[exp.Expr],
-) -> list[ConfidenceInterval]:
-    moments = cell_moments(rel, value, keys)
-    out: list[ConfidenceInterval] = []
-    for cell in sorted(moments.cells, key=lambda c: tuple((v is None, v) for v in c.key)):
-        mean = moments.mean(cell)
-        low = high = se = None
-        if cell.n >= 2 and cell.var is not None:
-            se = math.sqrt(cell.var / cell.n)
-            crit = float(sps.t.ppf(0.5 + req.ci_level / 2, cell.n - 1))
-            low, high = mean - crit * se, mean + crit * se
-        out.append(
-            ConfidenceInterval(
-                field=name,
-                group=_group_value(rel, req, cell.key),
-                n=cell.n,
-                estimate=mean,
-                ci_low=low,
-                ci_high=high,
-                std_error=se,
-                method="t",
-                sampled=False,
-            )
-        )
-    return out
-
-
-def _bootstrap_intervals(
-    rel: Relation,
-    req: ConfidenceIntervalRequest,
-    name: str,
-    value: exp.Expr,
-    keys: list[exp.Expr],
+    key: exp.Expr | None,
     warnings: list[str],
+    budget: _Budget,
     seed: int,
     executor: Executor | None,
 ) -> list[ConfidenceInterval]:
+    # Group by the key and its text form: the text identifies groups in later queries.
+    keys = [key, exp.cast(key.copy(), "VARCHAR")] if key is not None else []
     moments = cell_moments(rel, value, keys)
-    counts = {c.key: c.n for c in moments.cells}
-    if req.statistic == "mean":
-        exact = {c.key: moments.mean(c) for c in moments.cells}
-    elif req.statistic == "std":
-        exact = {c.key: math.sqrt(c.var) for c in moments.cells if c.var is not None}
-    else:
-        q = 0.5 if req.statistic == "median" else float(req.quantile or 0.5)
-        exact = _quantile_by_key(rel, value, keys, q)
-    columns: list[tuple[str, exp.Expr, str, ColumnSemantic]] = [
-        ("_v", value, "DOUBLE", ColumnSemantic.QUANTITATIVE)
-    ]
-    if keys and req.group_by is not None:
-        temporal = field_kind(rel, req.group_by) == "temporal"
-        group_type = "VARCHAR" if temporal else rel.columns[req.group_by].type
-        columns.append(("_k", keys[0], group_type, ColumnSemantic.NOMINAL))
-    source = derived(rel, columns, _present(*keys) if keys else exp.true())
-    sample = reservoir_sample(
-        source,
-        ["_v"],
-        cap=BOOTSTRAP_CAP,
-        by=["_k"] if keys else (),
-        seed=seed,
-        total_cap=BOOTSTRAP_TOTAL,
+    cells = sorted(moments.cells, key=lambda c: tuple((v is None, v) for v in c.key[:1]))
+    estimates = _estimates(rel, req, value, keys, moments)
+    planned = _plans(req, cells, budget)
+    # Keys are never NULL here (cell_moments drops rows with a missing key).
+    texts: list[str | None] = [str(p.cell.key[1]) if keys else None for p in planned]
+    boot_values = _values(
+        rel, value, key, [t for p, t in zip(planned, texts, strict=True) if p.plan == "bootstrap"]
     )
-    data = sample.column("_v")
-    rows_of: dict[Key, list[int]] = {}
-    if keys:
-        for i, k in enumerate(sample.table.column("_k").to_pylist()):
-            rows_of.setdefault((k,), []).append(i)
-    else:
-        rows_of[()] = list(range(sample.n))
-    statistic = _statistic(req)
+    order: dict[str | None, tuple[int | None, int | None, float]] = {}
+    if req.statistic in ("median", "quantile"):
+        q = 0.5 if req.statistic == "median" else float(req.quantile or 0.5)
+        for p, text in zip(planned, texts, strict=True):
+            if p.plan == "order" and p.cell.n > 0:
+                order[text] = order_ranks(p.cell.n, q, req.ci_level)
+    bounds = _order_values(rel, value, key, order)
+
+    def where(group: list[Scalar] | None) -> str:
+        return f"'{name}'" + (f" ({label([req.group_by or ''], group)})" if group else "")
+
     out: list[ConfidenceInterval] = []
-    for key in sorted(counts, key=lambda k: tuple((v is None, v) for v in k)):
-        n = counts[key]
-        group = _group_value(rel, req, key)
-        values = data[np.asarray(rows_of.get(key, []), dtype=np.int64)]
-        estimate = exact.get(key)
-        if n < 2 or len(values) < 2 or estimate is None:
-            out.append(
-                ConfidenceInterval(
-                    field=name,
-                    group=group,
-                    n=n,
-                    estimate=estimate,
-                    ci_low=None,
-                    ci_high=None,
-                    std_error=None,
-                    method="bootstrap",
-                    sampled=False,
+    statistic = _statistic(req)
+    for p, text in zip(planned, texts, strict=True):
+        cell = p.cell
+        group = [key_value(rel, req.group_by, cell.key[0])] if req.group_by else None
+        estimate = estimates.get(cell.key)
+        low = high = se = None
+        method = _method_name(p.plan, cell.n)
+        if p.plan == "t" and cell.n >= 2 and cell.var is not None:
+            mean = moments.mean(cell)
+            se = math.sqrt(cell.var / cell.n)
+            crit = float(sps.t.ppf(0.5 + req.ci_level / 2, cell.n - 1))
+            low, high = mean - crit * se, mean + crit * se
+        elif p.plan == "order" and text in order:
+            l_rank, u_rank, coverage = order[text]
+            low = bounds.get((text, l_rank)) if l_rank is not None else None
+            high = bounds.get((text, u_rank)) if u_rank is not None else None
+            if cell.n >= 2 and (l_rank is None or u_rank is None):
+                warnings.append(
+                    f"{where(group)}: with {cell.n} values no order statistic gives the "
+                    f"{_side(l_rank, u_rank)} bound at {req.ci_level:.0%}."
                 )
+            elif coverage > req.ci_level + 0.01:
+                warnings.append(
+                    f"{where(group)}: the order-statistic interval covers {coverage:.1%} "
+                    f"(the closest achievable with {cell.n} values)."
+                )
+        elif p.plan == "asymptotic" and cell.var is not None:
+            result = asymptotic_sd(cell.n, cell.var, cell.kurtosis, req.ci_level)
+            if result is not None:
+                low, high, se = result
+            elif cell.n >= 2 and cell.var == 0:
+                low = high = 0.0
+        elif p.plan == "bootstrap" and cell.n >= 2:
+            interval = bootstrap_ci(
+                boot_values.get(text, np.empty(0)),
+                statistic,
+                ci_level=req.ci_level,
+                n_resamples=req.n_resamples,
+                method="bca" if cell.n <= BCA_MAX else "percentile",
+                seed=seed,
+                executor=executor,
             )
-            continue
-        interval = bootstrap_ci(
-            values,
-            statistic,
-            ci_level=req.ci_level,
-            n_resamples=req.n_resamples,
-            seed=seed,
-            executor=executor,
-        )
-        where = f"'{name}'" + (f" ({label([req.group_by or ''], group)})" if group else "")
-        warnings += [f"{where}: {w}" for w in interval.warnings]
-        sampled = len(values) < n
-        scale = math.sqrt(len(values) / n) if sampled else 1.0
-        centre = interval.estimate if not sampled else estimate
+            warnings += [f"{where(group)}: {w}" for w in interval.warnings]
+            low, high, se = interval.low, interval.high, interval.se
+            method = _BOOTSTRAP_NAME[interval.method]
+        if req.statistic == "std" and cell.kurtosis is not None and cell.kurtosis > HEAVY_TAILS:
+            warnings.append(
+                f"{where(group)}: heavy tails (excess kurtosis {cell.kurtosis:.3g}); SD "
+                "intervals tend to be too narrow unless there are very many values."
+            )
+        if cell.n < 2:
+            warnings.append(f"{where(group)}: an interval needs at least 2 values.")
         out.append(
             ConfidenceInterval(
                 field=name,
                 group=group,
-                n=n,
+                n=cell.n,
                 estimate=estimate,
-                ci_low=centre + scale * (interval.low - interval.estimate),
-                ci_high=centre + scale * (interval.high - interval.estimate),
-                std_error=interval.se * scale,
-                method=f"{interval.method} bootstrap",
-                sampled=sampled,
+                ci_low=low,
+                ci_high=high,
+                std_error=se,
+                method=method,
             )
         )
-    if any(i.sampled for i in out):
-        warnings.append(
-            f"'{name}': the bootstrap ran on a random sample of each large group; its interval "
-            "was rescaled by sqrt(m/n) to the full data (m-out-of-n bootstrap)."
-        )
+    _fallback_warnings(req, name, planned, warnings)
     return out
+
+
+_BOOTSTRAP_NAME: dict[str, IntervalMethod] = {
+    "bca": "bca bootstrap",
+    "percentile": "percentile bootstrap",
+    "basic": "basic bootstrap",
+}
+
+
+def _method_name(plan: Plan, n: int) -> IntervalMethod:
+    if plan == "t":
+        return "t"
+    if plan == "order":
+        return "order statistic"
+    if plan == "asymptotic":
+        return "asymptotic"
+    return "bca bootstrap" if n <= BCA_MAX else "percentile bootstrap"
+
+
+def _side(low: int | None, high: int | None) -> str:
+    if low is None and high is None:
+        return "lower or upper"
+    return "lower" if low is None else "upper"
+
+
+def _fallback_warnings(
+    req: ConfidenceIntervalRequest, name: str, planned: Sequence[_Planned], warnings: list[str]
+) -> None:
+    analytic = _ANALYTIC_NAME[_ANALYTIC[req.statistic]]
+    sized = sum(1 for p in planned if p.fallback == "size")
+    if sized and req.method == "bootstrap":
+        warnings.append(
+            f"'{name}': above {BOOTSTRAP_MAX:,} values the {analytic} interval (exact on all "
+            "values) is used instead of the bootstrap."
+        )
+    over = sum(1 for p in planned if p.fallback == "budget")
+    if over:
+        warnings.append(
+            f"'{name}': {over} group(s) got the {analytic} interval instead of the bootstrap "
+            "to bound the running time; use fewer resamples or groups to bootstrap them all."
+        )
+
+
+def _estimates(
+    rel: Relation,
+    req: ConfidenceIntervalRequest,
+    value: exp.Expr,
+    keys: list[exp.Expr],
+    moments: CellMoments,
+) -> dict[Key, float]:
+    if req.statistic == "mean":
+        return {c.key: moments.mean(c) for c in moments.cells}
+    if req.statistic == "std":
+        return {c.key: math.sqrt(c.var) for c in moments.cells if c.var is not None}
+    q = 0.5 if req.statistic == "median" else float(req.quantile or 0.5)
+    return _quantile_by_key(rel, value, keys, q)
+
+
+def _text_key(key: exp.Expr | None) -> exp.Expr:
+    return exp.cast(key.copy(), "VARCHAR") if key is not None else exp.cast(exp.Null(), "VARCHAR")
+
+
+def _values(
+    rel: Relation, value: exp.Expr, key: exp.Expr | None, texts: Sequence[str | None]
+) -> dict[str | None, np.ndarray]:
+    """All values of the groups with these text keys (each has at most BOOTSTRAP_MAX)."""
+    if not texts:
+        return {}
+    condition = _present(value) if key is None else _present(value, key)
+    narrowed = rel.narrow(condition)
+    if key is not None:
+        narrowed = narrowed.narrow(
+            exp.In(this=_text_key(key), expressions=[lit(t) for t in texts if t is not None])
+        )
+    table = rel.arrow(narrowed.select(alias(_text_key(key), "_kt"), alias(value.copy(), "_v")))
+    keys = table.column("_kt").to_pylist()
+    values = np.asarray(table.column("_v").to_numpy(zero_copy_only=False), dtype=float)
+    rows: dict[str | None, list[int]] = {}
+    for i, k in enumerate(keys):
+        rows.setdefault(k, []).append(i)
+    return {k: values[np.asarray(idx, dtype=np.int64)] for k, idx in rows.items()}
+
+
+def _order_values(
+    rel: Relation,
+    value: exp.Expr,
+    key: exp.Expr | None,
+    ranks: dict[str | None, tuple[int | None, int | None, float]],
+) -> dict[tuple[str | None, int], float]:
+    """x_(rank) within each group, exactly: a row_number window joined to the wanted ranks."""
+    wanted = [(t, r) for t, (lo, hi, _) in ranks.items() for r in (lo, hi) if r is not None]
+    if not wanted:
+        return {}
+    condition = _present(value) if key is None else _present(value, key)
+    inner = rel.narrow(condition).select(alias(_text_key(key), "_kt"), alias(value.copy(), "_v"))
+    targets = ", ".join(
+        f"({exp.cast(lit(t), 'VARCHAR').sql(dialect='duckdb')}, {int(r)})" for t, r in wanted
+    )
+    sql = (
+        f"WITH _r AS (SELECT _kt, _v, row_number() OVER (PARTITION BY _kt ORDER BY _v) AS _rn "
+        f"FROM ({inner.sql(dialect='duckdb')}) AS _d) "
+        f"SELECT _r._kt, _r._rn, _r._v FROM _r JOIN (VALUES {targets}) AS _w(_kt, _rn) "
+        "ON _r._kt IS NOT DISTINCT FROM _w._kt AND _r._rn = _w._rn"
+    )
+    return {(kt, int(rn)): float(v) for kt, rn, v in rel.rows(sql)}

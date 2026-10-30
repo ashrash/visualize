@@ -1,13 +1,17 @@
 """Rank-based tests in SciPy, on a random sample above 1M values (per test, split by group).
 
 - mann_whitney: scipy.stats.mannwhitneyu (exact for small samples without ties, otherwise
-  normal with tie and continuity corrections, as R's wilcox.test). The statistic is U of
-  the first group; the effect size is the rank-biserial correlation 2 U / (n1 n2) - 1
-  (positive when the first group tends to be larger).
+  normal with tie and continuity corrections). The statistic is U of the first group (R's
+  W); the effect size is the rank-biserial correlation 2 U / (n1 n2) - 1 (positive when the
+  first group tends to be larger).
 - wilcoxon: scipy.stats.wilcoxon on field - paired_field (or field - mu), zero differences
   dropped (Wilcoxon's method). The statistic is W+ (sum of the ranks of positive
   differences, R's V); the effect size is the matched-pairs rank-biserial (W+ - W-) / (W+ + W-).
 - kruskal: scipy.stats.kruskal; effect size epsilon squared H / (n - 1).
+
+p-values are SciPy's. They can differ slightly from R's wilcox.test: the two switch from
+exact to normal-approximation p-values at different sample sizes, and SciPy's signed-rank
+normal approximation has no continuity correction by default (R's has).
 """
 
 from __future__ import annotations
@@ -149,7 +153,8 @@ def _groups(rel: Relation, req: RankTestRequest, seed: int) -> StatResult:
         cap=MODEL_CAP,
         by=["_k"],
         seed=seed,
-        max_groups=req.max_groups,
+        # Groups chosen by name are all kept, however many.
+        max_groups=req.max_groups if chosen is None else max(req.max_groups, len(chosen)),
         total_cap=MODEL_CAP,
     )
     keys = sample.table.column("_k").to_pylist()

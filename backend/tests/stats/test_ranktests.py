@@ -94,6 +94,14 @@ def test_kruskal_plant_growth_matches_r(table_relation: Any, plant_growth: pa.Ta
     assert result.n == 30
 
 
+def test_named_groups_beyond_max_groups_are_kept(table_relation: Any) -> None:
+    rng = np.random.default_rng(6)
+    names = [f"g{i:02d}" for i in range(60)]
+    rel = table_relation({"y": rng.normal(0, 1, 600), "g": names * 10})
+    _, v = _run(rel, kind="kruskal", field="y", group_field="g", groups=names)
+    assert len(v.samples) == 60 and v.df == 59
+
+
 def test_large_inputs_are_sampled(table_relation: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ranktests, "MODEL_CAP", 300)
     rng = np.random.default_rng(1)

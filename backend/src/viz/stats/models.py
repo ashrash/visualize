@@ -120,7 +120,9 @@ class RegressionTerm(Contract):
     p_value: float | None
     ci_low: float | None
     ci_high: float | None
-    # Variance inflation factor (None for the intercept or when undefined).
+    # Variance inflation factor of the term's field: GVIF^(1/df) (Fox & Monette), which is
+    # the VIF for a one-column field and, for a categorical field, one value shared by its
+    # dummies. None for the intercept, without an intercept, or when undefined.
     vif: float | None
 
 
@@ -293,7 +295,7 @@ class TukeyComparison(Contract):
 class AnovaValues(Contract):
     field: str
     factors: list[str]
-    ss_type: int
+    ss_type: Literal[1, 2, 3]
     interaction: bool
     table: list[AnovaRow]
     # One-way effect sizes; None for two-way.
@@ -315,7 +317,7 @@ class AnovaValues(Contract):
 
 class ExpectedProportion(Contract):
     value: Scalar
-    proportion: float = Field(ge=0)
+    proportion: float = Field(gt=0)
 
 
 class ChiSquareRequest(StatsSourceRequest):
@@ -488,13 +490,24 @@ class OutlierValues(Contract):
 # ---------------------------------------------------------------- confidence intervals
 
 CiStatistic = Literal["mean", "median", "std", "quantile"]
+IntervalMethod = Literal[
+    "t",
+    "order statistic",
+    "asymptotic",
+    "bca bootstrap",
+    "percentile bootstrap",
+    "basic bootstrap",
+]
 
 
 class ConfidenceIntervalRequest(StatsSourceRequest):
-    """Confidence intervals: t (the mean, exact) or bootstrap (any statistic).
+    """Confidence intervals; estimates are exact on all values.
 
-    `auto` uses t for the mean and the bootstrap otherwise. Above 5,000 values per group
-    the bootstrap runs on a random sample and its interval is rescaled to the full data.
+    `auto`: t for the mean, order statistics (distribution-free) for the median and
+    quantiles, and for the SD the bootstrap up to 10,000 values per group and the
+    kurtosis-adjusted asymptotic interval above. `bootstrap` bootstraps groups of up to
+    10,000 values (all of them, never a subsample) and uses the statistic's exact interval
+    above. `t` is for the mean only.
     """
 
     fields: list[str] = Field(min_length=1, max_length=20)
@@ -515,11 +528,9 @@ class ConfidenceInterval(Contract):
     estimate: float | None
     ci_low: float | None
     ci_high: float | None
+    # None for order-statistic intervals.
     std_error: float | None
-    # "t", "bca bootstrap", "percentile bootstrap" or "basic bootstrap".
-    method: str
-    # The bootstrap ran on a random sample of the values (and was rescaled to all of them).
-    sampled: bool
+    method: IntervalMethod
 
 
 class ConfidenceIntervalValues(Contract):

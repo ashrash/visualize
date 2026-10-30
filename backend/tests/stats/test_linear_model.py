@@ -142,6 +142,37 @@ def test_vif_and_breusch_pagan(table_relation: Any) -> None:
     assert shapiro.p_value is not None
 
 
+def test_gvif_for_categorical_predictors(table_relation: Any) -> None:
+    """A rare reference level inflates per-dummy VIFs (~20 here) but not the field's GVIF."""
+    rng = np.random.default_rng(14)
+    n = 3000
+    region = rng.choice(["A", "B", "C"], n, p=[0.01, 0.495, 0.495])
+    x = rng.normal(0, 1, n)
+    z = 0.6 * x + rng.normal(0, 0.8, n)
+    y = x + z + (region == "C") * 0.5 + rng.normal(0, 1, n)
+    rel = table_relation({"y": y, "x": x, "z": z, "region": region})
+    result, v = _run(rel, y="y", x=["x", "region", "z"])
+    names = [t.term for t in v.terms]
+    assert names == ["(Intercept)", "x", "region[B]", "region[C]", "z"]
+    predictors = np.column_stack([x, region == "B", region == "C", z]).astype(float)
+    corr = np.corrcoef(predictors, rowvar=False)
+    per_dummy = np.diag(np.linalg.inv(corr))
+    assert per_dummy[1] > 10  # what the old per-dummy VIF reported
+    block, rest = [1, 2], [0, 3]
+    gvif = (
+        np.linalg.det(corr[np.ix_(block, block)])
+        * np.linalg.det(corr[np.ix_(rest, rest)])
+        / np.linalg.det(corr)
+    )
+    assert v.terms[2].vif == pytest.approx(gvif ** (1 / 2), rel=1e-9)
+    assert v.terms[3].vif == v.terms[2].vif
+    assert v.terms[2].vif == pytest.approx(1.0, abs=0.05)
+    # One-column fields keep the ordinary VIF.
+    exog = sm.add_constant(predictors)
+    assert v.terms[1].vif == pytest.approx(variance_inflation_factor(exog, 1), rel=1e-9)
+    assert not any("VIF" in w for w in result.warnings)
+
+
 def test_no_intercept_matches_statsmodels(table_relation: Any) -> None:
     rng = np.random.default_rng(6)
     x = rng.uniform(1, 10, 80)

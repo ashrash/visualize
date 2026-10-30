@@ -192,22 +192,40 @@ def _finite(value: object) -> float | None:
 
 
 def _vif(design: np.ndarray, terms: list[_Term]) -> list[float | None]:
-    """VIF_j = diag(inverse of the predictors' correlation matrix) (needs an intercept)."""
+    """Per field, GVIF^(1/df) (Fox & Monette 1992); needs an intercept.
+
+    GVIF = det(R_FF) det(R_OO) / det(R) for the predictors' correlation matrix R, a field's
+    columns F and the others O. For a one-column field it is the ordinary VIF. A categorical
+    field's dummies share one value, GVIF^(1/df), which is comparable with a VIF and, unlike
+    per-dummy VIFs, doesn't depend on which level is the reference.
+    """
     out: list[float | None] = [None] * len(terms)
     if not terms or terms[0].name != INTERCEPT:
         return out
     predictors = design[:, 1:]
-    if predictors.shape[1] == 1:
+    p = predictors.shape[1]
+    if p == 1:
         out[1] = 1.0
+        return out
+    blocks: dict[str, list[int]] = {}
+    for j, term in enumerate(terms[1:]):
+        blocks.setdefault(term.field or term.name, []).append(j)
+    if len(blocks) == 1:
+        for j in range(p):
+            out[j + 1] = 1.0
         return out
     with np.errstate(invalid="ignore", divide="ignore"):
         corr = np.corrcoef(predictors, rowvar=False)
-    try:
-        inverse = np.linalg.inv(corr)
-    except np.linalg.LinAlgError:
+    sign, log_all = np.linalg.slogdet(corr)
+    if sign <= 0 or not np.isfinite(log_all):
         return out
-    for j, value in enumerate(np.diag(inverse)):
-        out[j + 1] = _finite(value)
+    for columns in blocks.values():
+        rest = [j for j in range(p) if j not in columns]
+        _, log_block = np.linalg.slogdet(corr[np.ix_(columns, columns)])
+        _, log_rest = np.linalg.slogdet(corr[np.ix_(rest, rest)])
+        value = _finite(math.exp((log_block + log_rest - log_all) / len(columns)))
+        for j in columns:
+            out[j + 1] = value
     return out
 
 
@@ -257,7 +275,13 @@ def _fit(
         warnings.append(f"'{req.y}' has no variation, so R² is undefined.")
     if not req.intercept:
         warnings.append("Without an intercept, R² is uncentred (as in R and statsmodels).")
-    inflated = [t.name for t, v in zip(terms, vifs, strict=True) if v is not None and v > VIF_WARN]
+    inflated = list(
+        dict.fromkeys(
+            t.field or t.name
+            for t, v in zip(terms, vifs, strict=True)
+            if v is not None and v > VIF_WARN
+        )
+    )
     if inflated:
         warnings.append(
             "Strong multicollinearity (VIF > 10): "

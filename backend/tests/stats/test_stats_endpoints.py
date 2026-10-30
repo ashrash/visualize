@@ -115,8 +115,14 @@ def test_fit_outliers_and_ci(client: TestClient, dataset: str, data: dict[str, n
     assert (first["ciLow"], first["ciHigh"]) == pytest.approx(
         sps.t.interval(0.95, len(xa) - 1, loc=xa.mean(), scale=sps.sem(xa)), rel=1e-10
     )
-    boot = _ok(_post(client, "ci", dataset, fields=["x"], statistic="median", nResamples=500))
-    assert boot["values"]["intervals"][0]["method"].endswith("bootstrap")
+    median = _ok(_post(client, "ci", dataset, fields=["x"], statistic="median"))
+    assert median["values"]["intervals"][0]["method"] == "order statistic"
+    boot = _ok(
+        _post(
+            client, "ci", dataset, fields=["x"], statistic="std", method="bootstrap", nResamples=500
+        )
+    )
+    assert boot["values"]["intervals"][0]["method"] == "bca bootstrap"
 
 
 def test_pipeline_source(client: TestClient, dataset: str, data: dict[str, np.ndarray]) -> None:
@@ -156,6 +162,28 @@ def test_user_errors_are_422(
     response = _post(client, path, dataset, **body)
     assert response.status_code == 422, response.text
     assert response.json()["detail"].startswith(detail)
+
+
+def test_nan_group_keys_from_a_csv_upload(client: TestClient) -> None:
+    rows = ["k,side,y"] + [
+        f"{k},{s},{y}"
+        for i, (k, s) in enumerate(
+            [("1.5", "l"), ("1.5", "r"), ("2.5", "l"), ("2.5", "r"), ("nan", "l"), ("nan", "r")] * 5
+        )
+        for y in [float(i % 7)]
+    ]
+    files = {"file": ("nan.csv", io.BytesIO(("\n".join(rows) + "\n").encode()), "text/csv")}
+    upload = client.post("/api/datasets/upload", files=files)
+    assert upload.status_code == 201, upload.text
+    dataset = str(upload.json()["id"])
+    chi = _ok(_post(client, "chisquare", dataset, field="k", columnField="side"))
+    assert chi["values"]["rows"] == [1.5, 2.5] and chi["values"]["observed"] == [[5, 5], [5, 5]]
+    assert chi["nMissing"] == 10
+    for factors in (["k"], ["k", "side"]):
+        anova_result = _ok(_post(client, "anova", dataset, field="y", factors=factors))
+        assert anova_result["n"] == 20
+    kruskal = _ok(_post(client, "ranktest", dataset, kind="kruskal", field="y", groupField="k"))
+    assert [s["group"] for s in kruskal["values"]["samples"]] == [[1.5], [2.5]]
 
 
 def test_validation_and_missing_sources(client: TestClient, dataset: str) -> None:
