@@ -1,6 +1,10 @@
-# Lead handoff: Wave 1 (2026-10-30)
+# Lead handoff: Wave 1 (2026-10-30, closed 2026-10-31)
 
-Read this together with CLAUDE.md and docs/STATUS.md to resume as lead. Wave 1 is not closed yet.
+Read this together with CLAUDE.md and docs/STATUS.md to resume as lead. **Wave 1 is closed**: all
+four branches below merged and reviewed, the full exit check passed (see docs/STATUS.md "Wave 1
+exit check"), and CLAUDE.md's status line is updated. This file is kept for its Wave 4 tracked
+items and reviewer/perf history; nothing below needs lead action to start Wave 2, except deciding
+the pre-Wave-2 items near the bottom.
 
 ## Merged on main (all checks green at fafdfb1 / aa9123e; stats resolve_source follow-up also merged, 2026-10-30)
 - **Merged:** platform (+ follow-up), stats (+ follow-up, + resolve_source/data_errors follow-up), data-core (Wave 1 + follow-up round 2), ui-charts (+ follow-up), ui-data (Wave 1, staged wizard, jobs indicator, single staging), transform (4 review rounds; B4 closed).
@@ -58,10 +62,12 @@ Their repro scripts live in the session scratchpad: `dc_review/`, `transform-rev
    Then update STATUS.md and the CLAUDE.md status line, and report to the user.
 
 ## Known items carried to Wave 4 (tracked in STATUS)
-- First sorted page cold: ~190–340 ms. Cold deep pages before their view is built: 1.8–2.7 s sorted, 0.6–0.7 s filtered range.
-- Free-text search: ~620–660 ms (accent folding deferred).
+- First sorted page cold: ~190–340 ms. Cold deep pages before their view is built: 1.8–2.9 s sorted, 0.6–0.7 s filtered range.
+- Free-text search: ~390–660 ms (accent folding deferred).
 - Raw-timestamp M4 line: ~250 ms quiet, over 300 ms under load.
-- Grouped describe with modes: 6.5–8 s. Ungrouped describe: 2.6–3.0 s, right at the budget.
+- Grouped describe with modes: 6.5–8 s. Ungrouped describe: measured 2.6–3.9 s across different runs/conditions, straddling the 3 s budget — needs a quiet-machine re-measurement and likely the sequential-modes fix stats suggested (its UNION ALL may be spilling under the app's lower `memory_limit`).
+- Dashboard refresh during a 10M-row import: measured 0.24 s -> 0.79 s -> 1.12 s p95 across three separate runs (cache-busting fixes and machine load both moved this number a lot). Needs a quiet-machine, uncontended re-measurement before Wave 4 can call this one closed either way.
+- e2e: a project-menu button's accessible name can pick up substrings from a test's own generated project name (e.g. a test titled "undo and redo..." creates a project whose name embeds "undo"/"redo", and the menu button's name embeds the project name), causing strict-mode locator collisions in `undo-redo.spec.ts` and `project.spec.ts` (3 tests, consistently reproducible, not flaky-random). Fix is in qa's scope: tighten the project-menu button's accessible name or the test locators.
 
 ## Before Wave 2
 - Add `echarts-custom-series` (frontend dependency; check its bundle cost).

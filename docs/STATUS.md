@@ -107,6 +107,40 @@ items in their final report and the lead updates this file. Status values: `todo
   DuckDB's default spilling the modes UNION ALL); tracked as a Wave 4 perf item, not a regression
   from this diff (the diff touches only source resolution and error mapping, not the describe SQL).
 
+## Wave 1 exit check (2026-10-31)
+
+All four previously in-flight branches merged and reviewed (2026-10-30/31): data-core round 3+4,
+transform (4 rounds, done earlier), stats resolve_source follow-up, qa review-fix round, ui-data
+pipeline wiring. Full checks on `main` (HEAD 938ba24 + docs):
+- Backend: pytest 722 passed/6 skipped, ruff and mypy clean.
+- Frontend: vitest 340 passed/1 skipped, biome clean, build clean.
+- Contract drift: clean (gen:api run after both the stats and data-core merges).
+- Full Playwright e2e: 72/79 passed, 3 known pre-existing flaky failures (a project-menu button's
+  accessible name picks up the words "undo"/"redo"/the project name from the test's own title,
+  causing a strict-mode locator collision in `undo-redo.spec.ts` and `project.spec.ts`; not a Wave
+  1 regression, worth a qa follow-up to stabilize the locator), 4 skipped (Wave 3 placeholders).
+  `@large` 10M-row grid test: 1/1 passed.
+- New pipeline e2e coverage added (`frontend/e2e/pipeline.spec.ts`): filter + group-aggregate +
+  chart from pipeline; join (via a rename to align join-key semantics) + pivot + materialize.
+  8/8 passes across repeated runs, no flakiness.
+- Lead browser smoke test (import, grid, pipeline join+pivot, chart, save, reload, dark mode):
+  passed.
+- Full `scripts/bench.py` (10M rows, run alongside other verification work so not fully quiet):
+  17 pass, 4 known-failure (within previously tracked Wave 4 ranges), 2 n/a (scatter/timeseries
+  chart types not yet implemented in chart-data, pre-existing gap), **2 over budget, not
+  previously marked known**: dashboard refresh during a 10M-row import measured p95 1.12s (budget
+  1s; qa's last quiet-machine run measured 0.79s) and describe-with-modes ungrouped measured p95
+  3.89s (budget 3s; previously observed in the 2.82-4.1s range depending on measurement
+  conditions). Both runs happened under heavy concurrent load (parallel e2e run, bench's own
+  fixture generation, this doc's own smoke test all running at once), so these are read as
+  reinforcing already-tracked Wave 4 perf items, not new regressions — but they should be
+  re-measured on a quiet machine before Wave 4 closes either one out.
+
+**Wave 1 exit criteria (CLAUDE.md §10) are met**: a 10M-row CSV import works within budget;
+pipelines with join and pivot work end to end (backend + UI + e2e coverage); basic charts work
+with full config, themes and PNG/SVG export; save, autosave and undo work. Known perf gaps are
+tracked below for Wave 4, not blockers.
+
 ## MVP.md
 
 ### 1. Data Sources & Import

@@ -9,7 +9,7 @@ A web-based data visualization and analysis tool. Python does the heavy lifting 
 
 Anything not in these files is out of scope until the user confirms it.
 
-**Status (2026-10-30):** Phase 0 is done and verified on Windows; macOS is not verified yet. Wave 1 is in progress. Per-feature progress is in [docs/STATUS.md](docs/STATUS.md). Keep this file accurate when a decision changes.
+**Status (2026-10-31):** Phase 0 and Wave 1 are done and verified on Windows; macOS is not verified yet. Wave 2 (plot families, stats §5, stats panel UI) has not started. Per-feature progress is in [docs/STATUS.md](docs/STATUS.md), which also lists the Wave 4 perf watch-items carried out of Wave 1 (ungrouped describe and dashboard-refresh-during-import both straddle their budgets depending on measurement conditions; need a quiet-machine re-measurement). Keep this file accurate when a decision changes.
 
 ---
 
