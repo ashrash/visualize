@@ -18,6 +18,7 @@ from pydantic.json_schema import models_json_schema
 
 from viz import __version__
 from viz.api import api_router
+from viz.chartdata.reduce import warm_up as warm_up_downsampling
 from viz.config import Settings, get_settings
 from viz.contracts import EXPORTED_MODELS
 from viz.engine import Engine, RequestScopeMiddleware
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db_engine = create_db_engine(settings.db_url)
         run_migrations(db_engine)
         engine = Engine.from_settings(settings, temp_dir=storage.temp_dir)
+        warm_up_downsampling()  # transform: avoids tsdownsample's ~0.25 s first-call cost
         app.state.settings = settings
         app.state.storage = storage
         app.state.sessionmaker = make_sessionmaker(db_engine)

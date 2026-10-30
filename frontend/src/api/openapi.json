@@ -969,9 +969,245 @@
         },
         "responses": {
           "200": {
+            "description": "Arrow IPC (meta under viz.meta), or JSON ChartStatResponse for plots that use a stat transform",
+            "content": {
+              "application/vnd.apache.arrow.stream": {},
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChartStatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/charts/overlays": {
+      "post": {
+        "tags": [
+          "charts"
+        ],
+        "summary": "Get Chart Overlays",
+        "operationId": "get_chart_overlays_api_charts_overlays_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChartDataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OverlayResult"
+                  },
+                  "type": "array",
+                  "title": "Response Get Chart Overlays Api Charts Overlays Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pipelines/inspect": {
+      "post": {
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Inspect Pipeline",
+        "operationId": "inspect_pipeline_api_pipelines_inspect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineInspectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineInspectResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pipelines/preview": {
+      "post": {
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Preview Pipeline",
+        "operationId": "preview_pipeline_api_pipelines_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelinePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
             "description": "Arrow IPC",
             "content": {
               "application/vnd.apache.arrow.stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pipelines/formula/check": {
+      "post": {
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Check Formula",
+        "operationId": "check_formula_api_pipelines_formula_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormulaCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormulaCheckResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pipelines/formula/functions": {
+      "get": {
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Formula Functions",
+        "operationId": "formula_functions_api_pipelines_formula_functions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FormulaFunction"
+                  },
+                  "type": "array",
+                  "title": "Response Formula Functions Api Pipelines Formula Functions Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pipelines/materialize": {
+      "post": {
+        "tags": [
+          "pipelines"
+        ],
+        "summary": "Materialize Pipeline",
+        "description": "Start (or join) a MATERIALIZE job for the pipeline's pending steps; follow it with\n/api/jobs/{id}. `ready` lists steps whose Parquet already exists.",
+        "operationId": "materialize_pipeline_api_pipelines_materialize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterializeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterializeResult"
+                }
+              }
             }
           },
           "422": {
@@ -3669,6 +3905,126 @@
         ],
         "title": "Folder"
       },
+      "FormulaCheckRequest": {
+        "properties": {
+          "expression": {
+            "type": "string",
+            "title": "Expression"
+          },
+          "pipeline": {
+            "$ref": "#/components/schemas/Pipeline"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "beforeStepId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beforestepid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expression",
+          "pipeline"
+        ],
+        "title": "FormulaCheckRequest"
+      },
+      "FormulaCheckResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outputtype"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ok",
+          "error",
+          "outputType",
+          "fields"
+        ],
+        "title": "FormulaCheckResult",
+        "description": "Server-produced."
+      },
+      "FormulaFunction": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "math",
+              "string",
+              "date",
+              "conditional",
+              "null",
+              "type"
+            ],
+            "title": "Category"
+          },
+          "signature": {
+            "type": "string",
+            "title": "Signature"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "category",
+          "signature",
+          "description"
+        ],
+        "title": "FormulaFunction",
+        "description": "Server-produced; feeds formula autocomplete."
+      },
       "GroupAggregateStep": {
         "properties": {
           "id": {
@@ -4713,6 +5069,52 @@
         ],
         "title": "LinkGroup"
       },
+      "MaterializeRequest": {
+        "properties": {
+          "pipeline": {
+            "$ref": "#/components/schemas/Pipeline"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pipeline"
+        ],
+        "title": "MaterializeRequest"
+      },
+      "MaterializeResult": {
+        "properties": {
+          "jobs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Jobs"
+          },
+          "ready": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ready"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "jobs",
+          "ready"
+        ],
+        "title": "MaterializeResult",
+        "description": "Server-produced."
+      },
       "NormalizeStep": {
         "properties": {
           "id": {
@@ -4760,6 +5162,113 @@
           "fields"
         ],
         "title": "NormalizeStep"
+      },
+      "OverlayResult": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TrendlineKind"
+          },
+          "series": {
+            "type": "integer",
+            "title": "Series"
+          },
+          "x": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "X"
+          },
+          "y": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Y"
+          },
+          "lo": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lo"
+          },
+          "hi": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hi"
+          },
+          "equation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equation"
+          },
+          "r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R2"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "sampled": {
+            "type": "boolean",
+            "title": "Sampled"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "series",
+          "x",
+          "y",
+          "lo",
+          "hi",
+          "equation",
+          "r2",
+          "n",
+          "sampled",
+          "warnings"
+        ],
+        "title": "OverlayResult",
+        "description": "A server-computed trendline or regression fit, with an optional band. Server-produced."
       },
       "Pipeline": {
         "properties": {
@@ -4856,6 +5365,163 @@
           "source"
         ],
         "title": "Pipeline"
+      },
+      "PipelineInspectRequest": {
+        "properties": {
+          "pipeline": {
+            "$ref": "#/components/schemas/Pipeline"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "includeSql": {
+            "type": "boolean",
+            "title": "Includesql",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pipeline"
+        ],
+        "title": "PipelineInspectRequest"
+      },
+      "PipelineInspectResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "sourceColumns": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "type": "array",
+            "title": "Sourcecolumns"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepSchema"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "sql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ok",
+          "sourceColumns",
+          "steps",
+          "columns",
+          "sql"
+        ],
+        "title": "PipelineInspectResult",
+        "description": "Server-produced."
+      },
+      "PipelinePreviewRequest": {
+        "properties": {
+          "pipeline": {
+            "$ref": "#/components/schemas/Pipeline"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "stepId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stepid"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Limit",
+            "default": 200
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "type": "array",
+            "title": "Sort"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pipeline"
+        ],
+        "title": "PipelinePreviewRequest"
       },
       "PivotStep": {
         "properties": {
@@ -5614,6 +6280,29 @@
         "type": "object",
         "title": "RowsRequest"
       },
+      "SchemaField": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "semantic": {
+            "$ref": "#/components/schemas/ColumnSemantic"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "semantic"
+        ],
+        "title": "SchemaField"
+      },
       "SelectStep": {
         "properties": {
           "id": {
@@ -5926,6 +6615,108 @@
           "n"
         ],
         "title": "StatResult"
+      },
+      "StepError": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "StepError"
+      },
+      "StepSchema": {
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "title": "Stepid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error",
+              "blocked",
+              "disabled"
+            ],
+            "title": "Status"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "materialized": {
+            "type": "string",
+            "enum": [
+              "none",
+              "ready",
+              "pending"
+            ],
+            "title": "Materialized"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stepId",
+          "status",
+          "columns",
+          "error",
+          "materialized"
+        ],
+        "title": "StepSchema",
+        "description": "Server-produced."
       },
       "TextWidget": {
         "properties": {
@@ -6779,127 +7570,6 @@
         "title": "FieldSummary",
         "type": "object"
       },
-      "FormulaCheckRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "expression": {
-            "title": "Expression",
-            "type": "string"
-          },
-          "pipeline": {
-            "$ref": "#/components/schemas/Pipeline"
-          },
-          "pipelines": {
-            "items": {
-              "$ref": "#/components/schemas/Pipeline"
-            },
-            "title": "Pipelines",
-            "type": "array"
-          },
-          "beforeStepId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Beforestepid"
-          }
-        },
-        "required": [
-          "expression",
-          "pipeline"
-        ],
-        "title": "FormulaCheckRequest",
-        "type": "object"
-      },
-      "FormulaCheckResult": {
-        "additionalProperties": false,
-        "description": "Server-produced.",
-        "properties": {
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/StepError"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "outputType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Outputtype"
-          },
-          "fields": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Fields",
-            "type": "array"
-          }
-        },
-        "required": [
-          "ok",
-          "error",
-          "outputType",
-          "fields"
-        ],
-        "title": "FormulaCheckResult",
-        "type": "object"
-      },
-      "FormulaFunction": {
-        "additionalProperties": false,
-        "description": "Server-produced; feeds formula autocomplete.",
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "category": {
-            "enum": [
-              "math",
-              "string",
-              "date",
-              "conditional",
-              "null",
-              "type"
-            ],
-            "title": "Category",
-            "type": "string"
-          },
-          "signature": {
-            "title": "Signature",
-            "type": "string"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "category",
-          "signature",
-          "description"
-        ],
-        "title": "FormulaFunction",
-        "type": "object"
-      },
       "ImportPreviewMeta": {
         "additionalProperties": false,
         "description": "Arrow metadata of a preview response. Server-produced.",
@@ -6959,235 +7629,6 @@
         "title": "ImportPreviewMeta",
         "type": "object"
       },
-      "MaterializeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "pipeline": {
-            "$ref": "#/components/schemas/Pipeline"
-          },
-          "pipelines": {
-            "items": {
-              "$ref": "#/components/schemas/Pipeline"
-            },
-            "title": "Pipelines",
-            "type": "array"
-          }
-        },
-        "required": [
-          "pipeline"
-        ],
-        "title": "MaterializeRequest",
-        "type": "object"
-      },
-      "MaterializeResult": {
-        "additionalProperties": false,
-        "description": "Server-produced.",
-        "properties": {
-          "jobs": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Jobs",
-            "type": "object"
-          },
-          "ready": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Ready",
-            "type": "array"
-          }
-        },
-        "required": [
-          "jobs",
-          "ready"
-        ],
-        "title": "MaterializeResult",
-        "type": "object"
-      },
-      "OverlayResult": {
-        "additionalProperties": false,
-        "description": "A server-computed trendline or regression fit, with an optional band. Server-produced.",
-        "properties": {
-          "kind": {
-            "$ref": "#/components/schemas/TrendlineKind"
-          },
-          "series": {
-            "title": "Series",
-            "type": "integer"
-          },
-          "x": {
-            "items": {
-              "type": "number"
-            },
-            "title": "X",
-            "type": "array"
-          },
-          "y": {
-            "items": {
-              "type": "number"
-            },
-            "title": "Y",
-            "type": "array"
-          },
-          "lo": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lo"
-          },
-          "hi": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hi"
-          },
-          "equation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Equation"
-          },
-          "r2": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "R2"
-          },
-          "n": {
-            "title": "N",
-            "type": "integer"
-          },
-          "sampled": {
-            "title": "Sampled",
-            "type": "boolean"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Warnings",
-            "type": "array"
-          }
-        },
-        "required": [
-          "kind",
-          "series",
-          "x",
-          "y",
-          "lo",
-          "hi",
-          "equation",
-          "r2",
-          "n",
-          "sampled",
-          "warnings"
-        ],
-        "title": "OverlayResult",
-        "type": "object"
-      },
-      "PipelineInspectRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "pipeline": {
-            "$ref": "#/components/schemas/Pipeline"
-          },
-          "pipelines": {
-            "items": {
-              "$ref": "#/components/schemas/Pipeline"
-            },
-            "title": "Pipelines",
-            "type": "array"
-          },
-          "includeSql": {
-            "default": false,
-            "title": "Includesql",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "pipeline"
-        ],
-        "title": "PipelineInspectRequest",
-        "type": "object"
-      },
-      "PipelineInspectResult": {
-        "additionalProperties": false,
-        "description": "Server-produced.",
-        "properties": {
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "sourceColumns": {
-            "items": {
-              "$ref": "#/components/schemas/SchemaField"
-            },
-            "title": "Sourcecolumns",
-            "type": "array"
-          },
-          "steps": {
-            "items": {
-              "$ref": "#/components/schemas/StepSchema"
-            },
-            "title": "Steps",
-            "type": "array"
-          },
-          "columns": {
-            "items": {
-              "$ref": "#/components/schemas/SchemaField"
-            },
-            "title": "Columns",
-            "type": "array"
-          },
-          "sql": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sql"
-          }
-        },
-        "required": [
-          "ok",
-          "sourceColumns",
-          "steps",
-          "columns",
-          "sql"
-        ],
-        "title": "PipelineInspectResult",
-        "type": "object"
-      },
       "PipelinePreviewMeta": {
         "additionalProperties": false,
         "description": "Server-produced; travels as viz.meta in the Arrow schema.",
@@ -7244,88 +7685,6 @@
           "warnings"
         ],
         "title": "PipelinePreviewMeta",
-        "type": "object"
-      },
-      "PipelinePreviewRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "pipeline": {
-            "$ref": "#/components/schemas/Pipeline"
-          },
-          "pipelines": {
-            "items": {
-              "$ref": "#/components/schemas/Pipeline"
-            },
-            "title": "Pipelines",
-            "type": "array"
-          },
-          "stepId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Stepid"
-          },
-          "offset": {
-            "default": 0,
-            "minimum": 0,
-            "title": "Offset",
-            "type": "integer"
-          },
-          "limit": {
-            "default": 200,
-            "minimum": 1,
-            "title": "Limit",
-            "type": "integer"
-          },
-          "sort": {
-            "items": {
-              "$ref": "#/components/schemas/SortKey"
-            },
-            "title": "Sort",
-            "type": "array"
-          },
-          "filters": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "between_dates": "#/components/schemas/RangePredicate",
-                  "eq": "#/components/schemas/EqPredicate",
-                  "in": "#/components/schemas/InPredicate",
-                  "is_null": "#/components/schemas/IsNullPredicate",
-                  "not_in": "#/components/schemas/InPredicate",
-                  "range": "#/components/schemas/RangePredicate"
-                },
-                "propertyName": "op"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/InPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/EqPredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/RangePredicate"
-                },
-                {
-                  "$ref": "#/components/schemas/IsNullPredicate"
-                }
-              ]
-            },
-            "title": "Filters",
-            "type": "array"
-          }
-        },
-        "required": [
-          "pipeline"
-        ],
-        "title": "PipelinePreviewRequest",
         "type": "object"
       },
       "Quantile": {
@@ -7414,134 +7773,6 @@
           "totalRows"
         ],
         "title": "RowsPageMeta",
-        "type": "object"
-      },
-      "SchemaField": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          },
-          "semantic": {
-            "$ref": "#/components/schemas/ColumnSemantic"
-          }
-        },
-        "required": [
-          "name",
-          "type",
-          "semantic"
-        ],
-        "title": "SchemaField",
-        "type": "object"
-      },
-      "StepError": {
-        "additionalProperties": false,
-        "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Field"
-          },
-          "start": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Start"
-          },
-          "end": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "End"
-          }
-        },
-        "required": [
-          "message"
-        ],
-        "title": "StepError",
-        "type": "object"
-      },
-      "StepSchema": {
-        "additionalProperties": false,
-        "description": "Server-produced.",
-        "properties": {
-          "stepId": {
-            "title": "Stepid",
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "ok",
-              "error",
-              "blocked",
-              "disabled"
-            ],
-            "title": "Status",
-            "type": "string"
-          },
-          "columns": {
-            "items": {
-              "$ref": "#/components/schemas/SchemaField"
-            },
-            "title": "Columns",
-            "type": "array"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/StepError"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "materialized": {
-            "enum": [
-              "none",
-              "ready",
-              "pending"
-            ],
-            "title": "Materialized",
-            "type": "string"
-          }
-        },
-        "required": [
-          "stepId",
-          "status",
-          "columns",
-          "error",
-          "materialized"
-        ],
-        "title": "StepSchema",
         "type": "object"
       }
     }
