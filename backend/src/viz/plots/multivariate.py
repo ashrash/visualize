@@ -1110,16 +1110,16 @@ def andrews_curves(req: PlotRequest) -> TableOutput:
     t = np.linspace(-math.pi, math.pi, params.points)
     values = x @ andrews_basis(t, len(fields)).T  # curves x points
     n = len(x)
-    table = {
-        "curve": pa.array(np.repeat(np.arange(n), len(t)), pa.int32()),
-        "x": pa.array(np.tile(t, n), pa.float64()),
-        "y0": pa.array(values.ravel(), pa.float64()),
-    }
-    labels = {"curve": "Row", "x": "t", "y0": "f(t)"}
+    # One row per curve with f(t_j) in y{j}, t_j = -pi + 2 pi j / (points - 1): rows are
+    # sampled data rows (so the sampled badge counts rows) and marks = rows x points.
+    table: dict[str, pa.Array] = {"curve": pa.array(np.arange(n), pa.int32())}
+    labels = {"curve": "Row"}
     if color is not None:
-        groups = rows.text(color)
-        table["color"] = pa.array(np.repeat(np.array(groups, dtype=object), len(t)), pa.string())
+        table["color"] = pa.array(rows.text(color), pa.string())
         labels["color"] = color
+    for j, tj in enumerate(t):
+        table[f"y{j}"] = pa.array(values[:, j], pa.float64())
+        labels[f"y{j}"] = f"f({tj:.2f})"
     notes = rows.notes()
     if rows.sampled:
         notes.append(f"Showing {n:,} randomly chosen of {rows.n_total:,} rows.")
@@ -1128,7 +1128,13 @@ def andrews_curves(req: PlotRequest) -> TableOutput:
         reduction=Reduction.SAMPLED if rows.sampled else Reduction.NONE,
         method="andrews" + (" (reservoir)" if rows.sampled else ""),
         fields=labels,
-        params={"curves": n, "points": params.points, "scale": params.scale},
+        params={
+            "curves": n,
+            "points": params.points,
+            "tMin": -math.pi,
+            "tMax": math.pi,
+            "scale": params.scale,
+        },
         rows_matched=rows.n_total,
         warnings=notes,
     )

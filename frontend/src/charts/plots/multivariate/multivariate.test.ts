@@ -118,14 +118,11 @@ const dendrogramData = statData({
   cutHeight: 3,
 });
 
+// One row per curve, f(t_j) in y{j} on t = -2..2 (meta.params).
 const andrewsData = makeData(
-  {
-    curve: [0, 0, 1, 1],
-    x: [-3.14, 3.14, -3.14, 3.14],
-    y0: [1, 2, 3, 4],
-    color: ["a", "a", "b", "b"],
-  },
-  { curve: "Row", x: "t", y0: "f(t)", color: "species" },
+  { curve: [0, 1], color: ["a", "b"], y0: [1, 3], y1: [2, 4] },
+  { curve: "Row", color: "species", y0: "f(-2.00)", y1: "f(2.00)" },
+  { meta: { params: { tMin: -2, tMax: 2, points: 2 }, reduction: "sampled" } },
 );
 
 const FIXTURES: [string, ChartData][] = [
@@ -305,9 +302,10 @@ describe("Andrews curves", () => {
     const o = render("andrews_curves", andrewsData);
     expect(o.series.map((s: Opt) => s.name)).toEqual(["a", "b"]);
     expect(o.series[1].data).toEqual([
-      [-3.14, 3],
-      [3.14, 4],
+      [-2, 3],
+      [2, 4],
     ]);
+    expect(o.xAxis).toMatchObject({ min: -2, max: 2 });
     expect(o.series[0].lineStyle.color).not.toBe(o.series[1].lineStyle.color);
   });
 });

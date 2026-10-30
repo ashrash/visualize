@@ -211,7 +211,7 @@ export const forest = definePlot({
       rows = sortRows(studies.map(toRow));
     }
     const pooled = obj(v.pooled);
-    if (v.pooled) rows.push(pooledRow(pooled, "Overall", 0));
+    if (v.pooled) rows.push(pooledRow(pooled, "Overall", -1));
     const level = num(v.ciLevel) ?? 0.95;
     return intervalOption(spec, theme, ctx, rows, {
       valueName: `${ratio ? "Ratio" : "Estimate"} (${Math.round(level * 100)}% CI)`,

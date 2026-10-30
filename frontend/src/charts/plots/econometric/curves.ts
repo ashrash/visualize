@@ -211,7 +211,11 @@ export const precisionRecall = definePlot({
         silent: true,
         symbol: "none",
         lineStyle: { type: "dashed", color: theme.textMuted },
-        label: { formatter: `No skill (${fmt(prevalence)})`, color: theme.textMuted },
+        label: {
+          formatter: `No skill (${fmt(prevalence)})`,
+          color: theme.textMuted,
+          position: "insideStartTop",
+        },
         data: [{ yAxis: prevalence }],
       };
     }

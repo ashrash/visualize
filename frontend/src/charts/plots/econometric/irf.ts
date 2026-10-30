@@ -120,7 +120,8 @@ export const impulseResponse = definePlot({
     const responses = objs(v.responses).filter((r) => impulses.includes(str(r.impulse) ?? ""));
     const cols = impulses.length === 1 ? Math.ceil(Math.sqrt(variables.length)) : impulses.length;
     const rows = Math.ceil(responses.length / cols);
-    const panels = panelLayout(rows, cols, { top: 12, bottom: 6, left: 7, right: 3, gap: 4 });
+    // The vertical gap leaves room for the x tick labels above and the next panel's title.
+    const panels = panelLayout(rows, cols, { top: 8, bottom: 5, left: 7, right: 3, gap: 9 });
     const colors = colorsFor(spec, theme, variables.length);
     const grid: Obj[] = [];
     const xAxis: Obj[] = [];
@@ -203,7 +204,11 @@ export const impulseResponse = definePlot({
         description: `Impulse responses of a VAR(${num(v.lags) ?? ""}) over ${num(v.periods) ?? ""} periods.`,
       },
     };
-    return applyStyle(option, spec, theme, ctx, { defaultTrigger: "axis" });
+    // Each panel is titled "impulse → response", so a legend would only repeat the titles.
+    return {
+      ...applyStyle(option, spec, theme, ctx, { defaultTrigger: "axis" }),
+      legend: undefined,
+    };
   },
   recommend(columns) {
     return count(columns, "temporal") >= 1 && count(columns, "quantitative") >= 2 ? 0.15 : 0;

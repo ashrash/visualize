@@ -42,11 +42,11 @@ exports[`multivariate registry entries > andrews_curves renders the same option 
     {
       "data": [
         [
-          -3.14,
+          -2,
           1,
         ],
         [
-          3.14,
+          2,
           2,
         ],
       ],
@@ -73,11 +73,11 @@ exports[`multivariate registry entries > andrews_curves renders the same option 
     {
       "data": [
         [
-          -3.14,
+          -2,
           3,
         ],
         [
-          3.14,
+          2,
           4,
         ],
       ],
@@ -136,8 +136,8 @@ exports[`multivariate registry entries > andrews_curves renders the same option 
       },
     },
     "inverse": false,
-    "max": 3.141592653589793,
-    "min": -3.141592653589793,
+    "max": 2,
+    "min": -2,
     "name": "t",
     "nameGap": 28,
     "nameLocation": "middle",
@@ -234,11 +234,11 @@ exports[`multivariate registry entries > andrews_curves renders the same option 
     {
       "data": [
         [
-          -3.14,
+          -2,
           1,
         ],
         [
-          3.14,
+          2,
           2,
         ],
       ],
@@ -265,11 +265,11 @@ exports[`multivariate registry entries > andrews_curves renders the same option 
     {
       "data": [
         [
-          -3.14,
+          -2,
           3,
         ],
         [
-          3.14,
+          2,
           4,
         ],
       ],
@@ -328,8 +328,8 @@ exports[`multivariate registry entries > andrews_curves renders the same option 
       },
     },
     "inverse": false,
-    "max": 3.141592653589793,
-    "min": -3.141592653589793,
+    "max": 2,
+    "min": -2,
     "name": "t",
     "nameGap": 28,
     "nameLocation": "middle",
@@ -1855,6 +1855,9 @@ exports[`multivariate registry entries > pca_biplot renders the same option in l
           0,
         ],
       ],
+      "itemStyle": {
+        "color": "#eeeeee",
+      },
       "markLine": {
         "data": [
           [
@@ -2102,6 +2105,9 @@ exports[`multivariate registry entries > pca_biplot renders the same option in l
           0,
         ],
       ],
+      "itemStyle": {
+        "color": "#000000",
+      },
       "markLine": {
         "data": [
           [

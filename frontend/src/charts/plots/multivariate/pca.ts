@@ -91,6 +91,8 @@ function renderBiplot(spec: ChartSpec, data: ChartData, theme: ChartTheme, ctx?:
       name: "Loadings",
       data: [[0, 0]],
       symbolSize: 0,
+      // The legend swatch matches the arrows (and toggles them).
+      itemStyle: { color: theme.text },
       silent: true,
       tooltip: { show: false },
       markLine: {

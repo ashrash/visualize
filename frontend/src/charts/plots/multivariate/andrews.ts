@@ -1,3 +1,4 @@
+import { chartParams } from "../../core/primitives/extra";
 import { param } from "../../core/series";
 import { applyStyle } from "../../core/style";
 import { definePlot } from "../../core/types";
@@ -73,31 +74,30 @@ export const andrewsCurves = definePlot({
   styleSections: ["title", "legend", "axes", "tooltip", "palette"],
   defaults: { params: { maxCurves: 200, points: 100, scale: "zscore", opacity: 0.4 } },
   render(spec, data, theme, ctx) {
-    const curve = data.columns.curve ?? [];
-    const xs = data.columns.x ?? [];
-    const ys = data.columns.y0 ?? [];
+    // One row per curve; f(t_j) in y{j} on an even t grid (meta.params tMin, tMax, points).
+    const params = chartParams(data.meta);
+    const points = Object.keys(data.columns).filter((k) => /^y\d+$/.test(k)).length;
+    const tMin = params.number("tMin") ?? -Math.PI;
+    const tMax = params.number("tMax") ?? Math.PI;
+    const t = Array.from({ length: points }, (_, j) =>
+      points > 1 ? tMin + ((tMax - tMin) * j) / (points - 1) : 0,
+    );
     const color = data.columns.color;
-    const groups = color
-      ? [...new Set(color.map((g) => (g === null ? "(missing)" : String(g))))].sort()
-      : [];
+    const groupOf = (i: number) =>
+      color
+        ? color[i] === null || color[i] === undefined
+          ? "(missing)"
+          : String(color[i])
+        : "Rows";
+    const groups = color ? [...new Set(color.map((_, i) => groupOf(i)))].sort() : [];
     const colors = colorsFor(spec, theme, Math.max(1, groups.length));
     const opacity = param(spec, "opacity", 0.4);
-    const byCurve = new Map<unknown, { group: string; data: [unknown, unknown][] }>();
-    curve.forEach((id, i) => {
-      let entry = byCurve.get(id);
-      if (!entry) {
-        const g = color ? (color[i] === null ? "(missing)" : String(color[i])) : "Rows";
-        entry = { group: g, data: [] };
-        byCurve.set(id, entry);
-      }
-      entry.data.push([xs[i], ys[i]]);
-    });
-    const series: Obj[] = [...byCurve.values()].map((c) => {
-      const gi = Math.max(0, groups.indexOf(c.group));
+    const series: Obj[] = Array.from({ length: data.rowCount }, (_, i) => {
+      const gi = Math.max(0, groups.indexOf(groupOf(i)));
       return {
         type: "line",
-        name: c.group,
-        data: c.data,
+        name: groupOf(i),
+        data: t.map((tj, j) => [tj, data.columns[`y${j}`]?.[i] ?? null]),
         showSymbol: false,
         symbol: "none",
         lineStyle: { width: 1, opacity, color: colors[gi] },
@@ -105,14 +105,13 @@ export const andrewsCurves = definePlot({
         emphasis: { focus: "series", lineStyle: { width: 2, opacity: 1 } },
       };
     });
-    const pi = Math.PI;
     const option = {
       legend: groups.length > 1 ? { data: groups } : undefined,
       xAxis: {
         type: "value",
         name: "t",
-        min: -pi,
-        max: pi,
+        min: tMin,
+        max: tMax,
         axisLabel: { formatter: (v: number) => fmt(v, 2) },
       },
       yAxis: { type: "value", name: "f(t)" },

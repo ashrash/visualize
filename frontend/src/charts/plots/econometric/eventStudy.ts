@@ -16,6 +16,7 @@ import {
   QUANT,
   statValues,
 } from "../multivariate/stat";
+import { detachAxisLine } from "./intervals";
 
 type Obj = Record<string, unknown>;
 
@@ -235,7 +236,11 @@ export const eventStudy = definePlot({
         },
       };
     }
-    return applyStyle(option, spec, theme, ctx, { orientable: false, defaultTrigger: "item" });
+    // The y axis sits at the left edge, not through period 0 (the treatment line marks that).
+    return detachAxisLine(
+      applyStyle(option, spec, theme, ctx, { orientable: false, defaultTrigger: "item" }),
+      "yAxis",
+    );
   },
   recommend(columns) {
     return hasName(columns, /event_?time|treat/i) && hasName(columns, /unit|id|firm|state/i)

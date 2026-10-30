@@ -464,8 +464,9 @@ def test_andrews_curve_formula(rel: Rel) -> None:
         y=["a", "b", "c"],
     )
     assert isinstance(out, TableOutput)
-    t = np.array(out.table.column("x").to_pylist())
-    f = np.array(out.table.column("y0").to_pylist())
+    assert out.table.num_rows == 1 and out.params["points"] == 101
+    t = np.linspace(out.params["tMin"], out.params["tMax"], 101)  # type: ignore[arg-type]
+    f = np.array([out.table.column(f"y{j}")[0].as_py() for j in range(101)])
     # f(t) = a / sqrt(2) + b sin t + c cos t.
     assert f == pytest.approx(1 / math.sqrt(2) + 2 * np.sin(t) + 3 * np.cos(t))
     assert f[50] == pytest.approx(1 / math.sqrt(2) + 3)
@@ -485,11 +486,10 @@ def test_andrews_samples_per_group_within_the_mark_cap(rel: Rel) -> None:
         color=["species"],
     )
     assert out.reduction == Reduction.SAMPLED
-    curves = set(out.table.column("curve").to_pylist())
-    assert len(curves) <= 30 and out.table.num_rows == len(curves) * 50
+    assert out.table.num_rows <= 30 and out.table.num_columns == 2 + 50
     assert set(out.table.column("color").to_pylist()) == {"setosa", "versicolor", "virginica"}
     capped = run(rel(iris_table()), PlotType.ANDREWS_CURVES, {"points": 100}, mark_cap=1000, y=IRIS)
-    assert capped.table.num_rows <= 1000
+    assert capped.table.num_rows * 100 <= 1000
 
 
 # --- Radar ------------------------------------------------------------------------------------

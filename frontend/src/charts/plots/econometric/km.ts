@@ -186,7 +186,15 @@ export const kaplanMeier = definePlot({
         const lower = stepPoints(times, lowerValues);
         const upper = stepPoints(times, upperValues);
         series.push(
-          ...ciBand({ x: lower.x, lo: lower.y, hi: upper.y, color, id: gi, axis: "value" }),
+          ...ciBand({
+            x: lower.x,
+            lo: lower.y,
+            hi: upper.y,
+            color,
+            id: gi,
+            axis: "value",
+            opacity: 0.12,
+          }),
         );
       }
       if (showCensored) {
@@ -226,9 +234,10 @@ export const kaplanMeier = definePlot({
     if (v.logRank) notes.push(`Log-rank p = ${pValue(num(logRank.pValue))}`);
     if (notes.length) {
       option.graphic = {
+        // Top right: survival curves start at 1 on the left and fall, so this corner is free.
         type: "text",
-        right: 24,
-        bottom: 56,
+        right: 32,
+        top: groups.length > 1 ? 52 : 24,
         silent: true,
         style: {
           text: notes.join("\n"),

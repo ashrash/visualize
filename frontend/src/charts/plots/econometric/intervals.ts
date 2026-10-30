@@ -47,15 +47,29 @@ export function intervalOption(
     .map((r, i) => ({ r, i }))
     .filter(({ r }) => !r.pooled && valid(r.estimate));
   const pooled = ordered.map((r, i) => ({ r, i })).filter(({ r }) => r.pooled);
+  const fill = (index: number | undefined) =>
+    index === undefined || index < 0 ? theme.textMuted : colors[index % colors.length];
+  const whiskers = errorBars({
+    x: points.map(({ i }) => i),
+    lo: points.map(({ r }) => (valid(r.lo) ? r.lo : null)),
+    hi: points.map(({ r }) => (valid(r.hi) ? r.hi : null)),
+    orientation: "h",
+    color: theme.text,
+    capWidth: 3,
+    theme,
+  });
+  // Rows are [rowIndex, lo, hi]; wrap them so applyStyle's log-axis filter (which drops array
+  // items whose first entry is <= 0, i.e. row 0 here) leaves them alone.
+  whiskers.data = (whiskers.data as unknown[][]).map((row) => ({ value: row }));
   const series: Obj[] = [
     {
       type: "scatter",
-      name: o.valueName,
+      // Unnamed: colors mean subgroups, which the row labels already say; no legend.
       symbol: "rect",
       data: points.map(({ r, i }) => ({
         value: [r.estimate, i],
         symbolSize: r.size ?? 8,
-        itemStyle: { color: colors[r.colorIndex ?? 0] },
+        itemStyle: { color: fill(r.colorIndex ?? 0) },
         tooltip: r.tooltip,
       })),
       z: 4,
@@ -71,25 +85,15 @@ export function intervalOption(
             }
           : undefined,
     },
-    errorBars({
-      x: points.map(({ i }) => i),
-      lo: points.map(({ r }) => (valid(r.lo) ? r.lo : null)),
-      hi: points.map(({ r }) => (valid(r.hi) ? r.hi : null)),
-      orientation: "h",
-      color: theme.text,
-      capWidth: 3,
-      theme,
-    }),
+    whiskers,
   ];
   if (pooled.length) {
     series.push({
       type: "custom",
-      name: "Pooled",
       z: 5,
       data: pooled.map(({ r, i }) => ({
         value: [i, r.lo, r.estimate, r.hi],
         tooltip: r.tooltip,
-        colorIndex: r.colorIndex ?? 0,
       })),
       encode: { y: 0, x: [1, 3] },
       tooltip: { formatter: (p: { data: { tooltip: string } }) => p.data.tooltip },
@@ -99,7 +103,7 @@ export function intervalOption(
         const [lx = 0, ly = 0] = api.coord([api.value(1), row]);
         const [ex = 0] = api.coord([api.value(2), row]);
         const [hx = 0] = api.coord([api.value(3), row]);
-        const color = pooled[params.dataIndex]?.r.colorIndex ?? 0;
+        const color = pooled[params.dataIndex]?.r.colorIndex;
         return {
           type: "polygon",
           shape: {
@@ -110,7 +114,7 @@ export function intervalOption(
               [ex, ly + half],
             ],
           },
-          style: { fill: colors[color], stroke: theme.text, lineWidth: 1 },
+          style: { fill: fill(color), stroke: theme.text, lineWidth: 1 },
         };
       },
     });
@@ -126,5 +130,19 @@ export function intervalOption(
     tooltip: { trigger: "item" },
     series,
   };
-  return applyStyle(option, spec, theme, ctx, { orientable: false, defaultTrigger: "item" });
+  return detachAxisLine(
+    applyStyle(option, spec, theme, ctx, { orientable: false, defaultTrigger: "item" }),
+    "yAxis",
+  );
+}
+
+/**
+ * Draw an axis at the edge of the plot instead of through the other axis' zero, so a vertical
+ * line at 0 is only ever the dashed null line (applyStyle rebuilds axisLine, so this runs after).
+ */
+export function detachAxisLine(option: Obj, key: "xAxis" | "yAxis"): Obj {
+  const axis = option[key];
+  if (!axis || Array.isArray(axis)) return option;
+  const a = axis as Obj;
+  return { ...option, [key]: { ...a, axisLine: { ...(a.axisLine as Obj), onZero: false } } };
 }

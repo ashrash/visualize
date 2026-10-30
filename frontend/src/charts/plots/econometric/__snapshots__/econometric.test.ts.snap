@@ -63,7 +63,6 @@ exports[`econometric registry entries > coefficient renders the same option in l
         "silent": true,
         "symbol": "none",
       },
-      "name": "Coefficient",
       "symbol": "rect",
       "tooltip": {
         "formatter": [Function],
@@ -73,16 +72,20 @@ exports[`econometric registry entries > coefficient renders the same option in l
     },
     {
       "data": [
-        [
-          0,
-          -0.4,
-          0,
-        ],
-        [
-          1,
-          0.3,
-          0.7,
-        ],
+        {
+          "value": [
+            0,
+            -0.4,
+            0,
+          ],
+        },
+        {
+          "value": [
+            1,
+            0.3,
+            0.7,
+          ],
+        },
       ],
       "encode": {
         "x": [
@@ -165,6 +168,7 @@ exports[`econometric registry entries > coefficient renders the same option in l
       "lineStyle": {
         "color": "#cccccc",
       },
+      "onZero": false,
     },
     "axisTick": {
       "lineStyle": {
@@ -259,7 +263,6 @@ exports[`econometric registry entries > coefficient renders the same option in l
         "silent": true,
         "symbol": "none",
       },
-      "name": "Coefficient",
       "symbol": "rect",
       "tooltip": {
         "formatter": [Function],
@@ -269,16 +272,20 @@ exports[`econometric registry entries > coefficient renders the same option in l
     },
     {
       "data": [
-        [
-          0,
-          -0.4,
-          0,
-        ],
-        [
-          1,
-          0.3,
-          0.7,
-        ],
+        {
+          "value": [
+            0,
+            -0.4,
+            0,
+          ],
+        },
+        {
+          "value": [
+            1,
+            0.3,
+            0.7,
+          ],
+        },
       ],
       "encode": {
         "x": [
@@ -361,6 +368,7 @@ exports[`econometric registry entries > coefficient renders the same option in l
       "lineStyle": {
         "color": "#cccccc",
       },
+      "onZero": false,
     },
     "axisTick": {
       "lineStyle": {
@@ -603,6 +611,7 @@ exports[`econometric registry entries > event_study renders the same option in l
       "lineStyle": {
         "color": "#cccccc",
       },
+      "onZero": false,
     },
     "axisTick": {
       "lineStyle": {
@@ -842,6 +851,7 @@ exports[`econometric registry entries > event_study renders the same option in l
       "lineStyle": {
         "color": "#cccccc",
       },
+      "onZero": false,
     },
     "axisTick": {
       "lineStyle": {
@@ -888,22 +898,9 @@ exports[`econometric registry entries > forest renders the same option in light 
     "containLabel": true,
     "left": 8,
     "right": 20,
-    "top": 42,
+    "top": 12,
   },
-  "legend": {
-    "left": 8,
-    "pageIconColor": "#aaaaaa",
-    "pageTextStyle": {
-      "color": "#aaaaaa",
-    },
-    "right": 8,
-    "show": true,
-    "textStyle": {
-      "color": "#eeeeee",
-    },
-    "top": 4,
-    "type": "scroll",
-  },
+  "legend": undefined,
   "series": [
     {
       "data": [
@@ -946,7 +943,6 @@ exports[`econometric registry entries > forest renders the same option in light 
         "silent": true,
         "symbol": "none",
       },
-      "name": "Ratio (95% CI)",
       "symbol": "rect",
       "tooltip": {
         "formatter": [Function],
@@ -956,16 +952,20 @@ exports[`econometric registry entries > forest renders the same option in light 
     },
     {
       "data": [
-        [
-          2,
-          0.6,
-          1.1,
-        ],
-        [
-          4,
-          0.3,
-          0.9,
-        ],
+        {
+          "value": [
+            2,
+            0.6,
+            1.1,
+          ],
+        },
+        {
+          "value": [
+            4,
+            0.3,
+            0.9,
+          ],
+        },
       ],
       "encode": {
         "x": [
@@ -988,7 +988,6 @@ exports[`econometric registry entries > forest renders the same option in light 
     {
       "data": [
         {
-          "colorIndex": 0,
           "tooltip": "<b>Overall</b> (2 studies)<br/>0.68 [0.55, 0.85], p = 0.001<br/>I² = 30%, τ² = 0.01, Q = 1.4 (df 1, p = 0.200)",
           "value": [
             0,
@@ -998,7 +997,6 @@ exports[`econometric registry entries > forest renders the same option in light 
           ],
         },
         {
-          "colorIndex": 1,
           "tooltip": "<b>RCT (subtotal)</b> (1 studies)<br/>0.8 [0.6, 1.1], p = –",
           "value": [
             1,
@@ -1008,7 +1006,6 @@ exports[`econometric registry entries > forest renders the same option in light 
           ],
         },
         {
-          "colorIndex": 0,
           "tooltip": "<b>Obs (subtotal)</b> (1 studies)<br/>0.5 [0.3, 0.9], p = –",
           "value": [
             3,
@@ -1025,7 +1022,6 @@ exports[`econometric registry entries > forest renders the same option in light 
         ],
         "y": 0,
       },
-      "name": "Pooled",
       "renderItem": [Function],
       "tooltip": {
         "formatter": [Function],
@@ -1097,6 +1093,7 @@ exports[`econometric registry entries > forest renders the same option in light 
       "lineStyle": {
         "color": "#cccccc",
       },
+      "onZero": false,
     },
     "axisTick": {
       "lineStyle": {
@@ -1149,22 +1146,9 @@ exports[`econometric registry entries > forest renders the same option in light 
     "containLabel": true,
     "left": 8,
     "right": 20,
-    "top": 42,
+    "top": 12,
   },
-  "legend": {
-    "left": 8,
-    "pageIconColor": "#555555",
-    "pageTextStyle": {
-      "color": "#555555",
-    },
-    "right": 8,
-    "show": true,
-    "textStyle": {
-      "color": "#000000",
-    },
-    "top": 4,
-    "type": "scroll",
-  },
+  "legend": undefined,
   "series": [
     {
       "data": [
@@ -1207,7 +1191,6 @@ exports[`econometric registry entries > forest renders the same option in light 
         "silent": true,
         "symbol": "none",
       },
-      "name": "Ratio (95% CI)",
       "symbol": "rect",
       "tooltip": {
         "formatter": [Function],
@@ -1217,16 +1200,20 @@ exports[`econometric registry entries > forest renders the same option in light 
     },
     {
       "data": [
-        [
-          2,
-          0.6,
-          1.1,
-        ],
-        [
-          4,
-          0.3,
-          0.9,
-        ],
+        {
+          "value": [
+            2,
+            0.6,
+            1.1,
+          ],
+        },
+        {
+          "value": [
+            4,
+            0.3,
+            0.9,
+          ],
+        },
       ],
       "encode": {
         "x": [
@@ -1249,7 +1236,6 @@ exports[`econometric registry entries > forest renders the same option in light 
     {
       "data": [
         {
-          "colorIndex": 0,
           "tooltip": "<b>Overall</b> (2 studies)<br/>0.68 [0.55, 0.85], p = 0.001<br/>I² = 30%, τ² = 0.01, Q = 1.4 (df 1, p = 0.200)",
           "value": [
             0,
@@ -1259,7 +1245,6 @@ exports[`econometric registry entries > forest renders the same option in light 
           ],
         },
         {
-          "colorIndex": 1,
           "tooltip": "<b>RCT (subtotal)</b> (1 studies)<br/>0.8 [0.6, 1.1], p = –",
           "value": [
             1,
@@ -1269,7 +1254,6 @@ exports[`econometric registry entries > forest renders the same option in light 
           ],
         },
         {
-          "colorIndex": 0,
           "tooltip": "<b>Obs (subtotal)</b> (1 studies)<br/>0.5 [0.3, 0.9], p = –",
           "value": [
             3,
@@ -1286,7 +1270,6 @@ exports[`econometric registry entries > forest renders the same option in light 
         ],
         "y": 0,
       },
-      "name": "Pooled",
       "renderItem": [Function],
       "tooltip": {
         "formatter": [Function],
@@ -1358,6 +1341,7 @@ exports[`econometric registry entries > forest renders the same option in light 
       "lineStyle": {
         "color": "#cccccc",
       },
+      "onZero": false,
     },
     "axisTick": {
       "lineStyle": {
@@ -1415,18 +1399,18 @@ exports[`econometric registry entries > impulse_response renders the same option
         "font": "12px sans-serif",
         "text": "gdp → gdp",
       },
-      "top": "8.50%",
+      "top": "4.50%",
       "type": "text",
     },
     {
-      "left": "54.00%",
+      "left": "56.50%",
       "silent": true,
       "style": {
         "fill": "#aaaaaa",
         "font": "12px sans-serif",
         "text": "infl → gdp",
       },
-      "top": "8.50%",
+      "top": "4.50%",
       "type": "text",
     },
     {
@@ -1437,18 +1421,18 @@ exports[`econometric registry entries > impulse_response renders the same option
         "font": "12px sans-serif",
         "text": "gdp → infl",
       },
-      "top": "51.50%",
+      "top": "52.50%",
       "type": "text",
     },
     {
-      "left": "54.00%",
+      "left": "56.50%",
       "silent": true,
       "style": {
         "fill": "#aaaaaa",
         "font": "12px sans-serif",
         "text": "infl → infl",
       },
-      "top": "51.50%",
+      "top": "52.50%",
       "type": "text",
     },
   ],
@@ -1456,42 +1440,29 @@ exports[`econometric registry entries > impulse_response renders the same option
     {
       "height": "39.00%",
       "left": "7.00%",
-      "top": "12.00%",
-      "width": "43.00%",
+      "top": "8.00%",
+      "width": "40.50%",
     },
     {
       "height": "39.00%",
-      "left": "54.00%",
-      "top": "12.00%",
-      "width": "43.00%",
+      "left": "56.50%",
+      "top": "8.00%",
+      "width": "40.50%",
     },
     {
       "height": "39.00%",
       "left": "7.00%",
-      "top": "55.00%",
-      "width": "43.00%",
+      "top": "56.00%",
+      "width": "40.50%",
     },
     {
       "height": "39.00%",
-      "left": "54.00%",
-      "top": "55.00%",
-      "width": "43.00%",
+      "left": "56.50%",
+      "top": "56.00%",
+      "width": "40.50%",
     },
   ],
-  "legend": {
-    "left": 8,
-    "pageIconColor": "#aaaaaa",
-    "pageTextStyle": {
-      "color": "#aaaaaa",
-    },
-    "right": 8,
-    "show": true,
-    "textStyle": {
-      "color": "#eeeeee",
-    },
-    "top": 4,
-    "type": "scroll",
-  },
+  "legend": undefined,
   "series": [
     {
       "data": [
@@ -2212,18 +2183,18 @@ exports[`econometric registry entries > impulse_response renders the same option
         "font": "12px sans-serif",
         "text": "gdp → gdp",
       },
-      "top": "8.50%",
+      "top": "4.50%",
       "type": "text",
     },
     {
-      "left": "54.00%",
+      "left": "56.50%",
       "silent": true,
       "style": {
         "fill": "#555555",
         "font": "12px sans-serif",
         "text": "infl → gdp",
       },
-      "top": "8.50%",
+      "top": "4.50%",
       "type": "text",
     },
     {
@@ -2234,18 +2205,18 @@ exports[`econometric registry entries > impulse_response renders the same option
         "font": "12px sans-serif",
         "text": "gdp → infl",
       },
-      "top": "51.50%",
+      "top": "52.50%",
       "type": "text",
     },
     {
-      "left": "54.00%",
+      "left": "56.50%",
       "silent": true,
       "style": {
         "fill": "#555555",
         "font": "12px sans-serif",
         "text": "infl → infl",
       },
-      "top": "51.50%",
+      "top": "52.50%",
       "type": "text",
     },
   ],
@@ -2253,42 +2224,29 @@ exports[`econometric registry entries > impulse_response renders the same option
     {
       "height": "39.00%",
       "left": "7.00%",
-      "top": "12.00%",
-      "width": "43.00%",
+      "top": "8.00%",
+      "width": "40.50%",
     },
     {
       "height": "39.00%",
-      "left": "54.00%",
-      "top": "12.00%",
-      "width": "43.00%",
+      "left": "56.50%",
+      "top": "8.00%",
+      "width": "40.50%",
     },
     {
       "height": "39.00%",
       "left": "7.00%",
-      "top": "55.00%",
-      "width": "43.00%",
+      "top": "56.00%",
+      "width": "40.50%",
     },
     {
       "height": "39.00%",
-      "left": "54.00%",
-      "top": "55.00%",
-      "width": "43.00%",
+      "left": "56.50%",
+      "top": "56.00%",
+      "width": "40.50%",
     },
   ],
-  "legend": {
-    "left": 8,
-    "pageIconColor": "#555555",
-    "pageTextStyle": {
-      "color": "#555555",
-    },
-    "right": 8,
-    "show": true,
-    "textStyle": {
-      "color": "#000000",
-    },
-    "top": 4,
-    "type": "scroll",
-  },
+  "legend": undefined,
   "series": [
     {
       "data": [
@@ -3000,8 +2958,7 @@ exports[`econometric registry entries > kaplan_meier renders the same option in 
     "#cc79a7",
   ],
   "graphic": {
-    "bottom": 56,
-    "right": 24,
+    "right": 32,
     "silent": true,
     "style": {
       "fill": "#aaaaaa",
@@ -3009,6 +2966,7 @@ exports[`econometric registry entries > kaplan_meier renders the same option in 
       "text": "Log-rank p = < 0.001",
       "textAlign": "right",
     },
+    "top": 52,
     "type": "text",
   },
   "grid": {
@@ -3137,7 +3095,7 @@ exports[`econometric registry entries > kaplan_meier renders the same option in 
     {
       "areaStyle": {
         "color": "#0072b2",
-        "opacity": 0.18,
+        "opacity": 0.12,
       },
       "data": [
         [
@@ -3283,7 +3241,7 @@ exports[`econometric registry entries > kaplan_meier renders the same option in 
     {
       "areaStyle": {
         "color": "#e69f00",
-        "opacity": 0.18,
+        "opacity": 0.12,
       },
       "data": [
         [
@@ -3436,8 +3394,7 @@ exports[`econometric registry entries > kaplan_meier renders the same option in 
     "#cc79a7",
   ],
   "graphic": {
-    "bottom": 56,
-    "right": 24,
+    "right": 32,
     "silent": true,
     "style": {
       "fill": "#555555",
@@ -3445,6 +3402,7 @@ exports[`econometric registry entries > kaplan_meier renders the same option in 
       "text": "Log-rank p = < 0.001",
       "textAlign": "right",
     },
+    "top": 52,
     "type": "text",
   },
   "grid": {
@@ -3573,7 +3531,7 @@ exports[`econometric registry entries > kaplan_meier renders the same option in 
     {
       "areaStyle": {
         "color": "#0072b2",
-        "opacity": 0.18,
+        "opacity": 0.12,
       },
       "data": [
         [
@@ -3719,7 +3677,7 @@ exports[`econometric registry entries > kaplan_meier renders the same option in 
     {
       "areaStyle": {
         "color": "#e69f00",
-        "opacity": 0.18,
+        "opacity": 0.12,
       },
       "data": [
         [
@@ -4319,7 +4277,6 @@ exports[`econometric registry entries > marginal_effects renders the same option
         "silent": true,
         "symbol": "none",
       },
-      "name": "Change in P(churned = 1)",
       "symbol": "rect",
       "tooltip": {
         "formatter": [Function],
@@ -4329,16 +4286,20 @@ exports[`econometric registry entries > marginal_effects renders the same option
     },
     {
       "data": [
-        [
-          0,
-          0.03,
-          0.07,
-        ],
-        [
-          1,
-          -0.014,
-          -0.006,
-        ],
+        {
+          "value": [
+            0,
+            0.03,
+            0.07,
+          ],
+        },
+        {
+          "value": [
+            1,
+            -0.014,
+            -0.006,
+          ],
+        },
       ],
       "encode": {
         "x": [
@@ -4421,6 +4382,7 @@ exports[`econometric registry entries > marginal_effects renders the same option
       "lineStyle": {
         "color": "#cccccc",
       },
+      "onZero": false,
     },
     "axisTick": {
       "lineStyle": {
@@ -4433,7 +4395,7 @@ exports[`econometric registry entries > marginal_effects renders the same option
     ],
     "inverse": false,
     "name": undefined,
-    "nameGap": 54,
+    "nameGap": 36,
     "nameLocation": "middle",
     "nameRotate": 90,
     "nameTextStyle": {
@@ -4515,7 +4477,6 @@ exports[`econometric registry entries > marginal_effects renders the same option
         "silent": true,
         "symbol": "none",
       },
-      "name": "Change in P(churned = 1)",
       "symbol": "rect",
       "tooltip": {
         "formatter": [Function],
@@ -4525,16 +4486,20 @@ exports[`econometric registry entries > marginal_effects renders the same option
     },
     {
       "data": [
-        [
-          0,
-          0.03,
-          0.07,
-        ],
-        [
-          1,
-          -0.014,
-          -0.006,
-        ],
+        {
+          "value": [
+            0,
+            0.03,
+            0.07,
+          ],
+        },
+        {
+          "value": [
+            1,
+            -0.014,
+            -0.006,
+          ],
+        },
       ],
       "encode": {
         "x": [
@@ -4617,6 +4582,7 @@ exports[`econometric registry entries > marginal_effects renders the same option
       "lineStyle": {
         "color": "#cccccc",
       },
+      "onZero": false,
     },
     "axisTick": {
       "lineStyle": {
@@ -4629,7 +4595,7 @@ exports[`econometric registry entries > marginal_effects renders the same option
     ],
     "inverse": false,
     "name": undefined,
-    "nameGap": 54,
+    "nameGap": 36,
     "nameLocation": "middle",
     "nameRotate": 90,
     "nameTextStyle": {
@@ -4722,6 +4688,7 @@ exports[`econometric registry entries > precision_recall renders the same option
         "label": {
           "color": "#aaaaaa",
           "formatter": "No skill (0.5)",
+          "position": "insideStartTop",
         },
         "lineStyle": {
           "color": "#aaaaaa",
@@ -4921,6 +4888,7 @@ exports[`econometric registry entries > precision_recall renders the same option
         "label": {
           "color": "#555555",
           "formatter": "No skill (0.5)",
+          "position": "insideStartTop",
         },
         "lineStyle": {
           "color": "#555555",

@@ -346,7 +346,7 @@ describe("interval plots", () => {
     expect(o.xAxis.type).toBe("log");
     // First row on top: the category axis runs bottom-up.
     expect(o.yAxis.data).toEqual(["Overall", "RCT (subtotal)", "A", "Obs (subtotal)", "B"]);
-    const diamonds = o.series.find((s: Opt) => s.type === "custom" && s.name === "Pooled");
+    const diamonds = o.series.filter((s: Opt) => s.type === "custom")[1];
     expect(diamonds.data).toHaveLength(3);
     expect(o.series[0].markLine.data).toEqual([{ xAxis: 1 }]);
     const sizes = o.series[0].data.map((d: Opt) => d.symbolSize);
@@ -362,6 +362,9 @@ describe("interval plots", () => {
     expect(ratios.xAxis).toMatchObject({ type: "log", name: "Odds ratio" });
     expect(ratios.series[0].data.at(-1).value[0]).toBeCloseTo(Math.exp(-1));
     expect(ratios.series[0].markLine.data).toEqual([{ xAxis: 1 }]);
+    // Row 0 (the bottom row) keeps its whisker on a log axis.
+    expect(ratios.series[1].data.map((d: Opt) => d.value[0])).toContain(0);
+    expect(ratios.yAxis.axisLine.onZero).toBe(false);
     const sorted = render("coefficient", coefficients, { sort: "estimate" });
     expect(sorted.yAxis.data).toEqual(["plan: Pro", "age"]);
   });
@@ -370,7 +373,8 @@ describe("interval plots", () => {
     const o = render("marginal_effects", marginal);
     expect(o.xAxis.name).toBe("Change in P(churned = 1)");
     expect(o.series[1].type).toBe("custom"); // the shared error-bar primitive
-    expect(o.series[1].data).toContainEqual([1, -0.014, -0.006]);
+    expect(o.series[1].data.map((d: Opt) => d.value)).toContainEqual([1, -0.014, -0.006]);
+    expect(o.legend).toBeUndefined();
   });
 });
 
