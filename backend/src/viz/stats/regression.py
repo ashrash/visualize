@@ -13,7 +13,12 @@ With log_y, R^2 and the bands refer to ln y; the bands are back-transformed (the
 median of y, not the mean).
 
 LOWESS uses statsmodels (tricube weights, local linear fits, robustness iterations); its
-band is a percentile bootstrap over (x, y) pairs, run in the process pool when one is given.
+band is a bootstrap over (x, y) pairs, run in the process pool when one is given. The band
+shows the sampling variability of the smooth only, not its smoothing bias: where the span
+flattens a peak, the band is centred on the flattened curve.
+
+BLAS/OpenMP threads are capped per process by the engine (data-core), in the API process and
+in the pool workers; threadpoolctl limits are process-global, so kernels don't set their own.
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from viz.stats.relation import Relation
 from viz.stats.sampling import DEFAULT_SEED, LOWESS_CAP, MODEL_CAP, reservoir_sample
 
 MAX_DEGREE = 6
+LOWESS_BAND_WARNING = "The band shows sampling variability of the smooth, not smoothing bias."
 
 FitKind = Literal["linear", "polynomial", "logarithmic", "exponential", "power", "loess"]
 
@@ -62,9 +68,13 @@ class FitCurve:
     df_resid: int | None
     n: int
     ci_level: float | None
+    # What was fitted and how the band was made, for display.
+    method: str = ""
     degree: int = 1
     log_x: bool = False
     log_y: bool = False
+    # max |u| over the data, u = x (or ln x): term sizes |b_k| * x_scale^k for the label.
+    x_scale: float = 1.0
     sampled: bool = False
     n_total: int | None = None
     n_missing: int = 0
@@ -84,11 +94,14 @@ class FitCurve:
         if self.kind == "power":
             return f"y = {f(math.exp(b[0]))}x^{f(b[1])}"
         variable = "ln(x)" if self.log_x else "x"
-        largest = max(abs(c) for c in b)
+        # Compare terms by their size over the data, not by coefficient: with x ~ 1e12 a slope
+        # of 3e-10 is a large term. Only round-off-sized terms are dropped.
+        sizes = [abs(c) * self.x_scale**k for k, c in enumerate(b)]
+        largest = max(sizes)
         terms: list[str] = []
         for power in range(len(b) - 1, -1, -1):
             value = b[power]
-            if abs(value) <= 1e-10 * largest:  # round-off, e.g. the x term of -x^2 + 4
+            if sizes[power] <= 1e-10 * largest:  # round-off, e.g. the x term of -x^2 + 4
                 continue
             body = f(abs(value))
             if power >= 1:
@@ -179,12 +192,13 @@ def ols_curve(
     singular = np.linalg.svd(r, compute_uv=False)
     if singular[-1] <= singular[0] * max(n, p) * np.finfo(float).eps:
         raise StatsInputError(f"A degree-{degree} fit needs at least {p} distinct x values.")
-    beta = linalg.solve_triangular(r, q.T @ v)
-    residuals = v - design @ beta
-    rss = float(residuals @ residuals)
-    tss = float(((v - v.mean()) ** 2).sum())
+    with np.errstate(over="ignore", invalid="ignore"):  # huge y: checked for finiteness below
+        beta = linalg.solve_triangular(r, q.T @ v)
+        residuals = v - design @ beta
+        rss = float(residuals @ residuals)
+        tss = float(((v - v.mean()) ** 2).sum())
     df = n - p
-    sigma = math.sqrt(rss / df) if df > 0 else None
+    sigma = math.sqrt(rss / df) if df > 0 and math.isfinite(rss / df) else None
     r_inv = linalg.solve_triangular(r, np.eye(p))
     transform = _to_original_basis(degree, center, scale)
     coef = (transform @ beta).tolist()
@@ -194,11 +208,17 @@ def ols_curve(
         coef_se = np.sqrt(np.diag(transform @ cov @ transform.T)).tolist()
 
     r2 = adj_r2 = None
-    if tss > 0:
+    if not (math.isfinite(rss) and math.isfinite(tss)):
+        sigma = None
+        coef_se = None
+        warnings.append("The values are too large for R² and the band; they were left out.")
+    elif tss > 0:
         r2 = 1.0 - rss / tss
         adj_r2 = 1.0 - (1.0 - r2) * (n - 1) / df if df > 0 else None
     else:
         warnings.append("y has no variation, so R² is undefined.")
+    if not all(math.isfinite(c) for c in coef):
+        raise StatsInputError("The values are too large to fit.")
 
     if grid is None:
         grid = np.linspace(float(xa.min()), float(xa.max()), grid_size)
@@ -214,7 +234,7 @@ def ols_curve(
         if prediction:
             se_pred = np.sqrt(se_mean**2 + sigma**2)
             pred_lower, pred_upper = fit - t * se_pred, fit + t * se_pred
-    elif ci_level is not None:
+    elif ci_level is not None and df <= 0:
         warnings.append("Too few points for a confidence band.")
     if log_y:
         fit = np.exp(fit)
@@ -223,8 +243,10 @@ def ols_curve(
             warnings.append("The band is back-transformed from ln(y): it bounds the median of y.")
         if pred_lower is not None and pred_upper is not None:
             pred_lower, pred_upper = np.exp(pred_lower), np.exp(pred_upper)
+    kind = _kind_of(degree, log_x, log_y)
+    band = f"; {ci_level:.0%} t confidence band" if lower is not None and ci_level else ""
     return FitCurve(
-        kind=_kind_of(degree, log_x, log_y),
+        kind=kind,
         x=grid,
         y=fit,
         lower=lower,
@@ -239,9 +261,11 @@ def ols_curve(
         df_resid=df,
         n=n,
         ci_level=ci_level,
+        method=f"OLS {kind} fit" + (f" (degree {degree})" if degree > 1 else "") + band,
         degree=degree,
         log_x=log_x,
         log_y=log_y,
+        x_scale=float(np.abs(u).max()),
         n_missing=n_missing + dropped,
         warnings=warnings,
     )
@@ -254,7 +278,7 @@ def lowess_curve(
     frac: float = 2.0 / 3.0,
     it: int = 3,
     ci_level: float | None = 0.95,
-    n_boot: int = 100,
+    n_boot: int = 200,
     band_points: int = 1000,
     seed: int = DEFAULT_SEED,
     grid_size: int = 100,
@@ -315,6 +339,7 @@ def lowess_curve(
         alpha = 1 - ci_level
         low_q, high_q = np.nanquantile(deviations, [alpha / 2, 1 - alpha / 2], axis=0)
         lower, upper = curve + low_q, curve + high_q
+        warnings.append(LOWESS_BAND_WARNING)
     return FitCurve(
         kind="loess",
         x=grid,
@@ -331,6 +356,14 @@ def lowess_curve(
         df_resid=None,
         n=n,
         ci_level=ci_level,
+        method=(
+            f"LOWESS (span {frac:.2g}, {it} robustness iterations)"
+            + (
+                "; bootstrap band of the smooth (sampling variability only)"
+                if lower is not None
+                else ""
+            )
+        ),
         n_missing=n_missing,
         warnings=warnings,
     )

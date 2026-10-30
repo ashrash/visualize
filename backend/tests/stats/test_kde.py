@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import time
 
 import numpy as np
@@ -7,7 +8,15 @@ import pytest
 from scipy import stats as sps
 
 from viz.stats.errors import StatsInputError
-from viz.stats.kde import bandwidth, kde, kde2d, kde_by_group
+from viz.stats.kde import (
+    WIDE_RANGE_WARNING,
+    bandwidth,
+    cell_density,
+    direct_density,
+    kde,
+    kde2d,
+    kde_by_group,
+)
 
 
 def _scipy_density(x: np.ndarray, h: float, at: np.ndarray) -> np.ndarray:
@@ -119,3 +128,79 @@ def test_kde_is_fast_enough() -> None:
     kde_by_group(np.random.default_rng(11).normal(size=100_000), groups)
     twenty = time.perf_counter() - started
     assert one < 0.5 and twenty < 2.0, (one, twenty)
+
+
+# ---------------------------------------------------------------- review regressions
+
+
+def _exact_mass(x: np.ndarray, h: float, lo: float, hi: float) -> float:
+    return float(np.mean(sps.norm.cdf((hi - x) / h) - sps.norm.cdf((lo - x) / h)))
+
+
+@pytest.mark.parametrize("sigma", [1.5, 3.0, 4.0])
+def test_kde_mass_on_skewed_data(sigma: float) -> None:
+    """Lognormal data: the range is up to ~1e6 bandwidths wide (the fine-grid cap binds)."""
+    x = np.random.default_rng(13).lognormal(0.0, sigma, 100_000)
+    h = bandwidth(x)
+    grid = np.linspace(x.min() - 3 * h, np.quantile(x, 0.99), 200_001)
+    curve = kde(x, grid=grid)
+    mass = np.trapezoid(curve.density, grid)
+    assert mass == pytest.approx(_exact_mass(x, h, grid[0], grid[-1]), abs=2e-3), sigma
+    default = kde(x)
+    if sigma >= 3.0:
+        assert default.method == "cell_average" and default.warnings == [WIDE_RANGE_WARNING]
+        # Cell averages keep the mass even though 512 points can't resolve the bandwidth.
+        step = default.x[1] - default.x[0]
+        assert default.density.sum() * step == pytest.approx(1.0, abs=1e-3), sigma
+    else:
+        assert default.method == "binned" and default.warnings == []
+
+
+def test_direct_and_cell_densities_are_exact() -> None:
+    rng = np.random.default_rng(14)
+    x = rng.lognormal(0.0, 3.0, 20_000)
+    h = bandwidth(x)
+    points = np.concatenate([rng.choice(x, 200), np.linspace(0, 50, 50), [1e6]])
+    exact = np.array([np.mean(sps.norm.pdf((p - x) / h)) / h for p in points])
+    np.testing.assert_allclose(direct_density(x, points, h), exact, rtol=1e-6, atol=1e-12)
+    # Cell averages: mass between midpoints of neighbouring (sorted) points over the width.
+    coarse = np.array([-5.0, 0.5, 2.0, 10.0, 300.0])
+    edges = np.array([-7.75, -2.25, 1.25, 6.0, 155.0, 445.0])
+    mass = [_exact_mass(x, h, a, b) for a, b in itertools.pairwise(edges)]
+    expected = np.array(mass) / np.diff(edges)
+    np.testing.assert_allclose(cell_density(x, coarse[::-1], h), expected[::-1], rtol=1e-6)
+    # On a grid much finer than the bandwidth, cell averages are point densities.
+    fine = np.linspace(1.0, 3.0, 2001)
+    np.testing.assert_allclose(cell_density(x, fine, h), direct_density(x, fine, h), rtol=2e-4)
+
+
+def test_kde2d_on_skewed_data() -> None:
+    rng = np.random.default_rng(15)
+    x = rng.lognormal(0.0, 3.0, 20_000)
+    y = rng.normal(0.0, 1.0, 20_000)
+    result = kde2d(x, y, grid_size=(60, 40))
+    assert result.method == "cell_average" and result.warnings == [WIDE_RANGE_WARNING]
+    dx, dy = result.xs[1] - result.xs[0], result.ys[1] - result.ys[0]
+    assert result.density.sum() * dx * dy == pytest.approx(1.0, abs=1e-3)
+    # Exact: the mass of cell (i, j) over its area, from per-axis normal probabilities.
+    for i, j in ((0, 20), (1, 10), (30, 25)):
+        px = sps.norm.cdf((result.xs[i] + dx / 2 - x) / result.bw_x) - sps.norm.cdf(
+            (result.xs[i] - dx / 2 - x) / result.bw_x
+        )
+        py = sps.norm.cdf((result.ys[j] + dy / 2 - y) / result.bw_y) - sps.norm.cdf(
+            (result.ys[j] - dy / 2 - y) / result.bw_y
+        )
+        assert result.density[j, i] == pytest.approx(np.mean(px * py) / (dx * dy), rel=1e-6)
+    # Moderately skewed (no cap): the binned estimate still integrates to 1.
+    mild = kde2d(rng.gamma(2.0, 1.0, 2000), rng.normal(0.0, 1.0, 2000), grid_size=(200, 100))
+    assert mild.method == "binned"
+    cell = (mild.xs[1] - mild.xs[0]) * (mild.ys[1] - mild.ys[0])
+    assert mild.density.sum() * cell == pytest.approx(1.0, abs=0.02)
+
+
+def test_grouped_kde_reports_wide_ranges() -> None:
+    rng = np.random.default_rng(16)
+    values = np.concatenate([rng.lognormal(0, 4, 5000), rng.normal(size=5000)])
+    groups = ["skewed"] * 5000 + ["normal"] * 5000
+    result = kde_by_group(values, groups)
+    assert WIDE_RANGE_WARNING in result.warnings

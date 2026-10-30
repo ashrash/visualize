@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import duckdb
 import numpy as np
 import pyarrow as pa
 from scipy import stats as sps
@@ -21,6 +22,7 @@ from sqlglot import exp
 
 from viz.contracts import ColumnSemantic
 from viz.stats.errors import StatsInputError
+from viz.stats.groups import DEFAULT_MAX_GROUPS, cap_groups
 from viz.stats.relation import Relation, col
 from viz.stats.sql import (
     alias,
@@ -76,6 +78,13 @@ def _check_by(rel: Relation, by: Sequence[str], reserved: Sequence[str]) -> None
 # ---------------------------------------------------------------- quantiles
 
 
+@dataclass(frozen=True)
+class QuantileTable:
+    # Long table [*by, p, value]. Groups without values are left out.
+    table: pa.Table
+    warnings: list[str] = field(default_factory=list)
+
+
 def quantiles(
     rel: Relation,
     field_name: str,
@@ -83,13 +92,15 @@ def quantiles(
     *,
     by: Sequence[str] = (),
     method: QuantileMethod = "linear",
-) -> pa.Table:
-    """Exact quantiles: a long table [*by, p, value]. Groups without values are left out."""
+    max_groups: int = DEFAULT_MAX_GROUPS,
+) -> QuantileTable:
+    """Exact quantiles per group (the `max_groups` largest groups)."""
     rel.require(field_name, NUMERIC_OR_TIME)
     _check_by(rel, by, ("p", "value"))
     ps = check_probs(probs)
     function = "quantile_cont" if method == "linear" else "quantile_disc"
-    target = valid_rows(rel, [field_name])
+    capped = cap_groups(valid_rows(rel, [field_name]), by, max_groups)
+    target = capped.relation
     query = target.select(
         *_group_cols(by),
         alias(fn(function, _value_expr(rel, field_name), num_list(ps)), "_q"),
@@ -105,7 +116,7 @@ def quantiles(
                 out[name].append(row[i])
             out["p"].append(p)
             out["value"].append(value)
-    return pa.table(out)
+    return QuantileTable(pa.table(out), [w for w in [capped.warning] if w])
 
 
 # ---------------------------------------------------------------- ECDF
@@ -117,27 +128,37 @@ class Ecdf:
     table: pa.Table
     exact: bool
     n: int
+    warnings: list[str] = field(default_factory=list)
 
 
-def ecdf(rel: Relation, field_name: str, *, max_points: int = 2000, by: Sequence[str] = ()) -> Ecdf:
-    """The empirical CDF per group.
+def ecdf(
+    rel: Relation,
+    field_name: str,
+    *,
+    max_points: int = 2000,
+    by: Sequence[str] = (),
+    max_groups: int = DEFAULT_MAX_GROUPS,
+) -> Ecdf:
+    """The empirical CDF per group (the `max_groups` largest groups).
 
     With at most `max_points` distinct values, every step is returned exactly. Otherwise the
-    points are exact quantile_disc values at p = k/max_points: each lies on the ECDF's step
-    curve (F(x) >= p > F(x-)).
+    points are the minimum plus exact quantile_disc values at p = k/max_points: each lies on
+    the ECDF's step curve (F(x) >= p > F(x-)).
     """
     rel.require(field_name, NUMERIC_OR_TIME)
     _check_by(rel, by, ("x", "p"))
     if max_points < 2:
         raise ValueError("max_points must be >= 2")
-    target = valid_rows(rel, [field_name])
+    capped = cap_groups(valid_rows(rel, [field_name]), by, max_groups)
+    target = capped.relation
+    notes = [w for w in [capped.warning] if w]
     value = _value_expr(rel, field_name)
     n, distinct = target.rows(
         target.select(count_star(), fn("approx_count_distinct", col(field_name)))
     )[0]
     names = [*by, "x", "p"]
     if n == 0:
-        return Ecdf(pa.table({name: [] for name in names}), True, 0)
+        return Ecdf(pa.table({name: [] for name in names}), True, 0, notes)
 
     groups = ", ".join(_sql(c) for c in _group_cols(by))
     partition = f"PARTITION BY {groups}" if by else ""
@@ -151,27 +172,28 @@ def ecdf(rel: Relation, field_name: str, *, max_points: int = 2000, by: Sequence
             f"AND CURRENT ROW))::DOUBLE / (sum(_c) OVER ({partition}))::DOUBLE AS p "
             f"FROM ({_sql(counted)}) AS _t ORDER BY {group_select}_x"
         )
-        return Ecdf(target.arrow(sql), True, int(n))
+        return Ecdf(target.arrow(sql), True, int(n), notes)
 
     # Order statistic of rank r is quantile_disc(k/m) for the k with ceil(k*n/m) = r; such a
-    # k exists iff floor(r*m/n) > floor((r-1)*m/n), and the largest is floor(r*m/n). One
-    # parallel sort per group (quantile_disc with a long list is far slower in DuckDB).
+    # k exists iff floor(r*m/n) > floor((r-1)*m/n), and the largest is floor(r*m/n). The
+    # minimum (rank 1) is always kept, at p = 1/n. One parallel sort per group
+    # (quantile_disc with a long list is far slower in DuckDB).
     m = int(max_points)
     ranked = target.select(*_group_cols(by), alias(value, "_x"))
     # Without groups the count is known; a count(*) OVER () would cost another full pass.
     count = f"count(*) OVER ({partition})" if by else str(int(n))
     sql = (
-        f"SELECT {group_select}_x, (_rn * {m}) // _cnt AS _k FROM ("
+        f"SELECT {group_select}_x, (_rn * {m}) // _cnt AS _k, _cnt FROM ("
         f"SELECT *, row_number() OVER ({partition} ORDER BY _x) AS _rn, "
         f"{count} AS _cnt FROM ({_sql(ranked)}) AS _a) AS _b "
-        f"WHERE (_rn * {m}) // _cnt > ((_rn - 1) * {m}) // _cnt "
+        f"WHERE (_rn * {m}) // _cnt > ((_rn - 1) * {m}) // _cnt OR _rn = 1 "
         f"ORDER BY {group_select}_x, _k"
     )
     out: dict[str, list[Any]] = {name: [] for name in names}
     previous: tuple[Any, ...] | None = None
     for row in target.arrow(sql).to_pylist():
         key = tuple(row[name] for name in by)
-        p = row["_k"] / m
+        p = row["_k"] / m if row["_k"] > 0 else 1.0 / row["_cnt"]
         if previous == (*key, row["_x"]):
             out["p"][-1] = p  # ties share one vertical step: keep the highest p
             continue
@@ -180,7 +202,7 @@ def ecdf(rel: Relation, field_name: str, *, max_points: int = 2000, by: Sequence
             out[name].append(row[name])
         out["x"].append(row["_x"])
         out["p"].append(p)
-    return Ecdf(pa.table(out), False, int(n))
+    return Ecdf(pa.table(out), False, int(n), notes)
 
 
 # ---------------------------------------------------------------- bins and histogram
@@ -256,14 +278,22 @@ def bin_edges(
 
     Precedence: `width`, then `bins`, then `rule`. With nice=False and a rule, the edges equal
     numpy.histogram_bin_edges, except that a rule giving zero width (FD or Scott on data with
-    no spread) falls back to Sturges instead of one bin. With nice=True the width is rounded
-    up to a nice number and the first edge snapped down to a multiple of it.
+    no spread) falls back to Sturges instead of one bin (and `rule` says "sturges"). With
+    nice=True the width is rounded up to a nice number and the first edge snapped down to a
+    multiple of it.
+
+    With integer=True (integer data, nice edges) the last edge is strictly above `hi`, so the
+    largest value gets its own half-open bin instead of sharing the closed last bin.
     """
     if n < 1:
         raise StatsInputError("No values to bin.")
     if not (math.isfinite(lo) and math.isfinite(hi)) or hi < lo:
         raise StatsInputError("The bin range must be finite with min <= max.")
+    if not math.isfinite(hi - lo):
+        raise StatsInputError("The values span too wide a range to bin.")
     constant = lo == hi
+    if constant and integer and nice and width is None and bins is None:
+        return Bins(np.array([lo, lo + 1.0]), 1.0, rule, False)
     if constant:  # NumPy widens a degenerate range by 0.5 on each side (and uses one bin).
         lo, hi = lo - 0.5, hi + 0.5
     ptp = hi - lo
@@ -279,8 +309,10 @@ def bin_edges(
         raw, label = ptp, rule
     else:
         raw, label = _rule_width(rule, n, ptp, iqr, std), rule
-        if raw <= 0:  # FD or Scott on data without spread
-            raw = _rule_width("sturges", n, ptp, iqr, std)
+        if not raw > 0:  # FD or Scott on data without spread
+            raw, label = _rule_width("sturges", n, ptp, iqr, std), "sturges"
+    if not (raw > 0 and math.isfinite(raw)):
+        raise StatsInputError("The values span too wide a range to bin.")
 
     count = max(1, math.ceil(ptp / raw))
     capped = count > max_bins
@@ -295,7 +327,11 @@ def bin_edges(
 
     step = float(width) if width is not None and not capped else nice_width(raw, integer=integer)
     start = math.floor(lo / step) * step
-    count = max(1, math.ceil((hi - start) / step - 1e-9))
+    if integer:
+        # [start, start + step), ...: the last edge lies strictly above hi.
+        count = max(1, math.floor((hi - start) / step + 1e-9) + 1)
+    else:
+        count = max(1, math.ceil((hi - start) / step - 1e-9))
     edges = _round_edges(start + step * np.arange(count + 1), step)
     while edges[-1] < hi:
         edges = np.append(edges, _round_edges(np.array([edges[-1] + step]), step))
@@ -329,14 +365,21 @@ def histogram(
     by: Sequence[str] = (),
     nice: bool = True,
     max_bins: int = 1000,
+    max_groups: int = DEFAULT_MAX_GROUPS,
 ) -> Histogram:
-    """Equal-width histogram with shared edges across groups, binned exactly in SQL."""
+    """Equal-width histogram with shared edges across groups, binned exactly in SQL.
+
+    With `by`, only the `max_groups` largest groups are binned (and counted in n).
+    """
     column = rel.require(field_name, QUANT)
     _check_by(rel, by, ("binStart", "binEnd", "count"))
     x = as_double(col(field_name))
-    target = valid_rows(rel, [field_name])
     total, n_valid = rel.rows(rel.select(count_star(), count_if(valid(column))))[0]
     n_missing = int(total - n_valid)
+    capped_groups = cap_groups(valid_rows(rel, [field_name]), by, max_groups)
+    target = capped_groups.relation
+    if capped_groups.dropped:
+        n_valid = target.count()
 
     binned = target
     if range is not None:
@@ -344,15 +387,18 @@ def histogram(
         if not (math.isfinite(lo_r) and math.isfinite(hi_r)) or hi_r <= lo_r:
             raise StatsInputError("The histogram range must be finite with min < max.")
         binned = target.narrow(exp.Between(this=x, low=num(lo_r), high=num(hi_r)))
-    n, lo, hi, quartiles, std = binned.rows(
-        binned.select(
-            count_star(),
-            fn("min", x),
-            fn("max", x),
-            fn("quantile_cont", x, num_list([0.25, 0.75])),
-            fn("stddev_pop", x),
-        )
-    )[0]
+    try:
+        n, lo, hi, quartiles, std = binned.rows(
+            binned.select(
+                count_star(),
+                fn("min", x),
+                fn("max", x),
+                fn("quantile_cont", x, num_list([0.25, 0.75])),
+                fn("stddev_pop", x),
+            )
+        )[0]
+    except duckdb.OutOfRangeException as exc:
+        raise StatsInputError("The values are too large to bin.") from exc
     n = int(n)
     if n == 0:
         raise StatsInputError(f"'{field_name}' has no values to bin.")
@@ -391,7 +437,7 @@ def histogram(
         out["binEnd"].extend(ends)
         out["count"].extend(values.tolist())
 
-    warnings = []
+    warnings = [w for w in [capped_groups.warning] if w]
     n_outside = int(n_valid) - n if range is not None else 0
     if n_outside:
         warnings.append(f"{n_outside:,} values outside the range were left out.")
@@ -497,7 +543,9 @@ def qq(
     if len(shape) != len(QQ_DISTRIBUTIONS[dist]):
         names = ", ".join(QQ_DISTRIBUTIONS[dist]) or "none"
         raise StatsInputError(f"'{dist}' takes these shape parameters: {names}.")
-    frozen = getattr(sps, dist)(*shape)
+    if not all(math.isfinite(float(s)) and float(s) > 0 for s in shape):
+        raise StatsInputError("Shape parameters must be positive numbers.")
+    frozen = getattr(sps, dist)(*[float(s) for s in shape])
     target = valid_rows(rel, [field_name])
     x = as_double(col(field_name))
     n = int(target.count())
@@ -523,8 +571,11 @@ def qq(
     theoretical = frozen.ppf(filliben(ranks, n))
 
     r: float | None = None
-    if np.ptp(sample) > 0:
-        r = float(np.corrcoef(theoretical, sample)[0, 1])
+    with np.errstate(all="ignore"):  # huge values overflow the correlation: r is then None
+        if np.ptp(sample) > 0:
+            r = float(np.corrcoef(theoretical, sample)[0, 1])
+    if r is not None and not math.isfinite(r):
+        r = None
     if line == "fit":
         slope, intercept = np.polyfit(theoretical, sample, 1)
     else:

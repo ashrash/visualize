@@ -1,8 +1,11 @@
 """Bootstrap confidence intervals (scipy.stats.bootstrap, seeded and memory-bounded).
 
 method="auto" uses BCa up to 10,000 observations (its jackknife costs O(n^2)) and the
-percentile method above that, where the two agree closely. Named statistics are vectorized
-and picklable; a statistic that isn't vectorized runs in the process pool when one is given.
+percentile method above that. The two converge as n grows, but for skewed statistics they
+can still differ noticeably at 10k (about 12% of the interval width has been seen), so the
+result's `method` always says which one ran; pass method="bca" to force BCa. Named
+statistics are vectorized and picklable; a statistic that isn't vectorized runs in the
+process pool when one is given.
 """
 
 from __future__ import annotations

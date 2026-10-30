@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from viz.stats.errors import StatsInputError
+from viz.stats.groups import DEFAULT_MAX_GROUPS, cap_groups
 from viz.stats.relation import Relation, col
 from viz.stats.results import sample_note
 from viz.stats.sql import alias, all_valid, count_if, count_star
@@ -57,6 +58,9 @@ class Sample:
     # Rows dropped because a field was null, NaN or +/-inf.
     n_missing: int
     sampled: bool
+    # Rows per group the sample was capped at (stratified samples only).
+    cap_per_group: int | None = None
+    warnings: list[str] = field(default_factory=list)
 
     def column(self, name: str) -> np.ndarray:
         return numeric_array(self.table.column(name), name)
@@ -65,7 +69,9 @@ class Sample:
         return list(self.table.column(name).to_pylist())
 
     def notes(self) -> list[str]:
-        return [sample_note(self.n, self.n_total)] if self.sampled else []
+        """The sampling note (when sampled) plus any warnings, for StatResult.warnings."""
+        note = [sample_note(self.n, self.n_total)] if self.sampled else []
+        return [*note, *self.warnings]
 
 
 def reservoir_sample(
@@ -76,11 +82,18 @@ def reservoir_sample(
     by: Sequence[str] = (),
     seed: int = DEFAULT_SEED,
     dropna: bool = True,
+    max_groups: int = DEFAULT_MAX_GROUPS,
+    total_cap: int = MODEL_CAP,
 ) -> Sample:
     """Up to `cap` random rows of (by + fields); with `by`, up to `cap` rows per group.
 
     With dropna, rows where any of `fields` is null or non-finite are left out first (and
     counted in n_missing); `by` columns may be null (NULL is a group).
+
+    With `by`, only the `max_groups` largest groups are sampled, and the per-group cap is
+    lowered to total_cap / groups so a sample never exceeds `total_cap` rows. Stratified
+    samples use random() and are not repeatable (`seed` applies to unstratified samples);
+    chart results are cached per data version, so a chart doesn't change between views.
     """
     if cap < 1:
         raise ValueError("cap must be >= 1")
@@ -94,6 +107,16 @@ def reservoir_sample(
         rel.select(alias(count_star(), "total"), alias(eligible_count, "eligible"))
     )[0]
     eligible_rel = rel.narrow(condition) if condition is not None else rel
+    warnings: list[str] = []
+    cap_per_group: int | None = None
+    if by:
+        groups = cap_groups(eligible_rel, by, max_groups)
+        if groups.dropped:
+            eligible_rel = groups.relation
+            eligible = eligible_rel.count()
+            warnings.append(groups.warning or "")
+        cap_per_group = max(1, min(cap, total_cap // max(1, groups.n_groups - groups.dropped)))
+        cap = cap_per_group
     inner = eligible_rel.filtered(*names)
 
     if eligible <= cap:
@@ -110,6 +133,8 @@ def reservoir_sample(
         n_total=int(eligible),
         n_missing=int(total - eligible),
         sampled=table.num_rows < eligible,
+        cap_per_group=cap_per_group,
+        warnings=warnings,
     )
 
 

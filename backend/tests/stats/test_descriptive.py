@@ -159,7 +159,7 @@ def test_tied_modes_are_sorted_and_capped(table_relation: Any) -> None:
     result = describe(table_relation({"s": values}), _request(["s"]))
     s = _one(result, "s")
     assert s.mode_count == 2 and s.modes == ["a", "b", "h", "i", "j"]
-    assert "'s': 6 values tie for the mode; showing 5 (overall)." in result.warnings
+    assert "'s': more than 5 values tie for the mode; showing 5 (overall)." in result.warnings
 
 
 def test_filters_apply(table_relation: Any, data: pa.Table) -> None:
@@ -297,3 +297,62 @@ def test_fuzz_against_numpy(table_relation: Any, values: list[float | None]) -> 
         assert v.std == pytest.approx(clean.std(ddof=1), rel=1e-7, abs=1e-6)
     else:
         assert v.std is None
+
+
+# ---------------------------------------------------------------- review regressions
+
+
+def test_huge_values_are_rescaled(table_relation: Any) -> None:
+    values = np.array([1e100, 2e100, -1e100, 5e99, 3e100, -2.5e100])
+    result = describe(table_relation({"v": values, "k": np.arange(6.0)}), _request(["v", "k"]))
+    v = _one(result, "v")
+    scaled = values / 1e100
+    assert v.mean == pytest.approx(values.mean(), rel=1e-12)
+    assert v.std == pytest.approx(values.std(ddof=1), rel=1e-12)
+    assert v.variance == pytest.approx(values.var(ddof=1), rel=1e-12)
+    assert v.sum == pytest.approx(values.sum(), rel=1e-12)
+    assert (v.min, v.max) == (values.min(), values.max())
+    assert v.skewness == pytest.approx(sps.skew(scaled, bias=False), rel=1e-10)
+    assert v.kurtosis == pytest.approx(sps.kurtosis(scaled, bias=False), rel=1e-10)
+    assert (
+        "'v': values are huge, so the moments were computed on rescaled values." in result.warnings
+    )
+    k = _one(result, "k")  # other fields are unaffected
+    assert k.kurtosis == pytest.approx(sps.kurtosis(np.arange(6.0), bias=False), rel=1e-12)
+
+
+def test_values_at_the_top_of_the_double_range(table_relation: Any) -> None:
+    values = np.array([1.7e308, -1.7e308, 1e308, 0.0])
+    result = describe(table_relation({"v": values}), _request(["v"]))
+    v = _one(result, "v")
+    assert v.mean == pytest.approx(2.5e307) and v.max == 1.7e308
+    assert v.variance is None
+    assert any("the variance is too large to represent" in w for w in result.warnings)
+    json.loads(result.model_dump_json())
+
+
+def test_zoned_timestamps_are_reported_in_utc(table_relation: Any, make_relation: Any) -> None:
+    rel = make_relation(
+        "SELECT * FROM (VALUES (TIMESTAMPTZ '2024-01-01 10:00:00+05:00', 1.0),"
+        " (TIMESTAMPTZ '2024-01-01 10:00:00+05:00', 2.0),"
+        " (TIMESTAMPTZ '2024-03-01 00:00:00+00:00', 3.0))"
+        " t(ts, v)"
+    )
+    result = describe(rel, _request(["ts", "v"], group_by=["ts"]))
+    ts = _one(result, "ts")
+    assert ts.min == "2024-01-01T05:00:00+00:00" and ts.max == "2024-03-01T00:00:00+00:00"
+    assert ts.modes == ["2024-01-01T05:00:00+00:00"] and ts.median == "2024-01-01T05:00:00+00:00"
+    assert _one(result, "v", ["2024-01-01T05:00:00+00:00"]).mean == 1.5
+
+
+def test_modes_of_high_cardinality_doubles(table_relation: Any) -> None:
+    rng = np.random.default_rng(30)
+    values = rng.random(50_000)
+    values[:3] = 0.5  # one value repeats
+    groups = rng.choice(["a", "b"], 50_000)
+    result = describe(table_relation({"v": values, "g": groups}), _request(["v"], group_by=["g"]))
+    v = _one(result, "v")
+    assert v.modes == [0.5] and v.mode_count == 3 and v.distinct == len(np.unique(values))
+    for g in ("a", "b"):
+        part = values[groups == g]
+        assert _one(result, "v", [g]).distinct == len(np.unique(part))

@@ -40,7 +40,7 @@ def test_quantiles_match_numpy(make_relation: Any, gamma: np.ndarray) -> None:
     rel = make_relation(_values_sql(dirty))
     probs = [0.0, 0.05, 0.25, 0.5, 0.75, 0.95, 1.0]
     for method in ("linear", "inverted_cdf"):
-        table = quantiles(rel, "x", probs, method=method)  # type: ignore[arg-type]
+        table = quantiles(rel, "x", probs, method=method).table  # type: ignore[arg-type]
         assert table.column("p").to_pylist() == probs
         np.testing.assert_allclose(
             table.column("value").to_pylist(),
@@ -52,7 +52,7 @@ def test_quantiles_match_numpy(make_relation: Any, gamma: np.ndarray) -> None:
 def test_quantiles_by_group(make_relation: Any, gamma: np.ndarray) -> None:
     groups = ["a" if v < 5 else "b" for v in gamma]
     rel = make_relation(_values_sql(gamma, groups))
-    table = quantiles(rel, "x", [0.1, 0.9], by=["g"])
+    table = quantiles(rel, "x", [0.1, 0.9], by=["g"]).table
     rows = table.to_pylist()
     for g in ("a", "b"):
         expected = np.quantile(gamma[np.array(groups) == g], [0.1, 0.9])
@@ -64,7 +64,7 @@ def test_quantiles_of_dates(make_relation: Any) -> None:
     rel = make_relation(
         "SELECT * FROM (VALUES (DATE '2024-01-01'), (DATE '2024-01-03'), (DATE '2024-01-09')) t(d)"
     )
-    table = quantiles(rel, "d", [0.5], method="inverted_cdf")
+    table = quantiles(rel, "d", [0.5], method="inverted_cdf").table
     assert str(table.column("value")[0].as_py()) == "2024-01-03"
 
 
@@ -92,7 +92,7 @@ def test_ecdf_grid_points_lie_on_the_step_curve(make_relation: Any) -> None:
     x = np.random.default_rng(2).normal(size=5000)
     rel = make_relation(_values_sql(x))
     result = ecdf(rel, "x", max_points=100)
-    assert not result.exact and result.table.num_rows == 100
+    assert not result.exact and result.table.num_rows == 101
     sorted_x = np.sort(x)
     for xv, p in zip(
         result.table.column("x").to_pylist(), result.table.column("p").to_pylist(), strict=True
@@ -261,3 +261,91 @@ def test_qq_rejects_bad_input(make_relation: Any) -> None:
         qq(rel, "x", dist="os")
     with pytest.raises(StatsInputError, match="shape parameters: df"):
         qq(rel, "x", dist="t")
+
+
+# ---------------------------------------------------------------- review regressions
+
+
+@pytest.mark.parametrize(
+    ("name", "values", "kwargs", "expected_bins"),
+    [
+        ("ratings 1-5", np.random.default_rng(0).integers(1, 6, 10_000), {}, 5),
+        ("dice 1-6", np.random.default_rng(1).integers(1, 7, 100), {}, 6),
+        (
+            "ages 0-100 width 5",
+            np.random.default_rng(2).integers(0, 101, 5_000),
+            {"width": 5.0},
+            21,
+        ),
+    ],
+)
+def test_integer_histograms_give_the_top_value_its_own_bin(
+    table_relation: Any, name: str, values: np.ndarray, kwargs: dict[str, Any], expected_bins: int
+) -> None:
+    import pyarrow as pa
+
+    result = histogram(table_relation({"v": pa.array(values, type=pa.int64())}), "v", **kwargs)
+    rows = result.table.to_pylist()
+    assert len(rows) == expected_bins, name
+    top = int(values.max())
+    assert rows[-1]["binStart"] == top and rows[-1]["binEnd"] > top
+    assert rows[-1]["count"] == int((values == top).sum())
+    counts, _ = np.histogram(values, bins=result.edges)
+    assert [r["count"] for r in rows] == counts.tolist()
+    if not kwargs:  # width 1: one bar per integer value
+        assert [r["count"] for r in rows] == [
+            int((values == v).sum()) for v in range(values.min(), top + 1)
+        ]
+
+
+def test_constant_integer_histogram(table_relation: Any) -> None:
+    import pyarrow as pa
+
+    result = histogram(table_relation({"v": pa.array([7, 7, 7], type=pa.int64())}), "v")
+    assert result.table.to_pylist() == [{"binStart": 7.0, "binEnd": 8.0, "count": 3}]
+
+
+def test_histogram_rejects_overflowing_ranges(make_relation: Any) -> None:
+    rel = make_relation(_values_sql(np.array([-1.7e308, 0.0, 1.7e308])))
+    with pytest.raises(StatsInputError, match=r"too wide a range|too large"):
+        histogram(rel, "x")
+    with pytest.raises(StatsInputError, match="too wide a range"):
+        bin_edges(3, -1.7e308, 1.7e308)
+
+
+def test_fd_fallback_reports_sturges() -> None:
+    edges = bin_edges(10, 0.0, 10.0, iqr=0.0, std=1.0, rule="fd", nice=False)
+    assert edges.rule == "sturges"
+    assert len(edges.edges) - 1 == int(np.ceil(10 / (10 / (np.log2(10) + 1))))
+
+
+def test_grouped_kernels_cap_the_number_of_groups(table_relation: Any) -> None:
+    import pyarrow as pa
+
+    groups = [f"g{i:02d}" for i in range(30) for _ in range(i + 1)]  # g29 is the largest
+    values = np.arange(len(groups), dtype=float)
+    rel = table_relation({"g": pa.array(groups), "x": values})
+    hist = histogram(rel, "x", by=["g"], max_groups=5)
+    kept = {r["g"] for r in hist.table.to_pylist()}
+    assert kept == {"g25", "g26", "g27", "g28", "g29"}
+    assert "Showing the 5 largest of 30 groups." in hist.warnings
+    assert hist.n == sum(range(26, 31))
+    q = quantiles(rel, "x", [0.5], by=["g"], max_groups=3)
+    assert {r["g"] for r in q.table.to_pylist()} == {"g27", "g28", "g29"}
+    assert q.warnings == ["Showing the 3 largest of 30 groups."]
+    e = ecdf(rel, "x", by=["g"], max_groups=2)
+    assert {r["g"] for r in e.table.to_pylist()} == {"g28", "g29"} and e.warnings
+
+
+def test_approximate_ecdf_starts_at_the_minimum(make_relation: Any) -> None:
+    x = np.random.default_rng(3).normal(size=3000)
+    result = ecdf(make_relation(_values_sql(x)), "x", max_points=50)
+    first = result.table.to_pylist()[0]
+    assert first == {"x": x.min(), "p": pytest.approx(1 / 3000)}
+
+
+@pytest.mark.parametrize("shape", [(-1.0,), (0.0,), (float("nan"),), (float("inf"),)])
+def test_qq_rejects_bad_shape_parameters(make_relation: Any, shape: tuple[float]) -> None:
+    rel = make_relation(_values_sql(np.arange(10.0)))
+    with pytest.raises(StatsInputError, match="Shape parameters must be positive"):
+        qq(rel, "x", dist="t", shape=shape)

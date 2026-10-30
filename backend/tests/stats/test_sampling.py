@@ -94,6 +94,24 @@ def test_stratified_without_capping_is_not_sampled(make_relation: Any) -> None:
     assert sample.n == 30 and not sample.sampled
 
 
+def test_stratified_sampling_caps_groups_and_total_rows(make_relation: Any) -> None:
+    # 40 groups; group i has 100 + i rows.
+    rel = make_relation(
+        "SELECT range::DOUBLE AS x, (range % 40) AS g FROM range(4000) "
+        "UNION ALL SELECT range::DOUBLE, range FROM range(40)"
+    )
+    capped = reservoir_sample(rel, ["x"], cap=1000, by=["g"], max_groups=10)
+    kept = set(capped.values("g"))
+    assert len(kept) == 10
+    assert capped.warnings == ["Showing the 10 largest of 40 groups."]
+    assert capped.notes()[-1] == "Showing the 10 largest of 40 groups."
+    assert capped.n_total == 10 * 101
+    total = reservoir_sample(rel, ["x"], cap=1000, by=["g"], total_cap=400)
+    assert total.cap_per_group == 10 and total.n == 400 and total.sampled
+    counts = {g: total.values("g").count(g) for g in set(total.values("g"))}
+    assert set(counts.values()) == {10}
+
+
 def test_unknown_field_is_rejected(make_relation: Any) -> None:
     with pytest.raises(StatsInputError, match="Unknown field 'y'"):
         reservoir_sample(make_relation(_WITH_MISSING), ["y"], cap=10)

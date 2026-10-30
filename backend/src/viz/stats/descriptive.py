@@ -5,8 +5,17 @@ Fisher-Pearson G1 and kurtosis the bias-corrected excess G2 (DuckDB skewness/kur
 to SciPy with bias=False and to Excel SKEW/KURT); quantiles are linear (R type 7) for numbers
 and quantile_disc (an actual value) for dates. NaN and +/-inf count as missing.
 
-One scan computes moments and quantiles for every field (GROUPING SETS returns the groups and
-the overall row together); one GROUP BY per field gives exact distinct counts and modes.
+Numbers are summarised as DOUBLE: integers beyond 2^53 (e.g. BIGINT ids near 2^63) lose
+precision, and HUGEINT/DECIMAL values are rounded to 15-17 significant digits.
+Dates and times are reported as ISO-8601 text; TIMESTAMP WITH TIME ZONE values in UTC.
+
+Queries:
+- one scan computes the moments of every field (GROUPING SETS returns the groups and the
+  overall row together); values near the top of the double range are rescaled by a power of
+  two and the moments retried, since DuckDB's kurtosis/skewness overflow there;
+- numeric quantiles come from one UNPIVOT + GROUP BY field, so they finalize in parallel;
+- one UNION ALL of per-field GROUP BYs gives exact distinct counts and modes, using a top-k
+  aggregate (min_by) rather than a sort of all distinct values.
 """
 
 from __future__ import annotations
@@ -17,20 +26,26 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import duckdb
 from cachetools import LRUCache
 from sqlglot import exp
 
 from viz.contracts import ColumnSemantic, DescribeRequest, FieldSummary, Quantile, StatResult
+from viz.stats.errors import StatsInputError
+from viz.stats.groups import cap_groups
 from viz.stats.relation import Relation, col
 from viz.stats.results import dedupe, finite_or_none, stat_result
-from viz.stats.sql import alias, count_star, fn, is_boolean, is_float, lit, num_list
+from viz.stats.sql import alias, count_star, fn, is_boolean, is_float, num, num_list
 
 Kind = Literal["numeric", "temporal", "categorical", "boolean"]
 GroupKey = tuple[Any, ...] | None  # None = the overall row
-ModeInfo = tuple[int, int, list[Any], int]  # distinct, mode count, first modes, tied modes
+ModeInfo = tuple[int, int, list[Any], bool]  # distinct, mode count, first modes, more tie
 
 _QUARTILES = (0.25, 0.5, 0.75)
 _MAX_MODES = 5
+# Above this magnitude the moments are computed on rescaled values (DuckDB's kurtosis
+# overflows from about 1e77, skewness from about 1e103).
+_RESCALE_ABOVE = 1e50
 _NUMERIC_PREFIXES = (
     "TINYINT",
     "SMALLINT",
@@ -48,6 +63,18 @@ _NUMERIC_PREFIXES = (
     "DECIMAL",
 )
 _TEMPORAL_PREFIXES = ("DATE", "TIMESTAMP", "TIME")
+_MOMENTS = (
+    ("mean", "avg"),
+    ("std", "stddev_samp"),
+    ("variance", "var_samp"),
+    ("sum", "sum"),
+    ("min", "min"),
+    ("max", "max"),
+    ("skewness", "skewness"),
+    ("kurtosis", "kurtosis"),
+)
+# How each moment scales when the values are divided by s.
+_SCALE_POWER = {"mean": 1, "std": 1, "variance": 2, "sum": 1, "min": 1, "max": 1}
 
 
 def field_kind(rel: Relation, name: str) -> Kind:
@@ -62,14 +89,25 @@ def field_kind(rel: Relation, name: str) -> Kind:
     return "categorical"
 
 
+def _has_zone(rel: Relation, name: str) -> bool:
+    upper = rel.columns[name].type.upper()
+    return upper.startswith("TIMESTAMP WITH TIME ZONE") or upper == "TIMESTAMPTZ"
+
+
 def _value(rel: Relation, name: str, kind: Kind) -> exp.Expr:
-    """The field's usable value: NULL when missing (NaN and +/-inf count as missing)."""
+    """The field's usable value: NULL when missing (NaN and +/-inf count as missing).
+
+    Zoned timestamps become naive UTC timestamps, so text output doesn't depend on the
+    server's time zone (ordering is unchanged).
+    """
     column = col(name)
     if kind == "numeric":
         double = exp.cast(column, "DOUBLE")
         if is_float(rel.columns[name]):
             return exp.If(this=fn("isfinite", column), true=double, false=exp.Null())
         return double
+    if kind == "temporal" and _has_zone(rel, name):
+        return fn("timezone", exp.Literal.string("UTC"), column)
     return column
 
 
@@ -77,11 +115,13 @@ def _text(expr: exp.Expr) -> exp.Expr:
     return exp.cast(expr, "VARCHAR")
 
 
-def _iso(value: Any) -> Any:
-    """DuckDB's text form of a date/timestamp, made ISO-8601 ("T" separator)."""
-    if isinstance(value, str) and len(value) > 10 and value[10] == " ":
-        return value[:10] + "T" + value[11:]
-    return value
+def _iso(value: Any, zoned: bool = False) -> Any:
+    """DuckDB's text form of a date/timestamp, made ISO-8601 ("T" separator, UTC offset)."""
+    if not isinstance(value, str):
+        return value
+    if len(value) > 10 and value[10] == " ":
+        value = value[:10] + "T" + value[11:]
+    return value + "+00:00" if zoned else value
 
 
 def _scalar(value: Any) -> Any:
@@ -118,20 +158,32 @@ class _Warnings:
 class _Groups:
     by: list[str]
     temporal: list[bool]
+    zoned: list[bool]
     # The relation restricted to the kept groups (== the input when nothing was dropped).
     restricted: Relation
-    # Number of groups before truncation; 0 when nothing was dropped.
-    truncated_from: int
+    # Groups found, and how many were dropped (0 = all kept).
+    n_groups: int
+    dropped: int
 
-    def exprs(self) -> list[exp.Expr]:
+    @staticmethod
+    def none(rel: Relation) -> _Groups:
+        return _Groups([], [], [], rel, 1, 0)
+
+    def exprs(self, rel: Relation) -> list[exp.Expr]:
         """Group keys as output: native values, except dates/times as text."""
-        return [_text(col(b)) if t else col(b) for b, t in zip(self.by, self.temporal, strict=True)]
+        out: list[exp.Expr] = []
+        for b, temporal in zip(self.by, self.temporal, strict=True):
+            out.append(_text(_value(rel, b, "temporal")) if temporal else col(b))
+        return out
 
     def key(self, row: dict[str, Any]) -> GroupKey:
         if not self.by or row["_gid"] != 0:
             return None
-        values = (row[f"_g{i}"] for i in range(len(self.by)))
-        return tuple(_iso(v) if t else v for v, t in zip(values, self.temporal, strict=True))
+        values = [row[f"_g{i}"] for i in range(len(self.by))]
+        return tuple(
+            _iso(v, z) if t else v
+            for v, t, z in zip(values, self.temporal, self.zoned, strict=True)
+        )
 
     def label(self, key: GroupKey) -> str:
         if key is None:
@@ -149,16 +201,22 @@ def describe(rel: Relation, request: DescribeRequest) -> StatResult:
     percentiles = sorted(dict.fromkeys(float(p) for p in request.percentiles))
     probs = list(dict.fromkeys([*_QUARTILES, *percentiles]))
     kinds = {name: field_kind(rel, name) for name in fields}
-    groups = _top_groups(rel, by, request.max_groups)
+    capped = cap_groups(rel, by, request.max_groups)
+    groups = _Groups(
+        by,
+        [field_kind(rel, b) == "temporal" for b in by],
+        [field_kind(rel, b) == "temporal" and _has_zone(rel, b) for b in by],
+        capped.relation,
+        capped.n_groups,
+        capped.dropped,
+    )
     warnings = _Warnings()
-    if groups.truncated_from:
-        warnings.plain.append(
-            f"Showing the {request.max_groups:,} largest of {groups.truncated_from:,} groups."
-        )
+    if capped.warning:
+        warnings.plain.append(capped.warning)
 
-    # (relation, group by?, grouping sets?) passes: one combined pass when possible.
+    # (relation, grouped?, grouping sets?) passes: one combined pass when possible.
     passes: list[tuple[Relation, bool, bool]] = []
-    if by and request.include_overall and not groups.truncated_from:
+    if by and request.include_overall and not groups.dropped:
         passes.append((rel, True, True))
     else:
         if by:
@@ -169,28 +227,21 @@ def describe(rel: Relation, request: DescribeRequest) -> StatResult:
     rows: list[dict[str, Any]] = []
     modes: dict[tuple[str, GroupKey], ModeInfo] | None = {} if request.include_mode else None
     for source, grouped, sets in passes:
-        pass_groups = groups if grouped else _Groups([], [], source, 0)
-        pass_rows = _aggregate(source, fields, kinds, pass_groups, probs, grouping_sets=sets)
-        numeric_quantiles = _numeric_quantiles(source, fields, kinds, pass_groups, probs, sets)
+        pass_groups = groups if grouped else _Groups.none(source)
+        pass_rows = _moments(source, fields, kinds, pass_groups, probs, sets, warnings)
+        quantiles = _numeric_quantiles(source, fields, kinds, pass_groups, probs, sets)
         for row in pass_rows:
             for i, name in enumerate(fields):
                 if kinds[name] == "numeric":
-                    row[f"_{i}_q"] = numeric_quantiles.get((row["_key"], i))
+                    row[f"_{i}_q"] = quantiles.get((row["_key"], i))
         rows += pass_rows
         if modes is not None:
-            for name in fields:
-                if sets and name in by:
-                    # GROUPING SETS ((g, g), (g)) can't tell the overall row apart: two passes.
-                    mode_passes = [(pass_groups, False), (_Groups([], [], source, 0), False)]
-                else:
-                    mode_passes = [(pass_groups, sets)]
-                for mode_groups, mode_sets in mode_passes:
-                    for key, info in _mode_rows(source, name, kinds[name], mode_groups, mode_sets):
-                        modes[(name, key)] = info
+            modes.update(_modes(source, fields, kinds, pass_groups, sets))
 
     rows.sort(key=lambda r: (r["_key"] is not None, _sort_key(r["_key"])))
+    zoned = {name for name in fields if kinds[name] == "temporal" and _has_zone(rel, name)}
     summaries = [
-        _summary(name, kinds[name], i, row, groups, percentiles, modes, warnings)
+        _summary(name, kinds[name], i, row, groups, percentiles, modes, warnings, name in zoned)
         for i, name in enumerate(fields)
         for row in rows
     ]
@@ -216,32 +267,6 @@ def _sort_key(key: GroupKey) -> tuple[Any, ...]:
     return tuple((v is None, "" if v is None else v) for v in key)
 
 
-def _top_groups(rel: Relation, by: list[str], max_groups: int) -> _Groups:
-    """Keep the `max_groups` largest groups (ties broken by key)."""
-    temporal = [field_kind(rel, b) == "temporal" for b in by]
-    if not by:
-        return _Groups(by, temporal, rel, 0)
-    texts = [alias(_text(col(b)), f"_k{i}") for i, b in enumerate(by)]
-    query = rel.select(*texts, alias(count_star(), "_n")).group_by(*[col(b) for b in by])
-    query = query.order_by(
-        exp.Ordered(this=exp.column("_n"), desc=True),
-        *[exp.Ordered(this=exp.column(f"_k{i}"), nulls_first=False) for i in range(len(by))],
-    )
-    found = rel.rows(query)
-    if len(found) <= max_groups:
-        return _Groups(by, temporal, rel, 0)
-    conditions: list[exp.Expr] = []
-    for key in found[:max_groups]:
-        parts: list[exp.Expr] = []
-        for name, value in zip(by, key[:-1], strict=True):
-            if value is None:
-                parts.append(exp.Is(this=col(name), expression=exp.Null()))
-            else:
-                parts.append(exp.EQ(this=_text(col(name)), expression=lit(str(value))))
-        conditions.append(exp.and_(*parts))
-    return _Groups(by, temporal, rel.narrow(exp.or_(*conditions)), len(found))
-
-
 def _group_clause(groups: _Groups, extra: list[exp.Expr], grouping_sets: bool) -> list[exp.Expr]:
     cols: list[exp.Expr] = [col(b) for b in groups.by]
     if grouping_sets:
@@ -256,11 +281,53 @@ def _group_clause(groups: _Groups, extra: list[exp.Expr], grouping_sets: bool) -
     return [*cols, *extra]
 
 
-def _key_selects(groups: _Groups) -> list[exp.Expr]:
-    selects: list[exp.Expr] = [alias(e, f"_g{i}") for i, e in enumerate(groups.exprs())]
+def _key_selects(rel: Relation, groups: _Groups) -> list[exp.Expr]:
+    selects: list[exp.Expr] = [alias(e, f"_g{i}") for i, e in enumerate(groups.exprs(rel))]
     if groups.by:
         selects.append(alias(fn("grouping", *[col(b) for b in groups.by]), "_gid"))
     return selects
+
+
+def _moments(
+    rel: Relation,
+    fields: Sequence[str],
+    kinds: dict[str, Kind],
+    groups: _Groups,
+    probs: Sequence[float],
+    grouping_sets: bool,
+    warnings: _Warnings,
+) -> list[dict[str, Any]]:
+    """Moments per group; rescaled and retried when DuckDB overflows on huge values."""
+    try:
+        return _aggregate(rel, fields, kinds, groups, probs, grouping_sets, {})
+    except duckdb.OutOfRangeException:
+        pass
+    scales = _scales(rel, fields, kinds)
+    try:
+        rows = _aggregate(rel, fields, kinds, groups, probs, grouping_sets, scales)
+    except duckdb.OutOfRangeException as exc:
+        raise StatsInputError("The values are too large to summarise.") from exc
+    for i in scales:
+        warnings.plain.append(
+            f"'{fields[i]}': values are huge, so the moments were computed on rescaled values."
+        )
+    return rows
+
+
+def _scales(rel: Relation, fields: Sequence[str], kinds: dict[str, Kind]) -> dict[int, float]:
+    """Field index -> power of two near max|x| (exact to divide by), for huge fields."""
+    numeric = [i for i, name in enumerate(fields) if kinds[name] == "numeric"]
+    selects = [
+        alias(fn("max", fn("abs", _value(rel, fields[i], "numeric"))), f"_a{i}") for i in numeric
+    ]
+    row = rel.arrow(rel.select(*selects)).to_pylist()[0]
+    scales: dict[int, float] = {}
+    for i in numeric:
+        biggest = row[f"_a{i}"]
+        if biggest is not None and math.isfinite(biggest) and biggest > _RESCALE_ABOVE:
+            # 2^(e-1) <= max|x| < 2^e, so |x / scale| < 2 (and 2^1024 would overflow).
+            scales[i] = math.ldexp(1.0, math.frexp(biggest)[1] - 1)
+    return scales
 
 
 def _aggregate(
@@ -269,26 +336,18 @@ def _aggregate(
     kinds: dict[str, Kind],
     groups: _Groups,
     probs: Sequence[float],
-    *,
     grouping_sets: bool,
+    scales: dict[int, float],
 ) -> list[dict[str, Any]]:
-    selects = [*_key_selects(groups), alias(count_star(), "_rows")]
+    selects = [*_key_selects(rel, groups), alias(count_star(), "_rows")]
     for i, name in enumerate(fields):
         kind = kinds[name]
         v = _value(rel, name, kind)
         selects.append(alias(exp.Count(this=v), f"_{i}_count"))
         if kind == "numeric":
-            for stat, function in (
-                ("mean", "avg"),
-                ("std", "stddev_samp"),
-                ("variance", "var_samp"),
-                ("sum", "sum"),
-                ("min", "min"),
-                ("max", "max"),
-                ("skewness", "skewness"),
-                ("kurtosis", "kurtosis"),
-            ):
-                selects.append(alias(fn(function, v), f"_{i}_{stat}"))
+            scaled = exp.Div(this=v, expression=num(scales[i])) if i in scales else v
+            for stat, function in _MOMENTS:
+                selects.append(alias(fn(function, scaled), f"_{i}_{stat}"))
         elif kind == "temporal":
             selects.append(alias(_text(fn("min", v)), f"_{i}_min"))
             selects.append(alias(_text(fn("max", v)), f"_{i}_max"))
@@ -302,6 +361,13 @@ def _aggregate(
     rows: list[dict[str, Any]] = rel.arrow(query).to_pylist()
     for row in rows:
         row["_key"] = groups.key(row)
+        for i, scale in scales.items():
+            for stat, power in _SCALE_POWER.items():
+                value = row[f"_{i}_{stat}"]
+                if value is not None:
+                    for _ in range(power):
+                        value *= scale
+                    row[f"_{i}_{stat}"] = value
     return rows
 
 
@@ -322,7 +388,7 @@ def _numeric_quantiles(
     numeric = [i for i, name in enumerate(fields) if kinds[name] == "numeric"]
     if not numeric:
         return {}
-    keys = [alias(e, f"_g{i}") for i, e in enumerate(groups.exprs())]
+    keys = [alias(e, f"_g{i}") for i, e in enumerate(groups.exprs(rel))]
     values = [alias(_value(rel, fields[i], "numeric"), f"_c{i}") for i in numeric]
     inner = rel.select(*keys, *values).sql(dialect="duckdb")
     group_names = [f"_g{i}" for i in range(len(groups.by))]
@@ -343,38 +409,77 @@ def _numeric_quantiles(
     return out
 
 
-def _mode_rows(
-    rel: Relation, name: str, kind: Kind, groups: _Groups, grouping_sets: bool
-) -> list[tuple[GroupKey, ModeInfo]]:
-    """Exact distinct count and modes (all ties, ascending, first few) per group."""
+def _modes(
+    rel: Relation,
+    fields: Sequence[str],
+    kinds: dict[str, Kind],
+    groups: _Groups,
+    grouping_sets: bool,
+) -> dict[tuple[str, GroupKey], ModeInfo]:
+    """Exact distinct count and modes per (field, group), all fields in one UNION ALL."""
+    branches: list[str] = []
+    for i, name in enumerate(fields):
+        if grouping_sets and name in groups.by:
+            # GROUPING SETS ((g, g), (g)) can't tell the overall row apart: two branches.
+            branches.append(_mode_branch(rel, i, name, kinds[name], groups, False))
+            branches.append(
+                _mode_branch(rel, i, name, kinds[name], _Groups.none(rel), False, groups)
+            )
+        else:
+            branches.append(_mode_branch(rel, i, name, kinds[name], groups, grouping_sets))
+    out: dict[tuple[str, GroupKey], ModeInfo] = {}
+    for row in rel.arrow(" UNION ALL ".join(f"({b})" for b in branches)).to_pylist():
+        if row["_m"] is None:  # no values (an ungrouped aggregate still returns a row)
+            continue
+        i = int(row["_f"])
+        name, kind = fields[i], kinds[fields[i]]
+        mode_count = int(row["_m"])
+        tied = [t for t in row["_top"] if t["c"] == mode_count]
+        values: list[Any] = []
+        zoned = kind == "temporal" and _has_zone(rel, name)
+        for t in tied[:_MAX_MODES]:
+            if t["n"] is not None:
+                values.append(t["n"])
+            elif kind == "boolean":
+                values.append(t["t"] == "true")
+            else:
+                values.append(_iso(t["t"], zoned) if kind == "temporal" else t["t"])
+        out[(name, groups.key(row))] = (int(row["_d"]), mode_count, values, len(tied) > _MAX_MODES)
+    return out
+
+
+def _mode_branch(
+    rel: Relation,
+    i: int,
+    name: str,
+    kind: Kind,
+    groups: _Groups,
+    grouping_sets: bool,
+    output_groups: _Groups | None = None,
+) -> str:
+    """One field's distinct/mode aggregate; every branch has the same output columns."""
     v = _value(rel, name, kind)
     present = rel.narrow(exp.Not(this=exp.Is(this=v, expression=exp.Null())))
-    counted = present.select(*_key_selects(groups), alias(v, "_v"), alias(count_star(), "_c"))
+    counted = present.select(*_key_selects(rel, groups), alias(v, "_v"), alias(count_star(), "_c"))
     counted = counted.group_by(*_group_clause(groups, [v], grouping_sets))
-    partition_cols = [f"_g{i}" for i in range(len(groups.by))] + (["_gid"] if groups.by else [])
-    partition = ", ".join(partition_cols)
-    over = f"PARTITION BY {partition}" if partition else ""
-    value_out = "CAST(_v AS VARCHAR)" if kind == "temporal" else "_v"
-    sql = (
-        f"SELECT {''.join(c + ', ' for c in partition_cols)}"
-        f"any_value(_d) AS _d, any_value(_m) AS _m, "
-        f"list({value_out} ORDER BY _v) "
-        f"FILTER (WHERE _c = _m AND _m > 1 AND _rk <= {_MAX_MODES}) AS _modes, "
-        f"count(*) FILTER (WHERE _c = _m AND _m > 1) AS _ties "
-        f"FROM (SELECT *, max(_c) OVER ({over}) AS _m, count(*) OVER ({over}) AS _d, "
-        f"row_number() OVER ({over} ORDER BY _c DESC, _v) AS _rk "
-        f"FROM ({counted.sql(dialect='duckdb')}) AS _a) AS _b"
-        f"{' GROUP BY ' + partition if partition else ''}"
+    # The ungrouped branch of a grouped pass still outputs the key columns (NULL, _gid = 1),
+    # so every branch of the UNION ALL has the same columns.
+    n_keys = len((output_groups or groups).by)
+    if groups.by:
+        key_cols = ", ".join([*(f"_g{k}" for k in range(n_keys)), "_gid"])
+        selects, group_by = key_cols, f" GROUP BY {key_cols}"
+    else:
+        key_nulls = [f"NULL AS _g{k}" for k in range(n_keys)] + (["1 AS _gid"] if n_keys else [])
+        selects, group_by = ", ".join(key_nulls), ""
+    selects = f"{selects}, " if selects else ""
+    number = "_v::DOUBLE" if kind == "numeric" else "NULL::DOUBLE"
+    text = "NULL::VARCHAR" if kind == "numeric" else "CAST(_v AS VARCHAR)"
+    return (
+        f"SELECT {i} AS _f, {selects}count(*) AS _d, max(_c) AS _m, "
+        f"min_by(struct_pack(n := {number}, t := {text}, c := _c), "
+        f"struct_pack(nc := -_c, v := _v), {_MAX_MODES + 1}) AS _top "
+        f"FROM ({counted.sql(dialect='duckdb')}) AS _a{group_by}"
     )
-    out: list[tuple[GroupKey, ModeInfo]] = []
-    for row in rel.arrow(sql).to_pylist():
-        if row["_d"] is None:  # no values at all (an ungrouped aggregate still returns a row)
-            continue
-        values = row["_modes"] or []
-        if kind == "temporal":
-            values = [_iso(m) for m in values]
-        out.append((groups.key(row), (int(row["_d"]), int(row["_m"]), values, int(row["_ties"]))))
-    return out
 
 
 def _summary(
@@ -386,6 +491,7 @@ def _summary(
     percentiles: Sequence[float],
     modes: dict[tuple[str, GroupKey], ModeInfo] | None,
     warnings: _Warnings,
+    zoned: bool,
 ) -> FieldSummary:
     key: GroupKey = row["_key"]
     where = groups.label(key)
@@ -397,12 +503,16 @@ def _summary(
     if modes is not None:
         distinct = 0
         if (name, key) in modes:
-            distinct, mode_count, mode_values, ties = modes[(name, key)]
+            distinct, mode_count, mode_values, more_tie = modes[(name, key)]
             if mode_count == 1:
                 mode_values = []
                 warnings.add(name, "no value repeats, so there is no mode", where)
-            elif ties > _MAX_MODES:
-                warnings.add(name, f"{ties:,} values tie for the mode; showing {_MAX_MODES}", where)
+            elif more_tie:
+                warnings.add(
+                    name,
+                    f"more than {_MAX_MODES} values tie for the mode; showing {_MAX_MODES}",
+                    where,
+                )
     if count == 0:
         warnings.add(name, "no values", where)
 
@@ -416,6 +526,8 @@ def _summary(
     if kind == "numeric" and count > 0:
         for stat in ("mean", "std", "variance", "sum", "min", "max"):
             stats[stat] = finite_or_none(row[f"_{i}_{stat}"])
+            if row[f"_{i}_{stat}"] is not None and stats[stat] is None:
+                warnings.add(name, f"the {stat} is too large to represent", where)
         skewness = finite_or_none(row[f"_{i}_skewness"])
         kurtosis = finite_or_none(row[f"_{i}_kurtosis"])
         if stats["std"] is not None:
@@ -434,16 +546,16 @@ def _summary(
             if count < 4:
                 warnings.add(name, "kurtosis needs at least 4 values", where)
     elif kind == "temporal" and count > 0:
-        stats["min"] = _iso(row[f"_{i}_min"])
-        stats["max"] = _iso(row[f"_{i}_max"])
-        by_prob = dict(zip(probs, (_iso(q) for q in row[f"_{i}_q"]), strict=True))
+        stats["min"] = _iso(row[f"_{i}_min"], zoned)
+        stats["max"] = _iso(row[f"_{i}_max"], zoned)
+        by_prob = dict(zip(probs, (_iso(q, zoned) for q in row[f"_{i}_q"]), strict=True))
     elif kind == "boolean" and count > 0:
         stats["mean"] = finite_or_none(row[f"_{i}_mean"])
 
     if by_prob:
         stats["q1"], stats["median"], stats["q3"] = (by_prob[p] for p in _QUARTILES)
         if kind == "numeric" and stats["q1"] is not None and stats["q3"] is not None:
-            stats["iqr"] = stats["q3"] - stats["q1"]
+            stats["iqr"] = finite_or_none(stats["q3"] - stats["q1"])
 
     return FieldSummary(
         field=name,

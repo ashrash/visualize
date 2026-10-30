@@ -221,3 +221,38 @@ def test_lowess_subsampled_band_matches_the_full_bootstrap() -> None:
     assert quick.lower is not None and quick.upper is not None
     ratio = np.mean(quick.upper - quick.lower) / np.mean(full.upper - full.lower)
     assert 0.75 < ratio < 1.33, ratio
+
+
+# ---------------------------------------------------------------- review regressions
+
+
+def test_equation_keeps_terms_that_matter_at_large_x() -> None:
+    rng = np.random.default_rng(20)
+    x = 1.7e12 + rng.uniform(0, 1e10, 500)  # epoch milliseconds
+    y = 3e-10 * x - 464.8 + rng.normal(0, 0.01, 500)
+    fit = ols_curve(x, y)
+    assert fit.coef[1] == pytest.approx(3e-10, rel=1e-3)
+    assert fit.equation() == f"y = {fit.coef[1]:.4g}x - {abs(fit.coef[0]):.4g}"
+    assert fit.x_scale == pytest.approx(np.abs(x).max())
+    assert fit.method == "OLS linear fit; 95% t confidence band"
+
+
+def test_ols_warns_when_values_overflow() -> None:
+    x = np.arange(10.0)
+    fit = ols_curve(x, 1e200 * (x + np.sin(x)))
+    assert fit.r2 is None and fit.sigma is None and fit.lower is None
+    assert "The values are too large for R² and the band; they were left out." in fit.warnings
+
+
+def test_lowess_band_is_only_sampling_variability() -> None:
+    """With a curved truth the band needn't cover it: it describes the smooth's variability."""
+    rng = np.random.default_rng(21)
+    x = rng.uniform(0, 10, 400)
+    y = np.sin(x) + 0.1 * x + rng.normal(0, 0.2, 400)
+    fit = lowess_curve(x, y, n_boot=40)
+    assert fit.lower is not None and fit.upper is not None
+    assert np.all(fit.lower <= fit.y + 1e-12) and np.all(fit.y <= fit.upper + 1e-12)
+    assert "sampling variability only" in fit.method
+    assert "The band shows sampling variability of the smooth, not smoothing bias." in fit.warnings
+    defaults = lowess_curve.__kwdefaults__
+    assert defaults is not None and defaults["n_boot"] == 200
