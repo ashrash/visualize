@@ -89,7 +89,18 @@ export function createAutosaver({
       return;
     }
     setStatus("unsaved");
-    timer = setTimeout(() => void flush(true), delayMs);
+    timer = setTimeout(() => void saveOnce(), delayMs);
+  }
+
+  /**
+   * The debounce timer's save: exactly one PUT. If edits arrive meanwhile, run() reschedules
+   * with a fresh debounce, so steady typing on a slow link never becomes back-to-back saves.
+   */
+  async function saveOnce(): Promise<void> {
+    while (inflight) await inflight;
+    if (paused || !isDirty()) return;
+    inflight = run(true);
+    await inflight;
   }
 
   /**

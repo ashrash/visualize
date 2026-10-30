@@ -2,7 +2,6 @@ import { Check, ChevronDown, CircleAlert, Loader2, Redo2, Save, Undo2 } from "lu
 import { useState } from "react";
 import { useStore } from "zustand";
 import { featureOn } from "../api/features";
-import { exportProjectUrl } from "../api/projects";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import {
@@ -23,7 +22,12 @@ import {
   RenameDialog,
   VersionsDialog,
 } from "./ProjectDialogs";
-import { duplicateCurrentProject } from "./projectActions";
+import {
+  downloadProjectExport,
+  duplicateCurrentProject,
+  runGuarded,
+  useGuardPrompt,
+} from "./projectActions";
 import {
   createAndOpenProject,
   openProject,
@@ -136,17 +140,6 @@ export function ProjectMenu() {
   const close = (which: Exclude<MenuDialog, null>) => (open: boolean) =>
     setDialog(open ? which : null);
 
-  const run = async (action: () => Promise<void>, failure: string) => {
-    try {
-      await action();
-    } catch (error) {
-      toast(failure, {
-        variant: "error",
-        description: error instanceof Error ? error.message : undefined,
-      });
-    }
-  };
-
   // Platform items stay visible but disabled until the endpoints exist.
   const soon = platform ? null : <span className="ml-auto text-xs text-muted">soon</span>;
   return (
@@ -171,7 +164,12 @@ export function ProjectMenu() {
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={!platform}
-            onSelect={() => void run(() => duplicateCurrentProject(null), "Couldn't duplicate")}
+            onSelect={() =>
+              void runGuarded(
+                (discard) => duplicateCurrentProject(null, { discard }),
+                "Couldn't duplicate",
+              )
+            }
           >
             Duplicate{soon}
           </DropdownMenuItem>
@@ -179,15 +177,17 @@ export function ProjectMenu() {
             Delete…{soon}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem disabled={!platform || !project} asChild>
-            <a href={project ? exportProjectUrl(project.id, false) : undefined} download>
-              Export .vizproj{soon}
-            </a>
+          <DropdownMenuItem
+            disabled={!platform || !project}
+            onSelect={() => void runGuarded(() => downloadProjectExport(false), "Couldn't export")}
+          >
+            Export .vizproj{soon}
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={!platform || !project} asChild>
-            <a href={project ? exportProjectUrl(project.id, true) : undefined} download>
-              Export with data{soon}
-            </a>
+          <DropdownMenuItem
+            disabled={!platform || !project}
+            onSelect={() => void runGuarded(() => downloadProjectExport(true), "Couldn't export")}
+          >
+            Export with data{soon}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={!platform} onSelect={() => setDialog("import")}>
             Import .vizproj…{soon}
@@ -306,6 +306,47 @@ function ProjectPicker({
             Create
           </Button>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Asked when an action needs the current project saved but its changes could not be saved. */
+export function DiscardDialog() {
+  const retry = useGuardPrompt((s) => s.retry);
+  const clear = useGuardPrompt((s) => s.clear);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Dialog open={retry !== null} onOpenChange={(open) => !open && clear()}>
+      <DialogContent
+        title="Unsaved changes"
+        description="The current project has changes that could not be saved. Continuing will lose them."
+      >
+        <div className="flex justify-end gap-2">
+          <Button onClick={clear}>Stay on this project</Button>
+          <Button
+            variant="danger"
+            disabled={busy}
+            onClick={async () => {
+              if (!retry) return;
+              setBusy(true);
+              try {
+                await retry();
+                clear();
+              } catch (error) {
+                toast("That didn't work", {
+                  variant: "error",
+                  description: error instanceof Error ? error.message : undefined,
+                });
+                clear();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Discard changes and continue
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

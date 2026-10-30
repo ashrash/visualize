@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { ColumnarResult } from "../api/arrow";
 import { previewImport } from "../api/datasetRows";
@@ -12,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { toast } from "../components/ui/toast";
 import { useJobsStore } from "../state/jobs";
 import { GridView } from "./GridView";
-import { attachToProject } from "./hooks";
 import { ImportOptionsForm } from "./ImportOptionsForm";
 import {
   buildImportRequests,
@@ -251,7 +249,6 @@ export function ImportWizardDialog({
   onImported: (dataset: Dataset) => void;
 }) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
-  const queryClient = useQueryClient();
   const storeJobs = useJobsStore((s) => s.jobs);
   const stagedRef = useRef<string | null>(null);
   const finished = useRef(false);
@@ -288,20 +285,26 @@ export function ImportWizardDialog({
     }
   }, [storeJobs, state]);
 
-  // On success: load the new dataset, refresh the catalog and attach it to the project.
+  // On success, show the (last) new dataset. Attaching every dataset to the project and
+  // refreshing the catalog happens in the jobs store, so it also happens if this dialog closes.
   useEffect(() => {
     if (state.phase !== "done" || finished.current) return;
     finished.current = true;
     const last = state.datasetIds.at(-1);
     if (!last) return;
-    void getDataset(last).then(async (dataset) => {
-      attachToProject(dataset);
-      await queryClient.invalidateQueries({ queryKey: ["datasets"] });
-      toast(`Imported ${dataset.name}`, { variant: "success" });
-      onImported(dataset);
-      if (state.warnings.length === 0) onOpenChange(false);
-    });
-  }, [state, queryClient, onImported, onOpenChange]);
+    getDataset(last).then(
+      (dataset) => {
+        toast(`Imported ${dataset.name}`, { variant: "success" });
+        onImported(dataset);
+        if (state.warnings.length === 0) onOpenChange(false);
+      },
+      (error: unknown) =>
+        toast("Imported, but couldn't load the dataset", {
+          variant: "error",
+          description: error instanceof Error ? error.message : undefined,
+        }),
+    );
+  }, [state, onImported, onOpenChange]);
 
   const close = (next: boolean) => {
     if (!next) {
@@ -317,21 +320,36 @@ export function ImportWizardDialog({
     onOpenChange(next);
   };
 
+  const starting = useRef(false);
   const start = async () => {
-    if (state.phase !== "configure") return;
+    if (state.phase !== "configure" || starting.current) return; // ignore double clicks
+    starting.current = true;
     startCtl.current = new AbortController();
     const { signal } = startCtl.current;
     try {
-      const jobs = await Promise.all(
+      const results = await Promise.allSettled(
         buildImportRequests(state).map(async ({ sheet, request }) => ({
           sheet,
           job: await startImport(request, signal),
         })),
       );
-      dispatch({ type: "importStarted", jobs });
-      for (const { job } of jobs) useJobsStore.getState().track(job);
-    } catch (error) {
-      dispatch({ type: "importFailedToStart", message: describeImportError(error) });
+      const started = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+      const failures = results.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
+      // Follow every job that did start, even if a sibling request failed.
+      for (const { job } of started) useJobsStore.getState().track(job);
+      if (started.length === 0) {
+        dispatch({ type: "importFailedToStart", message: describeImportError(failures[0]) });
+        return;
+      }
+      dispatch({ type: "importStarted", jobs: started });
+      if (failures.length > 0) {
+        toast("Some sheets could not be started", {
+          variant: "error",
+          description: describeImportError(failures[0]),
+        });
+      }
+    } finally {
+      starting.current = false;
     }
   };
 

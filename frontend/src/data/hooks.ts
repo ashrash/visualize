@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { importFromPath, listDatasets, uploadDataset } from "../api/datasets";
-import type { Dataset, ImportOptions, SourceKind } from "../api/types";
-import { useProjectStore } from "../state/projectStore";
+import type { ImportOptions, SourceKind } from "../api/types";
+import { attachToProject } from "../state/projectStore";
 import { buildImportPathBody, buildUploadForm } from "./requests";
 
 export function useDatasets() {
@@ -11,13 +11,7 @@ export function useDatasets() {
   });
 }
 
-/** Record a freshly imported dataset in the open project (this is one undoable edit). */
-export function attachToProject(dataset: Dataset): void {
-  useProjectStore.getState().update((p) => ({
-    ...p,
-    datasetIds: [...new Set([...(p.datasetIds ?? []), dataset.id])],
-  }));
-}
+export { attachToProject } from "../state/projectStore";
 
 export function useUploadDataset() {
   const queryClient = useQueryClient();
