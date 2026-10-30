@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { defineConfig } from "@playwright/test";
@@ -23,7 +23,21 @@ import { freePort } from "./helpers/port";
 const external = process.env.E2E_BASE_URL;
 if (!external) {
   process.env.VIZ_E2E_PORT ??= String(await freePort());
-  process.env.VIZ_E2E_DATA_DIR ??= mkdtempSync(path.join(os.tmpdir(), "viz-e2e-"));
+  if (!process.env.VIZ_E2E_DATA_DIR) {
+    // Only the first loader (the runner process) gets here; workers inherit the variable.
+    const dir = mkdtempSync(path.join(os.tmpdir(), "viz-e2e-"));
+    process.env.VIZ_E2E_DATA_DIR = dir;
+    if (!process.env.E2E_KEEP_DATA) {
+      // Runs after Playwright has stopped the server, so Windows no longer holds files open.
+      process.on("exit", () => {
+        try {
+          rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+        } catch {
+          // The OS temp cleaner will get it.
+        }
+      });
+    }
+  }
 }
 const baseURL = external ?? `http://127.0.0.1:${process.env.VIZ_E2E_PORT}`;
 const uv = process.env.VIZ_E2E_UV ?? "uv";
