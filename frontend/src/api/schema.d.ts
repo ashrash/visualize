@@ -1545,6 +1545,43 @@ export interface components {
             meta: components["schemas"]["ChartDataMeta"];
         };
         /**
+         * ColumnValues
+         * @description Distinct values with counts, for filter dropdowns. Server-produced.
+         */
+        ColumnValues: {
+            /** Field */
+            field: string;
+            /** Values */
+            values: components["schemas"]["ValueCount"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** ColumnValuesRequest */
+        ColumnValuesRequest: {
+            /** Field */
+            field: string;
+            /**
+             * Search
+             * @default null
+             */
+            search: string | null;
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+        };
+        /** DatasetUpdate */
+        DatasetUpdate: {
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+        };
+        /**
          * ExportFile
          * @description Server-produced.
          */
@@ -1602,6 +1639,32 @@ export interface components {
              */
             delimiter: string | null;
         };
+        /** FormulaCheckRequest */
+        FormulaCheckRequest: {
+            /** Expression */
+            expression: string;
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /**
+             * Beforestepid
+             * @default null
+             */
+            beforeStepId: string | null;
+        };
+        /**
+         * FormulaCheckResult
+         * @description Server-produced.
+         */
+        FormulaCheckResult: {
+            /** Ok */
+            ok: boolean;
+            error: components["schemas"]["StepError"] | null;
+            /** Outputtype */
+            outputType: string | null;
+            /** Fields */
+            fields: string[];
+        };
         /**
          * FormulaFunction
          * @description Server-produced; feeds formula autocomplete.
@@ -1636,6 +1699,48 @@ export interface components {
             estimatedRows: number | null;
             /** Warnings */
             warnings: string[];
+        };
+        /** ImportPreviewRequest */
+        ImportPreviewRequest: {
+            /**
+             * Stagedid
+             * @default null
+             */
+            stagedId: string | null;
+            /**
+             * Path
+             * @default null
+             */
+            path: string | null;
+            /** @default null */
+            kind: components["schemas"]["SourceKind"] | null;
+            options?: components["schemas"]["ImportOptions"];
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+        };
+        /** ImportRequest */
+        ImportRequest: {
+            /**
+             * Stagedid
+             * @default null
+             */
+            stagedId: string | null;
+            /**
+             * Path
+             * @default null
+             */
+            path: string | null;
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+            /** @default null */
+            kind: components["schemas"]["SourceKind"] | null;
+            options?: components["schemas"]["ImportOptions"];
         };
         /**
          * Job
@@ -1692,6 +1797,24 @@ export interface components {
          * @enum {string}
          */
         JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        /** MaterializeRequest */
+        MaterializeRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+        };
+        /**
+         * MaterializeResult
+         * @description Server-produced.
+         */
+        MaterializeResult: {
+            /** Jobs */
+            jobs: {
+                [key: string]: string;
+            };
+            /** Ready */
+            ready: string[];
+        };
         /**
          * OverlayResult
          * @description A server-computed trendline or regression fit, with an optional band. Server-produced.
@@ -1719,6 +1842,33 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /** PipelineInspectRequest */
+        PipelineInspectRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /**
+             * Includesql
+             * @default false
+             */
+            includeSql: boolean;
+        };
+        /**
+         * PipelineInspectResult
+         * @description Server-produced.
+         */
+        PipelineInspectResult: {
+            /** Ok */
+            ok: boolean;
+            /** Sourcecolumns */
+            sourceColumns: components["schemas"]["SchemaField"][];
+            /** Steps */
+            steps: components["schemas"]["StepSchema"][];
+            /** Columns */
+            columns: components["schemas"]["SchemaField"][];
+            /** Sql */
+            sql: string | null;
+        };
         /**
          * PipelinePreviewMeta
          * @description Server-produced; travels as viz.meta in the Arrow schema.
@@ -1738,6 +1888,31 @@ export interface components {
             ms: number;
             /** Warnings */
             warnings: string[];
+        };
+        /** PipelinePreviewRequest */
+        PipelinePreviewRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /**
+             * Stepid
+             * @default null
+             */
+            stepId: string | null;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Limit
+             * @default 200
+             */
+            limit: number;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
         };
         /** ProjectDuplicate */
         ProjectDuplicate: {
@@ -1781,6 +1956,16 @@ export interface components {
          * @enum {string}
          */
         Reduction: "none" | "aggregated" | "binned" | "downsampled" | "sampled";
+        /** RefreshRequest */
+        RefreshRequest: {
+            /**
+             * Stagedid
+             * @default null
+             */
+            stagedId: string | null;
+            /** @default null */
+            options: components["schemas"]["ImportOptions"] | null;
+        };
         /** RowsPageMeta */
         RowsPageMeta: {
             /** Offset */
@@ -1794,6 +1979,38 @@ export interface components {
              * @default null
              */
             datasetRows: number | null;
+            /**
+             * Version
+             * @default null
+             */
+            version: number | null;
+        };
+        /** RowsRequest */
+        RowsRequest: {
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Limit
+             * @default 200
+             */
+            limit: number;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /**
+             * Search
+             * @default null
+             */
+            search: string | null;
+            /**
+             * Columns
+             * @default null
+             */
+            columns: string[] | null;
             /**
              * Version
              * @default null
@@ -1840,6 +2057,54 @@ export interface components {
             sampled: boolean;
             /** Warnings */
             warnings?: string[];
+        };
+        /** StepError */
+        StepError: {
+            /** Message */
+            message: string;
+            /**
+             * Field
+             * @default null
+             */
+            field: string | null;
+            /**
+             * Start
+             * @default null
+             */
+            start: number | null;
+            /**
+             * End
+             * @default null
+             */
+            end: number | null;
+        };
+        /**
+         * StepSchema
+         * @description Server-produced.
+         */
+        StepSchema: {
+            /** Stepid */
+            stepId: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "error" | "blocked" | "disabled";
+            /** Columns */
+            columns: components["schemas"]["SchemaField"][];
+            error: components["schemas"]["StepError"] | null;
+            /**
+             * Materialized
+             * @enum {string}
+             */
+            materialized: "none" | "ready" | "pending";
+        };
+        /** ValueCount */
+        ValueCount: {
+            /** Value */
+            value: string | number | boolean | null;
+            /** Count */
+            count: number;
         };
     };
     responses: never;
