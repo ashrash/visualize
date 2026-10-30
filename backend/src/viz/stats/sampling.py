@@ -99,11 +99,9 @@ def reservoir_sample(
     if eligible <= cap:
         table = eligible_rel.arrow(inner)
     elif not by:
-        sql = (
-            f"SELECT * FROM ({inner.sql(dialect='duckdb')}) AS _s "
-            f"USING SAMPLE reservoir({int(cap)} ROWS) REPEATABLE ({int(seed)})"
-        )
-        table = rel.arrow(sql)
+        table = rel.arrow(_reservoir_sql(inner.sql(dialect="duckdb"), cap, int(eligible), seed))
+        if table.num_rows < cap:  # the Bernoulli prefilter fell short (vanishingly rare)
+            table = rel.arrow(_reservoir_sql(inner.sql(dialect="duckdb"), cap, 0, seed))
     else:
         table = rel.arrow(_stratified_sql(inner.sql(dialect="duckdb"), names, by, cap))
     return Sample(
@@ -113,6 +111,25 @@ def reservoir_sample(
         n_missing=int(total - eligible),
         sampled=table.num_rows < eligible,
     )
+
+
+def _reservoir_sql(inner: str, cap: int, eligible: int, seed: int) -> str:
+    """Exactly `cap` uniformly sampled rows.
+
+    DuckDB's reservoir sampler is mostly serial, so when the input is much larger than the
+    sample a parallel Bernoulli pass first keeps ~cap + 5*sqrt(cap) rows (falling short of cap
+    has probability below 1e-6); a uniform reservoir of a Bernoulli sample is still uniform.
+    """
+    sampled = f"SELECT * FROM ({inner}) AS _s"
+    expected = cap + 5 * math.sqrt(cap) + 50
+    if eligible > 4 * expected:
+        percent = 100.0 * expected / eligible
+        sampled = (
+            f"SELECT * FROM ({inner}) AS _s "
+            f"USING SAMPLE {percent:.10f} PERCENT (bernoulli, {int(seed)})"
+        )
+        sampled = f"SELECT * FROM ({sampled}) AS _b"
+    return f"{sampled} USING SAMPLE reservoir({int(cap)} ROWS) REPEATABLE ({int(seed)})"
 
 
 def _stratified_sql(inner: str, names: Sequence[str], by: Sequence[str], cap: int) -> str:

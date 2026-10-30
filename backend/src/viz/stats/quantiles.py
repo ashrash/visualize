@@ -153,32 +153,34 @@ def ecdf(rel: Relation, field_name: str, *, max_points: int = 2000, by: Sequence
         )
         return Ecdf(target.arrow(sql), True, int(n))
 
-    grid = [k / max_points for k in range(1, max_points + 1)]
-    query = target.select(*_group_cols(by), alias(fn("quantile_disc", value, num_list(grid)), "_q"))
-    if by:
-        query = query.group_by(*_group_cols(by)).order_by(*_group_cols(by))
+    # Order statistic of rank r is quantile_disc(k/m) for the k with ceil(k*n/m) = r; such a
+    # k exists iff floor(r*m/n) > floor((r-1)*m/n), and the largest is floor(r*m/n). One
+    # parallel sort per group (quantile_disc with a long list is far slower in DuckDB).
+    m = int(max_points)
+    ranked = target.select(*_group_cols(by), alias(value, "_x"))
+    # Without groups the count is known; a count(*) OVER () would cost another full pass.
+    count = f"count(*) OVER ({partition})" if by else str(int(n))
+    sql = (
+        f"SELECT {group_select}_x, (_rn * {m}) // _cnt AS _k FROM ("
+        f"SELECT *, row_number() OVER ({partition} ORDER BY _x) AS _rn, "
+        f"{count} AS _cnt FROM ({_sql(ranked)}) AS _a) AS _b "
+        f"WHERE (_rn * {m}) // _cnt > ((_rn - 1) * {m}) // _cnt "
+        f"ORDER BY {group_select}_x, _k"
+    )
     out: dict[str, list[Any]] = {name: [] for name in names}
-    for row in target.rows(query):
-        xs, ps = _collapse_ties(row[-1], grid)
-        for x, p in zip(xs, ps, strict=True):
-            for i, name in enumerate(by):
-                out[name].append(row[i])
-            out["x"].append(x)
-            out["p"].append(p)
+    previous: tuple[Any, ...] | None = None
+    for row in target.arrow(sql).to_pylist():
+        key = tuple(row[name] for name in by)
+        p = row["_k"] / m
+        if previous == (*key, row["_x"]):
+            out["p"][-1] = p  # ties share one vertical step: keep the highest p
+            continue
+        previous = (*key, row["_x"])
+        for name in by:
+            out[name].append(row[name])
+        out["x"].append(row["_x"])
+        out["p"].append(p)
     return Ecdf(pa.table(out), False, int(n))
-
-
-def _collapse_ties(xs: Sequence[Any], ps: Sequence[float]) -> tuple[list[Any], list[float]]:
-    """Keep one point per x (the highest p): ties share one vertical step."""
-    out_x: list[Any] = []
-    out_p: list[float] = []
-    for x, p in zip(xs, ps, strict=True):
-        if out_x and out_x[-1] == x:
-            out_p[-1] = p
-        else:
-            out_x.append(x)
-            out_p.append(p)
-    return out_x, out_p
 
 
 # ---------------------------------------------------------------- bins and histogram
@@ -510,9 +512,13 @@ def qq(
         exact = True
     else:
         ranks = np.unique(np.round(np.linspace(1, n, max_points)).astype(np.int64))
-        probs = (ranks - 0.5) / n  # quantile_disc(p) = x_(ceil(p*n)) = x_(rank)
-        values = target.rows(target.select(fn("quantile_disc", x, num_list(probs.tolist()))))
-        sample = np.asarray(values[0][0], dtype=float)
+        ranked = _sql(target.select(alias(x, "_x")))
+        wanted = ", ".join(str(int(r)) for r in ranks)
+        sql = (
+            f"SELECT _x FROM (SELECT _x, row_number() OVER (ORDER BY _x) AS _rn "
+            f"FROM ({ranked}) AS _a) AS _b WHERE _rn IN ({wanted}) ORDER BY _rn"
+        )
+        sample = np.asarray(target.arrow(sql).column("_x").to_numpy(), dtype=float)
         exact = False
     theoretical = frozen.ppf(filliben(ranks, n))
 

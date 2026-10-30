@@ -254,12 +254,20 @@ def lowess_curve(
     frac: float = 2.0 / 3.0,
     it: int = 3,
     ci_level: float | None = 0.95,
-    n_boot: int = 200,
+    n_boot: int = 100,
+    band_points: int = 1000,
     seed: int = DEFAULT_SEED,
     grid_size: int = 100,
     executor: Executor | None = None,
 ) -> FitCurve:
-    """LOWESS smooth on a grid, with a percentile-bootstrap band over (x, y) pairs."""
+    """LOWESS smooth on a grid, with a bootstrap band over (x, y) pairs.
+
+    The band is pointwise: fit + quantiles of (bootstrap fit - fit). Above `band_points`
+    the bootstrap runs on a random subsample of m points and the deviations are scaled by
+    sqrt(m / n): with the span a fixed fraction of the data, each local fit averages
+    frac * n points, so its standard error shrinks as 1/sqrt(n) while its bias does not
+    depend on n (m-out-of-n bootstrap). This keeps the band cheap at 10k points.
+    """
     if not 0 < frac <= 1:
         raise StatsInputError("The LOWESS span must be between 0 and 1.")
     xa, ya, n_missing = _clean_pairs(x, y)
@@ -280,21 +288,33 @@ def lowess_curve(
     if ci_level is not None:
         if not 0 < ci_level < 1:
             raise StatsInputError("The confidence level must be between 0 and 1.")
-        seeds = np.random.SeedSequence(seed).spawn(max(1, min(4, n_boot)))
+        if n_boot < 20:
+            raise StatsInputError("Use at least 20 bootstrap resamples for a LOWESS band.")
+        root = np.random.SeedSequence(seed)
+        bx, by_, center = xa, ya, curve
+        if n > band_points:
+            pick = np.random.default_rng(root.spawn(1)[0]).choice(n, band_points, replace=False)
+            # Keep the extreme x values so the subsample spans the whole grid.
+            pick = np.unique(np.concatenate([pick[: band_points - 2], [order[0], order[-1]]]))
+            bx, by_ = xa[pick], ya[pick]
+            sub_fit = _workers.lowess_fitted(bx, by_, frac, it, delta)
+            sub_order = np.argsort(bx, kind="stable")
+            center = np.interp(grid, bx[sub_order], sub_fit[sub_order])
+        seeds = root.spawn(4)
         chunks = np.array_split(np.arange(n_boot), len(seeds))
         jobs = [
-            (xa, ya, grid, frac, it, delta, len(chunk), s.generate_state(1)[0])
+            (bx, by_, grid, frac, it, delta, len(chunk), int(s.generate_state(1)[0]))
             for chunk, s in zip(chunks, seeds, strict=True)
         ]
         if executor is None:
             parts = [_workers.lowess_bootstrap(*job) for job in jobs]
         else:
-            parts = [
-                f.result() for f in [executor.submit(_workers.lowess_bootstrap, *j) for j in jobs]
-            ]
-        boots = np.vstack(parts)
+            futures = [executor.submit(_workers.lowess_bootstrap, *job) for job in jobs]
+            parts = [f.result() for f in futures]
+        deviations = (np.vstack(parts) - center) * math.sqrt(len(bx) / n)
         alpha = 1 - ci_level
-        lower, upper = np.nanquantile(boots, [alpha / 2, 1 - alpha / 2], axis=0)
+        low_q, high_q = np.nanquantile(deviations, [alpha / 2, 1 - alpha / 2], axis=0)
+        lower, upper = curve + low_q, curve + high_q
     return FitCurve(
         kind="loess",
         x=grid,

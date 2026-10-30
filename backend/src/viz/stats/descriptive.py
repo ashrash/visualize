@@ -170,7 +170,13 @@ def describe(rel: Relation, request: DescribeRequest) -> StatResult:
     modes: dict[tuple[str, GroupKey], ModeInfo] | None = {} if request.include_mode else None
     for source, grouped, sets in passes:
         pass_groups = groups if grouped else _Groups([], [], source, 0)
-        rows += _aggregate(source, fields, kinds, pass_groups, probs, grouping_sets=sets)
+        pass_rows = _aggregate(source, fields, kinds, pass_groups, probs, grouping_sets=sets)
+        numeric_quantiles = _numeric_quantiles(source, fields, kinds, pass_groups, probs, sets)
+        for row in pass_rows:
+            for i, name in enumerate(fields):
+                if kinds[name] == "numeric":
+                    row[f"_{i}_q"] = numeric_quantiles.get((row["_key"], i))
+        rows += pass_rows
         if modes is not None:
             for name in fields:
                 if sets and name in by:
@@ -283,7 +289,6 @@ def _aggregate(
                 ("kurtosis", "kurtosis"),
             ):
                 selects.append(alias(fn(function, v), f"_{i}_{stat}"))
-            selects.append(alias(fn("quantile_cont", v, num_list(probs)), f"_{i}_q"))
         elif kind == "temporal":
             selects.append(alias(_text(fn("min", v)), f"_{i}_min"))
             selects.append(alias(_text(fn("max", v)), f"_{i}_max"))
@@ -298,6 +303,44 @@ def _aggregate(
     for row in rows:
         row["_key"] = groups.key(row)
     return rows
+
+
+def _numeric_quantiles(
+    rel: Relation,
+    fields: Sequence[str],
+    kinds: dict[str, Kind],
+    groups: _Groups,
+    probs: Sequence[float],
+    grouping_sets: bool,
+) -> dict[tuple[GroupKey, int], list[float | None]]:
+    """(group key, field index) -> quantile_cont at probs, for every numeric field at once.
+
+    DuckDB finalizes each quantile aggregate on one thread, so quantiles of many fields in
+    one SELECT run one after another. Unpivoted to (field, value) and grouped by field, they
+    finalize in parallel. UNPIVOT drops NULLs, which are exactly the missing values.
+    """
+    numeric = [i for i, name in enumerate(fields) if kinds[name] == "numeric"]
+    if not numeric:
+        return {}
+    keys = [alias(e, f"_g{i}") for i, e in enumerate(groups.exprs())]
+    values = [alias(_value(rel, fields[i], "numeric"), f"_c{i}") for i in numeric]
+    inner = rel.select(*keys, *values).sql(dialect="duckdb")
+    group_names = [f"_g{i}" for i in range(len(groups.by))]
+    on = ", ".join(f"_c{i}" for i in numeric)
+    if group_names and grouping_sets:
+        group_by = f"GROUPING SETS (({', '.join(group_names)}, _f), (_f))"
+    else:
+        group_by = ", ".join([*group_names, "_f"])
+    gid = f"grouping({', '.join(group_names)}) AS _gid, " if group_names else ""
+    sql = (
+        f"SELECT {''.join(g + ', ' for g in group_names)}{gid}_f, "
+        f"quantile_cont(_v, {num_list(probs).sql(dialect='duckdb')}) AS _q "
+        f"FROM (UNPIVOT ({inner}) ON {on} INTO NAME _f VALUE _v) AS _u GROUP BY {group_by}"
+    )
+    out: dict[tuple[GroupKey, int], list[float | None]] = {}
+    for row in rel.arrow(sql).to_pylist():
+        out[(groups.key(row), int(row["_f"][2:]))] = row["_q"]
+    return out
 
 
 def _mode_rows(
@@ -377,7 +420,8 @@ def _summary(
         kurtosis = finite_or_none(row[f"_{i}_kurtosis"])
         if stats["std"] is not None:
             stats["sem"] = stats["std"] / math.sqrt(count)
-        by_prob = dict(zip(probs, (finite_or_none(q) for q in row[f"_{i}_q"]), strict=True))
+        quantile_values = row[f"_{i}_q"] or [None] * len(probs)
+        by_prob = dict(zip(probs, (finite_or_none(q) for q in quantile_values), strict=True))
         if count < 2:
             warnings.add(name, "standard deviation and variance need at least 2 values", where)
         elif stats["std"] == 0:

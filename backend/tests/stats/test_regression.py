@@ -208,3 +208,16 @@ def test_fit_trend_samples_and_reports(
     assert loess.kind == "loess" and loess.lower is None
     with pytest.raises(ValueError, match="moving averages"):
         fit_trend(rel, "x", "y", TrendlineKind.MOVING_AVERAGE)
+
+
+def test_lowess_subsampled_band_matches_the_full_bootstrap() -> None:
+    rng = np.random.default_rng(12)
+    x = rng.uniform(0, 10, 3000)
+    y = np.sin(x) + rng.normal(0, 0.5, 3000)
+    full = lowess_curve(x, y, n_boot=60, band_points=3000, seed=1)
+    quick = lowess_curve(x, y, n_boot=60, band_points=600, seed=1)
+    np.testing.assert_array_equal(full.y, quick.y)
+    assert full.lower is not None and full.upper is not None
+    assert quick.lower is not None and quick.upper is not None
+    ratio = np.mean(quick.upper - quick.lower) / np.mean(full.upper - full.lower)
+    assert 0.75 < ratio < 1.33, ratio
