@@ -22,6 +22,7 @@ from viz.config import Settings, get_settings
 from viz.contracts import EXPORTED_MODELS
 from viz.engine import Engine
 from viz.errors import VizError
+from viz.ingest.views import RowViews
 from viz.jobs import InProcessJobRunner
 from viz.meta.db import create_db_engine, make_sessionmaker, run_migrations
 from viz.storage import LocalStorage
@@ -51,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings=settings,
         )
         app.state.jobs = jobs
+        app.state.row_views = RowViews(engine, storage)
         storage.sweep(
             staged_max_age_s=settings.staged_retention_s,
             exports_max_age_s=settings.export_retention_s,
@@ -59,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             jobs.close()
+            app.state.row_views.close()
             engine.close()
             db_engine.dispose()
 

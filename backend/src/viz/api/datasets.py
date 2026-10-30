@@ -7,9 +7,9 @@ option change -> POST /datasets/import (202 Job) -> follow /jobs/{id}/events.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from pydantic import ValidationError
 
 from viz.api.deps import DbDep, EngineDep, SettingsDep, StorageDep
@@ -40,10 +40,18 @@ from viz.ingest import catalog, readers
 from viz.ingest.jobs import ImportParams, RefreshParams, dataset_key
 from viz.ingest.preview import preview, resolve_input, stage_upload
 from viz.ingest.rows import column_values, rows_key, rows_page
+from viz.ingest.views import RowViews
 from viz.jobs import JobRunner
 from viz.storage import LocalStorage
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+
+def get_row_views(request: Request) -> RowViews:
+    return cast(RowViews, request.app.state.row_views)
+
+
+RowViewsDep = Annotated[RowViews, Depends(get_row_views)]
 
 _ARROW_RESPONSE: dict[int | str, dict[str, Any]] = {
     200: {"content": {ARROW_STREAM_MEDIA_TYPE: {}}, "description": "Arrow IPC"}
@@ -84,6 +92,7 @@ def delete_dataset(
     engine: EngineDep,
     storage: StorageDep,
     jobs: JobsDep,
+    views: RowViewsDep,
     force: Annotated[bool, Query()] = False,
 ) -> Response:
     dataset = catalog.get_dataset(db, dataset_id)
@@ -93,6 +102,7 @@ def delete_dataset(
     if users and not force:
         raise ConflictError(f"{dataset.name} is used by: {', '.join(users)}")
     catalog.delete_dataset_row(db, dataset_id)
+    views.drop(dataset_id)
     storage.delete_dataset(dataset_id)
     engine.cache.evict(f"ds:{dataset_id}@")
     return Response(status_code=204)
@@ -272,6 +282,7 @@ async def query_rows(
     engine: EngineDep,
     storage: StorageDep,
     settings: SettingsDep,
+    views: RowViewsDep,
 ) -> Response:
     """A grid page with sort, filters, search and a column subset. Meta: RowsPageMeta."""
     key = rows_key(dataset_id, body)
@@ -279,7 +290,13 @@ async def query_rows(
     def work() -> bytes:
         dataset = catalog.get_dataset(db, dataset_id)
         table, meta = rows_page(
-            engine, storage, dataset, body, max_limit=settings.grid_page_max, key=key
+            engine,
+            storage,
+            dataset,
+            body,
+            max_limit=settings.grid_page_max,
+            key=key,
+            views=views,
         )
         return ipc_bytes(table, meta)
 

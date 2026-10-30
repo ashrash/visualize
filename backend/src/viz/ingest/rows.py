@@ -7,6 +7,7 @@ import decimal
 import hashlib
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pyarrow as pa
 from sqlglot import exp
@@ -27,6 +28,9 @@ from viz.contracts import (
 from viz.engine import Engine, version_token
 from viz.errors import InvalidSpecError, NotFoundError
 from viz.storage import LocalStorage
+
+if TYPE_CHECKING:
+    from viz.ingest.views import RowViews
 
 _TEXT_PREFIXES = ("VARCHAR", "TEXT", "STRING", "ENUM")
 
@@ -98,11 +102,18 @@ def rows_page(
     *,
     max_limit: int,
     key: str | None = None,
+    views: RowViews | None = None,
 ) -> tuple[pa.Table, RowsPageMeta]:
     version = pick_version(dataset, request.version)
     path = storage.resolve(version.parquet_path)
     limit = min(request.limit, max_limit)
-    _check_fields(version, [k.field for k in request.sort])
+    _check_fields(version, [k.field for k in request.sort] + list(request.columns or []))
+    if views is not None:
+        served = views.page(dataset, version, request, limit=limit, key=key)
+        if served is not None:
+            table, total = served
+            return table, _meta(request, limit, total, version)
+
     base = filtered_select(path, version, request.filters, request.search, request.columns)
     query = base.copy()
     if request.sort:
@@ -120,14 +131,22 @@ def rows_page(
         total = int(counted.table.column(0)[0].as_py())
     else:
         total = version.row_count
-    meta = RowsPageMeta(
+    if views is not None:
+        full = filtered_select(path, version, request.filters, request.search, None)
+        if request.sort:
+            full = full.order_by(*order_sql(request.sort))
+        views.ensure(dataset, version, request, full)
+    return table, _meta(request, limit, total, version)
+
+
+def _meta(request: RowsRequest, limit: int, total: int, version: DatasetVersion) -> RowsPageMeta:
+    return RowsPageMeta(
         offset=request.offset,
         limit=limit,
         total_rows=total,
         dataset_rows=version.row_count,
         version=version.n,
     )
-    return table, meta
 
 
 def rows_key(dataset_id: str, request: RowsRequest) -> str:

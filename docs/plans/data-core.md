@@ -288,3 +288,21 @@ delete) → rows/values → exports → perf run and tuning.
   or skip it above a size threshold for path imports?
 - No version pruning in Wave 1; every refresh keeps its Parquet. Add "keep last N versions" later?
 - Multi-sheet import: one dataset per sheet, one job each (UI submits several). OK?
+
+Answered by the lead: (a) copy uploads and path imports up to `VIZ_COPY_SOURCE_MAX_MB`, read larger
+path imports in place; (b) no pruning in Wave 1; (c) yes.
+
+## As built (implementation notes)
+- Lead changes applied: shared `SortKey {field, descending, nullsLast}`; `ExportRequest.pipelines`;
+  `cursor(key, generation)`; `storage.derived_rel/atomic_write`; `submit(..., dedupe_key)`;
+  `catalog.register_dataset_bundle`; `engine.pool` is a `concurrent.futures.Executor`; BLAS caps in
+  the pool initializer and once in the API process (`Engine.from_settings`).
+- DuckDB's `query_progress()` reports -1 from Python even with the progress bar enabled, so job
+  progress is stage-level plus bytes for source copy/transcode and batches for Excel export.
+- DuckDB's Python `read_csv` accepts only UTF-8, so every non-UTF-8 text file is transcoded into
+  `sources/` (even above `copy_source_max_mb`); detection falls back to cp1252.
+- Sorted or filtered deep pages at 10M rows took 0.8-1.4 s, so `ingest/views.py` materializes a
+  sorted/filtered view in the background after the first direct page (datasets >= 500k rows);
+  later pages are `file_row_number` range reads (~25 ms). Views live in `temp/views/`, are
+  LRU-limited (8), dropped with their dataset and wiped at startup.
+- Sync `POST /datasets/upload` and `/import-path` now run the same import job and wait for it.

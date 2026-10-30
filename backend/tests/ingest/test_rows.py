@@ -123,3 +123,30 @@ def test_column_values(client: TestClient, sales_dataset: dict[str, Any]) -> Non
 
     body = client.post(f"/api/datasets/{ds}/values", json={"field": "order_date"}).json()
     assert body["values"][0]["value"].startswith("2024-")
+
+
+def test_materialized_views_serve_the_same_pages(
+    client: TestClient, sales_dataset: dict[str, Any]
+) -> None:
+    ds = sales_dataset["id"]
+    views = client.app.state.row_views  # type: ignore[attr-defined]
+    views.min_rows = 0
+    body = {
+        "sort": [{"field": "sales", "descending": True}],
+        "filters": [{"op": "is_null", "field": "sales", "isNull": False}],
+        "columns": ["product", "sales"],
+        "offset": 1,
+        "limit": 3,
+    }
+    direct, direct_meta = rows(client, ds, **body)  # starts the build
+    views.wait_idle()
+    assert len(list(views.directory.glob("*.parquet"))) == 1
+    served, served_meta = rows(client, ds, **body)
+    assert served.to_pylist() == direct.to_pylist()
+    assert served.column_names == ["product", "sales"]
+    assert served_meta["totalRows"] == direct_meta["totalRows"] == 5
+    full, _ = rows(client, ds, sort=body["sort"], filters=body["filters"])
+    assert full.column_names[0] == "region" and "file_row_number" not in full.column_names
+
+    assert client.delete(f"/api/datasets/{ds}?force=true").status_code == 204
+    assert list(views.directory.glob("*.parquet")) == []
