@@ -1,6 +1,8 @@
 import type { PlotEntry } from "../../core/types";
-import { bar } from "./bar";
+import { barEntries } from "./bar";
+import { area, line } from "./line";
+import { donut, pie } from "./pie";
 
-// Plots.md §1. Phase 0 ships `bar`; ui-charts adds the rest of the family.
-const entries: PlotEntry[] = [bar];
+// Plots.md §1: bar (+ horizontal, grouped, stacked), line, area, pie, donut.
+const entries: PlotEntry[] = [...barEntries, line, area, pie, donut];
 export default entries;
