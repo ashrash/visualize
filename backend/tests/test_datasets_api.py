@@ -33,7 +33,11 @@ def test_rows_are_paged_as_arrow(client: TestClient, sales_dataset: dict[str, ob
     table, meta = _read_arrow(response.content)
     assert table.num_rows == 3
     assert table.column("region").to_pylist() == ["North", "East", "South"]
-    assert meta == {"offset": 2, "limit": 3, "totalRows": 6}
+    assert {k: meta[k] for k in ("offset", "limit", "totalRows")} == {
+        "offset": 2,
+        "limit": 3,
+        "totalRows": 6,
+    }
 
 
 def test_import_from_path_handles_awkward_names(client: TestClient, tmp_path: Path) -> None:
