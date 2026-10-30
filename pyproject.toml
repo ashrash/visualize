@@ -86,5 +86,7 @@ module = [
     "tsdownsample.*",
     "fastexcel.*",
     "xlsxwriter.*",
+    "threadpoolctl",
+    "threadpoolctl.*",
 ]
 ignore_missing_imports = true

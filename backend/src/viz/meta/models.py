@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -39,12 +39,16 @@ class ProjectRow(Base):
     name: Mapped[str] = mapped_column(String(255))
     revision: Mapped[int] = mapped_column(Integer, default=0)
     doc: Mapped[dict[str, Any]] = mapped_column(JSON)
+    autosaves_since_snapshot: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ProjectVersionRow(Base):
     __tablename__ = "project_versions"
+    __table_args__ = (
+        Index("ix_project_versions_project_kind_rev", "project_id", "kind", "revision"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[str] = mapped_column(
