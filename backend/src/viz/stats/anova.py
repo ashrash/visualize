@@ -82,7 +82,9 @@ def anova(rel: Relation, req: AnovaRequest) -> StatResult:
     levels = [sorted({c.key[i] for c in cells}, key=_sort_one) for i in range(len(factors))]
     for name, present in zip(factors, levels, strict=True):
         if len(present) < 2:
-            raise StatsInputError(f"'{name}' needs at least 2 levels with data; it has {len(present)}.")
+            raise StatsInputError(
+                f"'{name}' needs at least 2 levels with data; it has {len(present)}."
+            )
     if len(cells) > MAX_CELLS:
         raise StatsInputError(
             f"The factors have {len(cells):,} combinations with data; at most {MAX_CELLS:,} "
@@ -314,7 +316,8 @@ def _coding(index: np.ndarray, levels: int, kind: str) -> np.ndarray:
 
 
 def _interaction(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    return np.einsum("ci,cj->cij", a, b).reshape(len(a), -1)
+    product: np.ndarray = a[:, :, None] * b[:, None, :]
+    return product.reshape(len(a), -1)
 
 
 def _wls(blocks: Sequence[np.ndarray], weights: np.ndarray, y: np.ndarray) -> _Fit:
@@ -453,9 +456,7 @@ def _checks(
     else:
         selects = [alias(k.copy(), f"_k{i}") for i, k in enumerate(keys)]
         table = rel.arrow(rel.narrow(_not_null(value, *keys)).select(*selects, alias(value, "_v")))
-        means = (
-            {c.key: c.offset for c in cells} if fitted is None else fitted
-        )
+        means = {c.key: c.offset for c in cells} if fitted is None else fitted
         key_columns = [table.column(f"_k{i}").to_pylist() for i in range(len(keys))]
         values = np.asarray(table.column("_v").to_numpy(zero_copy_only=False), dtype=float)
         centre = np.array([means[tuple(k)] for k in zip(*key_columns, strict=True)])

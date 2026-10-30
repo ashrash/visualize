@@ -223,9 +223,7 @@ def _fit(
     n = sample.n
     with py_warnings.catch_warnings():
         py_warnings.simplefilter("ignore")
-        model = sm.OLS(y, design).fit(
-            method="qr", cov_type="HC3" if req.robust else "nonrobust"
-        )
+        model = sm.OLS(y, design).fit(method="qr", cov_type="HC3" if req.robust else "nonrobust")
         residuals = np.asarray(model.resid)
         rss = float(residuals @ residuals)
         scale = float(np.abs(y).max()) if y.size else 0.0

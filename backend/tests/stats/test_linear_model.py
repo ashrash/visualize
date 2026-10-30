@@ -133,7 +133,9 @@ def test_vif_and_breusch_pagan(table_relation: Any) -> None:
     resid = sm.OLS(y, exog).fit().resid
     lm, lm_p, _, _ = het_breuschpagan(resid, exog)
     bp = next(c for c in v.checks if c.name.startswith("Breusch"))
-    assert bp.statistic == pytest.approx(lm, rel=1e-9) and bp.p_value == pytest.approx(lm_p, rel=1e-6)
+    assert bp.statistic == pytest.approx(lm, rel=1e-9) and bp.p_value == pytest.approx(
+        lm_p, rel=1e-6
+    )
     assert bp.passed is False
     assert any("robust standard errors" in w for w in result.warnings)
     shapiro = next(c for c in v.checks if c.name.startswith("Shapiro"))

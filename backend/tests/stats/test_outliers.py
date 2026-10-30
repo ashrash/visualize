@@ -108,7 +108,10 @@ def test_grouped_with_a_null_group(table_relation: Any) -> None:
     assert set(by_group) == {("a",), ("b",), (None,)}
     assert (by_group[("a",)].n_high, by_group[("b",)].n_low) == (1, 1)
     assert by_group[(None,)].n == 4 and by_group[(None,)].n_low + by_group[(None,)].n_high == 0
-    assert {(r.group[0] if r.group else None, r.value) for r in v.rows} == {("a", 100.0), ("b", 0.0)}
+    assert {(r.group[0] if r.group else None, r.value) for r in v.rows} == {
+        ("a", 100.0),
+        ("b", 0.0),
+    }
 
 
 def test_mad_zero_falls_back_to_mean_absolute_deviation(table_relation: Any) -> None:

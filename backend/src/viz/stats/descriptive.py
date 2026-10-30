@@ -24,7 +24,7 @@ import math
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 import duckdb
 from cachetools import LRUCache

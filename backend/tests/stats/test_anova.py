@@ -57,7 +57,9 @@ def test_plant_growth_one_way(table_relation: Any, plant_growth: pa.Table) -> No
     assert normal.p_value == pytest.approx(sps.shapiro(residuals).pvalue, rel=1e-6)
 
 
-def test_plant_growth_tukey_matches_r_and_scipy(table_relation: Any, plant_growth: pa.Table) -> None:
+def test_plant_growth_tukey_matches_r_and_scipy(
+    table_relation: Any, plant_growth: pa.Table
+) -> None:
     _, v = _run(table_relation(plant_growth), field="weight", factors=["group"])
     assert v.post_hoc is not None
     pairs = {(c.a, c.b): c for c in v.post_hoc}
@@ -114,9 +116,7 @@ def test_two_way_matches_statsmodels(table_relation: Any, ss_type: int, interact
     rel = table_relation(pa.Table.from_pandas(frame, preserve_index=False))
     result, v = _run(rel, field="y", factors=["a", "b"], ss_type=ss_type, interaction=interaction)
     op = "*" if interaction else "+"
-    formula = (
-        f"y ~ C(a, Sum) {op} C(b, Sum)" if ss_type == 3 else f"y ~ C(a) {op} C(b)"
-    )
+    formula = f"y ~ C(a, Sum) {op} C(b, Sum)" if ss_type == 3 else f"y ~ C(a) {op} C(b)"
     model = smf.ols(formula, data=frame).fit()
     ref = sm.stats.anova_lm(model, typ=ss_type)
     ref = ref.drop(index=[i for i in ref.index if i == "Intercept"])
@@ -147,7 +147,7 @@ def test_two_way_with_an_empty_cell(table_relation: Any) -> None:
     # The interaction model is the cell-means model: residual SS = within-cell SS.
     within = sum(((g - g.mean()) ** 2).sum() for _, g in frame.groupby(["a", "b"])["y"])
     assert v.table[-1].sum_sq == pytest.approx(within, rel=1e-10)
-    with pytest.raises(StatsInputError, match="Type III .* 1 are empty"):
+    with pytest.raises(StatsInputError, match=r"Type III .* 1 are empty"):
         _run(rel, field="y", factors=["a", "b"], ss_type=3)
 
 

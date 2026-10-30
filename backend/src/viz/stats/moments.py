@@ -148,7 +148,9 @@ class OneWay:
     ss_within: float
 
 
-def one_way_f(ns: Sequence[int], means: Sequence[float], variances: Sequence[float | None]) -> OneWay:
+def one_way_f(
+    ns: Sequence[int], means: Sequence[float], variances: Sequence[float | None]
+) -> OneWay:
     """Classic one-way ANOVA from per-group n, mean and variance (None when n = 1)."""
     total = sum(ns)
     k = len(ns)
@@ -200,7 +202,5 @@ def levene(
     rows = rel.rows(sql)
     if len(rows) < 2:
         return None
-    result = one_way_f(
-        [int(r[0]) for r in rows], [float(r[1]) for r in rows], [r[2] for r in rows]
-    )
+    result = one_way_f([int(r[0]) for r in rows], [float(r[1]) for r in rows], [r[2] for r in rows])
     return Levene(result.statistic, result.df1, result.df2, result.p_value)

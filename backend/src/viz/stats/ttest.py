@@ -72,8 +72,9 @@ def t_inference(
     return TResult(t, df, float(sps.t.sf(t, df)), estimate - crit * se, None)
 
 
-def _summary(label: str, group: list[Scalar] | None, n: int, mean: float | None,
-             var: float | None) -> SampleSummary:
+def _summary(
+    label: str, group: list[Scalar] | None, n: int, mean: float | None, var: float | None
+) -> SampleSummary:
     std = math.sqrt(var) if var is not None else None
     sem = std / math.sqrt(n) if std is not None and n > 0 else None
     return SampleSummary(label=label, group=group, n=n, mean=mean, std=std, sem=sem)

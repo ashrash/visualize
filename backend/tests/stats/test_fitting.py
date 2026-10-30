@@ -29,7 +29,9 @@ def _params(v: DistributionFitValues, name: str) -> dict[str, float]:
 def test_closed_form_maximum_likelihood(table_relation: Any) -> None:
     rng = np.random.default_rng(3)
     x = rng.lognormal(1.0, 0.5, 2000)
-    _, v = _run(table_relation({"x": x}), field="x", distributions=["norm", "lognorm", "expon", "uniform"])
+    _, v = _run(
+        table_relation({"x": x}), field="x", distributions=["norm", "lognorm", "expon", "uniform"]
+    )
     norm = _params(v, "norm")
     assert norm["loc"] == pytest.approx(x.mean(), rel=1e-12)
     assert norm["scale"] == pytest.approx(x.std(ddof=0), rel=1e-9)
@@ -41,7 +43,11 @@ def test_closed_form_maximum_likelihood(table_relation: Any) -> None:
     uniform = _params(v, "uniform")
     assert uniform["loc"] == pytest.approx(x.min()) and uniform["scale"] == pytest.approx(np.ptp(x))
     lognorm_fit = next(f for f in v.fits if f.distribution == "lognorm")
-    assert {p.name: p.fixed for p in lognorm_fit.params} == {"s": False, "loc": True, "scale": False}
+    assert {p.name: p.fixed for p in lognorm_fit.params} == {
+        "s": False,
+        "loc": True,
+        "scale": False,
+    }
     # Normal log-likelihood and information criteria in closed form.
     fit = next(f for f in v.fits if f.distribution == "norm")
     n = len(x)
@@ -60,7 +66,9 @@ def test_ranking_picks_the_generating_family(table_relation: Any) -> None:
     result, v = _run(table_relation({"x": x}), field="x")
     assert v.best == "gamma" and v.fits[0].delta_aic == 0
     gamma = _params(v, "gamma")
-    assert gamma["a"] == pytest.approx(2.0, rel=0.05) and gamma["scale"] == pytest.approx(3.0, rel=0.05)
+    assert gamma["a"] == pytest.approx(2.0, rel=0.05) and gamma["scale"] == pytest.approx(
+        3.0, rel=0.05
+    )
     aics = [f.aic for f in v.fits]
     assert aics == sorted(aics)
     assert sum(f.aic_weight or 0 for f in v.fits) == pytest.approx(1.0)
@@ -91,7 +99,9 @@ def test_support_rules(table_relation: Any) -> None:
 def test_sampled_above_the_cap(table_relation: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(fitting, "FIT_CAP", 500)
     rng = np.random.default_rng(2)
-    result, _ = _run(table_relation({"x": rng.normal(0, 1, 3000)}), field="x", distributions=["norm"])
+    result, _ = _run(
+        table_relation({"x": rng.normal(0, 1, 3000)}), field="x", distributions=["norm"]
+    )
     assert result.sampled and result.n == 500 and result.n_total == 3000
 
 
@@ -102,5 +112,7 @@ def test_degenerate_inputs(table_relation: Any) -> None:
         _run(table_relation({"x": [1.0, 2.0]}), field="x")
     with pytest.raises(StatsInputError, match="None of the distributions"):
         _run(table_relation({"x": [-1.0, 0.5, 2.0, 3.0]}), field="x", distributions=["gamma"])
-    result, _ = _run(table_relation({"x": [1.0, 2.0, 2.0, 3.0] * 10}), field="x", distributions=["norm"])
+    result, _ = _run(
+        table_relation({"x": [1.0, 2.0, 2.0, 3.0] * 10}), field="x", distributions=["norm"]
+    )
     assert any("only 3 distinct values" in w for w in result.warnings)

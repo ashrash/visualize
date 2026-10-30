@@ -103,11 +103,15 @@ def pearson_p(r: float, n: int) -> float | None:
     return float(min(1.0, 2 * sps.t.sf(abs(t), n - 2)))
 
 
-def _scale(count: int, mean: float | None, lo: float | None, hi: float | None) -> tuple[float, float] | None:
+def _scale(
+    count: int, mean: float | None, lo: float | None, hi: float | None
+) -> tuple[float, float] | None:
     """(k, c * k): z = x * k - c * k lies in [-1, 1]. None for a field without spread."""
     if not count or lo is None or hi is None or lo == hi:
         return None
-    center = mean if mean is not None and math.isfinite(mean) and lo <= mean <= hi else lo / 2 + hi / 2
+    center = (
+        mean if mean is not None and math.isfinite(mean) and lo <= mean <= hi else lo / 2 + hi / 2
+    )
     half = max(abs(hi / 2 - center / 2), abs(lo / 2 - center / 2))
     if half == 0:
         return None
@@ -234,9 +238,7 @@ def _pearson(
     outer: list[exp.Expr] = []
     for i, j in pairs:
         outer.append(alias(fn("corr", exp.column(f"z{i}"), exp.column(f"z{j}")), f"r{i}_{j}"))
-        outer.append(
-            alias(fn("regr_count", exp.column(f"z{i}"), exp.column(f"z{j}")), f"n{i}_{j}")
-        )
+        outer.append(alias(fn("regr_count", exp.column(f"z{i}"), exp.column(f"z{j}")), f"n{i}_{j}"))
     subquery = base.select(*inner).subquery("_z")
     result = rel.arrow(exp.select(*outer).from_(subquery)).to_pylist()[0]
     matrix = CorrelationMatrix(
@@ -274,9 +276,7 @@ def _ranked(
     seed: int,
 ) -> CorrelationMatrix:
     k = len(names)
-    sample = reservoir_sample(
-        rel, names, cap=rank_cap(k), seed=seed, dropna=missing == "listwise"
-    )
+    sample = reservoir_sample(rel, names, cap=rank_cap(k), seed=seed, dropna=missing == "listwise")
     columns = [sample.column(f) for f in names]
     masks = [np.isfinite(c) for c in columns]
     matrix = CorrelationMatrix(

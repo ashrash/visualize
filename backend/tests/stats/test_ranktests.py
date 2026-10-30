@@ -71,7 +71,9 @@ def test_wilcoxon_one_sample_vs_mu(table_relation: Any) -> None:
 
 
 def test_kruskal_plant_growth_matches_r(table_relation: Any, plant_growth: pa.Table) -> None:
-    result, v = _run(table_relation(plant_growth), kind="kruskal", field="weight", group_field="group")
+    result, v = _run(
+        table_relation(plant_growth), kind="kruskal", field="weight", group_field="group"
+    )
     groups = [np.array(plant_growth["weight"][i * 10 : (i + 1) * 10]) for i in range(3)]
     ref = sps.kruskal(*groups)
     # R: kruskal.test(weight ~ group, data = PlantGrowth): chi-squared = 7.9882, p = 0.01842.
@@ -114,4 +116,9 @@ def test_degenerate_inputs(table_relation: Any) -> None:
     with pytest.raises(StatsInputError, match="grouping field and two groups"):
         _run(rel, field="y")
     with pytest.raises(StatsInputError, match="at least 2 groups"):
-        _run(table_relation({"y": [1.0, 2.0], "g": ["a", "a"]}), kind="kruskal", field="y", group_field="g")
+        _run(
+            table_relation({"y": [1.0, 2.0], "g": ["a", "a"]}),
+            kind="kruskal",
+            field="y",
+            group_field="g",
+        )

@@ -94,7 +94,8 @@ def test_goodness_of_fit_uniform_and_given(table_relation: Any) -> None:
     assert v.df == 5 and v.rows == ["1", "2", "3", "4", "5", "6"]
     assert "uniform" in result.method
 
-    expected = [{"value": str(f), "proportion": p} for f, p in zip(range(1, 7), [1, 1, 1, 1, 1, 3])]
+    shares = [1, 1, 1, 1, 1, 3]
+    expected = [{"value": str(f), "proportion": p} for f, p in enumerate(shares, start=1)]
     result, v = _run(rel, kind="goodness_of_fit", field="face", expected=expected)
     observed = np.array([8, 12, 9, 11, 6, 14])
     ref = sps.chisquare(observed, f_exp=np.array([1, 1, 1, 1, 1, 3]) / 8 * observed.sum())
@@ -122,7 +123,7 @@ def test_degenerate_inputs(table_relation: Any) -> None:
     rel = table_relation({"x": ["a", "a", "a"], "y": ["p", "q", "p"], "z": ["1", "2", "3"]})
     with pytest.raises(StatsInputError, match="'x' needs at least 2 categories"):
         _run(rel, field="x", column_field="y")
-    with pytest.raises(StatsInputError, match="'z' has 3 categories; .* at most 2"):
+    with pytest.raises(StatsInputError, match=r"'z' has 3 categories; .* at most 2"):
         _run(rel, field="y", column_field="z", max_levels=2)
     with pytest.raises(StatsInputError, match="two categorical fields"):
         _run(rel, field="x")

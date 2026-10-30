@@ -50,7 +50,9 @@ def test_pearson_pairwise_matches_scipy(table_relation: Any, frame: pd.DataFrame
     result, v = _run(rel, fields=["a", "b", "c"], ci_level=0.9)
     clean = _clean(frame)
     expected = clean.corr(method="pearson")
-    np.testing.assert_allclose(np.array(v.coefficient, dtype=float), expected.to_numpy(), rtol=1e-12)
+    np.testing.assert_allclose(
+        np.array(v.coefficient, dtype=float), expected.to_numpy(), rtol=1e-12
+    )
     for i, j in [(0, 1), (0, 2), (1, 2)]:
         pair = clean.iloc[:, [i, j]].dropna()
         ref = sps.pearsonr(pair.iloc[:, 0], pair.iloc[:, 1])
@@ -128,7 +130,9 @@ def test_rank_intervals_cover(method: str) -> None:
     """Bonett-Wright / Fieller intervals cover the population value about 95% of the time."""
     rng = np.random.default_rng(2024)
     rho = 0.5
-    truth = 6 / math.pi * math.asin(rho / 2) if method == "spearman" else 2 / math.pi * math.asin(rho)
+    truth = (
+        6 / math.pi * math.asin(rho / 2) if method == "spearman" else 2 / math.pi * math.asin(rho)
+    )
     covered = 0
     reps = 400
     for _ in range(reps):
@@ -154,7 +158,9 @@ def test_booleans_and_dates_are_numeric(table_relation: Any) -> None:
     )
     result, v = _run(rel, fields=["d", "flag", "y"])
     assert v.coefficient[0][2] == pytest.approx(np.corrcoef(range(6), [1, 2, 2, 3, 5, 6])[0, 1])
-    assert v.coefficient[1][2] == pytest.approx(np.corrcoef([0, 0, 1, 0, 1, 1], [1, 2, 2, 3, 5, 6])[0, 1])
+    assert v.coefficient[1][2] == pytest.approx(
+        np.corrcoef([0, 0, 1, 0, 1, 1], [1, 2, 2, 3, 5, 6])[0, 1]
+    )
     assert "'d' is measured in days since 1970-01-01." in result.warnings
 
 

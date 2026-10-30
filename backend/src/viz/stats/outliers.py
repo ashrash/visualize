@@ -86,15 +86,15 @@ def outliers(rel: Relation, req: OutlierRequest) -> StatResult:
             warnings.append(capped.warning)
         group_raw = key_expr(rel, req.group_by)
     selects: list[exp.Expr] = [
-        alias(exp.cast(group_raw.copy(), "VARCHAR") if group_raw is not None else exp.Null(), "_gt"),
+        alias(
+            exp.cast(group_raw.copy(), "VARCHAR") if group_raw is not None else exp.Null(), "_gt"
+        ),
         alias(group_raw.copy() if group_raw is not None else exp.Null(), "_gr"),
         *[alias(key_expr(rel, name), f"_i{j}") for j, name in enumerate(include)],
         *[alias(e, f"_c{i}") for i, e in enumerate(exprs)],
     ]
     on = ", ".join(f"_c{i}" for i in range(len(fields)))
-    unpivoted = (
-        f"(UNPIVOT ({_sql(source.select(*selects))}) ON {on} INTO NAME _f VALUE _v)"
-    )
+    unpivoted = f"(UNPIVOT ({_sql(source.select(*selects))}) ON {on} INTO NAME _f VALUE _v)"
     fences = _fences(rel, unpivoted, req.method, threshold, warnings, fields)
     counts = _counts(rel, unpivoted, fences)
     summaries: list[OutlierSummary] = []
@@ -202,8 +202,9 @@ def _fences(
         if method != "iqr":
             anchor_low = anchor_high = center
         out.append(
-            _Fence(index, row["_gt"], row["_gr"], n, center, spread, low, high, anchor_low,
-                   anchor_high)
+            _Fence(
+                index, row["_gt"], row["_gr"], n, center, spread, low, high, anchor_low, anchor_high
+            )
         )
     for name in fields:
         if name in fallback:
@@ -254,9 +255,7 @@ def _counts(
         f"count(*) FILTER (WHERE _v > hi) AS n_high {_joined(unpivoted, table)} "
         "GROUP BY _u._gt, _u._f"
     )
-    return {
-        (int(f[2:]), gt): (int(lo), int(hi)) for gt, f, lo, hi in rel.rows(sql)
-    }
+    return {(int(f[2:]), gt): (int(lo), int(hi)) for gt, f, lo, hi in rel.rows(sql)}
 
 
 def _rows(
