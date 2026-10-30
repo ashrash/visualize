@@ -29,6 +29,7 @@ function setup(spec: ChartSpec = makeSpec({ encodings: { x: [{ field: "region" }
   return onChange;
 }
 
+const call = (fn: ReturnType<typeof vi.fn>, i: number) => fn.mock.calls[i]?.[0] as ChartSpec;
 const tab = (name: string) => screen.getByRole("tab", { name });
 
 describe("ChartConfigPanel", () => {
@@ -57,7 +58,7 @@ describe("ChartConfigPanel", () => {
   it("lets multiple-channel rows be added", () => {
     const onChange = setup();
     fireEvent.click(screen.getByRole("button", { name: "Add Value" }));
-    expect((onChange.mock.calls[0]?.[0] as ChartSpec).encodings?.y).toEqual([{ agg: "count" }]);
+    expect(call(onChange, 0).encodings?.y).toEqual([{ agg: "count" }]);
   });
 
   it("generates Chart-tab controls from paramsSchema and hides showIf-gated ones", () => {
@@ -66,7 +67,7 @@ describe("ChartConfigPanel", () => {
     expect(screen.getByLabelText("Bar width (%)")).toBeTruthy();
     expect(screen.queryByLabelText("Gap between grouped bars (%)")).toBeNull(); // needs a color channel
     fireEvent.change(screen.getByLabelText("Bar width (%)"), { target: { value: "80" } });
-    expect((onChange.mock.calls[0]?.[0] as ChartSpec).params).toMatchObject({ barWidth: 80 });
+    expect(call(onChange, 0).params).toMatchObject({ barWidth: 80 });
   });
 
   it("shows only the style sections the plot declares", () => {
@@ -81,22 +82,22 @@ describe("ChartConfigPanel", () => {
     const onChange = setup();
     fireEvent.click(tab("Style"));
     fireEvent.change(screen.getByLabelText("Y axis: scale"), { target: { value: "log" } });
-    expect((onChange.mock.calls[0]?.[0] as ChartSpec).style?.yAxes?.[0]).toMatchObject({
+    expect(call(onChange, 0).style?.yAxes?.[0]).toMatchObject({
       scale: "log",
     });
     fireEvent.click(screen.getByRole("button", { name: "+ Add y axis" }));
-    expect((onChange.mock.calls[1]?.[0] as ChartSpec).style?.yAxes).toHaveLength(2);
+    expect(call(onChange, 1).style?.yAxes).toHaveLength(2);
   });
 
   it("adds a reference line and a trendline to the style", () => {
     const onChange = setup(makeSpec({ plotType: "line", encodings: { x: [{ field: "day" }] } }));
     fireEvent.click(tab("Style"));
     fireEvent.click(screen.getByRole("button", { name: "+ Add reference line" }));
-    expect((onChange.mock.calls[0]?.[0] as ChartSpec).style?.refLines).toEqual([
+    expect(call(onChange, 0).style?.refLines).toEqual([
       { axis: "y", value: 0, lineStyle: "dashed" },
     ]);
     fireEvent.click(screen.getByRole("button", { name: "+ Add trendline" }));
-    expect((onChange.mock.calls[1]?.[0] as ChartSpec).style?.trendlines?.[0]).toMatchObject({
+    expect(call(onChange, 1).style?.trendlines?.[0]).toMatchObject({
       kind: "linear",
     });
   });
@@ -173,7 +174,7 @@ describe("spec helpers", () => {
       showLabels: true,
       title: "T",
       palette: "viridis",
-      refLines: [{ axis: "y", value: 1 }],
+      refLines: [{ axis: "y", value: 1, lineStyle: "dashed" }],
       xAxis: { grid: true, title: "Region", min: 0 },
     });
     expect(styled.title).toBeUndefined();
