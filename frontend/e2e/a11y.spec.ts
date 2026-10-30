@@ -1,12 +1,12 @@
 import { expect, test } from "./fixtures";
-import { criticalOf, runAxe } from "./helpers/axe";
+import { newBlockingViolations, runAxe } from "./helpers/axe";
 import { createChart, openConfigTab } from "./helpers/charts";
 import { sample } from "./helpers/env";
 import { unique } from "./helpers/shots";
 
 /**
- * axe (WCAG 2.1 A/AA) on the main screens in both themes. Existing violations are reported, not
- * failed on: only `critical` impact fails a run. The per-screen results are merged into
+ * axe (WCAG 2.1 A/AA) on the main screens in both themes. A serious or critical finding fails the
+ * run unless its (rule, screen) pair is listed in e2e/axe-baseline.json; everything is merged into
  * frontend/test-results/axe-report.{json,md} (grouped by owning agent) by global-teardown.
  */
 for (const theme of ["light", "dark"] as const) {
@@ -35,8 +35,8 @@ for (const theme of ["light", "dark"] as const) {
         contentType: "application/json",
       });
       expect(
-        criticalOf(report).map((v) => v.id),
-        "critical axe violations",
+        newBlockingViolations(report),
+        "serious or critical axe findings not in axe-baseline.json",
       ).toEqual([]);
     });
 
@@ -49,8 +49,8 @@ for (const theme of ["light", "dark"] as const) {
         contentType: "application/json",
       });
       expect(
-        criticalOf(report).map((v) => v.id),
-        "critical axe violations",
+        newBlockingViolations(report),
+        "serious or critical axe findings not in axe-baseline.json",
       ).toEqual([]);
     });
 
@@ -65,8 +65,8 @@ for (const theme of ["light", "dark"] as const) {
         contentType: "application/json",
       });
       expect(
-        criticalOf(report).map((v) => v.id),
-        "critical axe violations",
+        newBlockingViolations(report),
+        "serious or critical axe findings not in axe-baseline.json",
       ).toEqual([]);
     });
 
@@ -83,8 +83,8 @@ for (const theme of ["light", "dark"] as const) {
         contentType: "application/json",
       });
       expect(
-        criticalOf(report).map((v) => v.id),
-        "critical axe violations",
+        newBlockingViolations(report),
+        "serious or critical axe findings not in axe-baseline.json",
       ).toEqual([]);
     });
 
@@ -96,8 +96,8 @@ for (const theme of ["light", "dark"] as const) {
         contentType: "application/json",
       });
       expect(
-        criticalOf(report).map((v) => v.id),
-        "critical axe violations",
+        newBlockingViolations(report),
+        "serious or critical axe findings not in axe-baseline.json",
       ).toEqual([]);
     });
   });

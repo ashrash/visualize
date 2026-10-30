@@ -23,6 +23,8 @@ interface Case {
   nominal?: string[];
   /** Columns detected as geographic coordinates (by name: lat/lon). */
   geo?: string[];
+  /** Exact DuckDB type per column (regex), e.g. to prove a time zone survived the import. */
+  types?: Record<string, RegExp>;
   /** Columns with at least one null. */
   nulls?: string[];
   /** Columns that need at least this many distinct values (approx). */
@@ -53,6 +55,7 @@ const CASES: Case[] = [
     // Request log: per-row UTC offsets must come out as one time-zone-aware timestamp column.
     file: "web_traffic.csv",
     temporal: ["timestamp"],
+    types: { timestamp: /^TIMESTAMP WITH TIME ZONE$|^TIMESTAMPTZ$/ },
     nulls: ["revenue"],
     quantitative: ["load_ms", "size_kb"],
     manyDistinct: { page: 300 },
@@ -225,6 +228,9 @@ test.describe("sample datasets import", () => {
           }
           for (const column of c.quantitative ?? []) {
             expect(columns.get(column)?.semantic, `${column} is quantitative`).toBe("quantitative");
+          }
+          for (const [column, pattern] of Object.entries(c.types ?? {})) {
+            expect(columns.get(column)?.type, `${column} type`).toMatch(pattern);
           }
           for (const column of c.geo ?? []) {
             expect(columns.get(column)?.semantic, `${column} is geo`).toBe("geo");

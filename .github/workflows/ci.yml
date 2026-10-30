@@ -15,7 +15,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded pushes to branches and PRs are cancelled; every push to main runs to the end.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
@@ -38,7 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v10
+      # setup-uv has no floating v10 tag (floating majors stop at v7): pin the full version.
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
 
@@ -84,6 +86,13 @@ jobs:
         run: uv run python scripts/check_contract_drift.py
 
       # -- end to end --------------------------------------------------------------------------
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\ms-playwright' || '~/Library/Caches/ms-playwright' }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}
+
       - name: Install the Playwright browser
         run: npm --prefix frontend exec -- playwright install chromium
 

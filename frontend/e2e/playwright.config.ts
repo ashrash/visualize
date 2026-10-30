@@ -61,6 +61,7 @@ export default defineConfig({
     ["html", { open: "never", outputFolder: "../playwright-report" }],
     ["json", { outputFile: "../test-results/results.json" }],
   ],
+  globalSetup: "./global-setup.ts",
   globalTeardown: "./global-teardown.ts",
   use: {
     baseURL,
@@ -78,7 +79,7 @@ export default defineConfig({
         url: `${baseURL}/api/health`,
         timeout: 240_000,
         reuseExistingServer: false,
-        stdout: "pipe",
+        stdout: "ignore",
         stderr: "pipe",
         env: {
           VIZ_DATA_DIR: process.env.VIZ_E2E_DATA_DIR ?? "",

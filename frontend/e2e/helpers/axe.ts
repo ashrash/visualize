@@ -102,6 +102,29 @@ export async function runAxe(page: Page, screen: string, theme: string): Promise
 export const criticalOf = (report: ScreenReport): AxeViolation[] =>
   report.violations.filter((v) => v.impact === "critical");
 
+interface BaselineEntry {
+  rule: string;
+  screen: string;
+}
+
+function loadBaseline(): BaselineEntry[] {
+  const file = path.join(here, "..", "axe-baseline.json");
+  if (!existsSync(file)) return [];
+  return (JSON.parse(readFileSync(file, "utf8")) as { entries?: BaselineEntry[] }).entries ?? [];
+}
+
+/**
+ * Serious or critical findings that are not in e2e/axe-baseline.json. These fail the run: the
+ * baseline holds today's known findings, so only regressions (or new screens) break the build.
+ */
+export function newBlockingViolations(report: ScreenReport): string[] {
+  const baseline = loadBaseline();
+  return report.violations
+    .filter((v) => v.impact === "serious" || v.impact === "critical")
+    .filter((v) => !baseline.some((b) => b.rule === v.id && b.screen === report.screen))
+    .map((v) => `${v.id} (${v.impact}) on ${report.screen}: ${v.nodes[0]?.target ?? ""}`);
+}
+
 interface Aggregate {
   rule: string;
   impact: string;

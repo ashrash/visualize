@@ -1,0 +1,29 @@
+{
+  "comment": "Known serious or critical axe findings, as (rule, screen) pairs (theme-independent). A serious or critical finding that is NOT listed fails the a11y tests; listed ones are only reported. Remove an entry when its fix merges; this file may end up empty. Edit by hand, never to hide a new regression.",
+  "entries": [
+    {
+      "rule": "label-content-name-mismatch",
+      "screen": "data-grid",
+      "owner": "ui-data",
+      "reason": "Project menu button: aria-label 'Project menu' does not contain its visible text (the project name)"
+    },
+    {
+      "rule": "label-content-name-mismatch",
+      "screen": "charts-config-data",
+      "owner": "ui-data",
+      "reason": "same button"
+    },
+    {
+      "rule": "label-content-name-mismatch",
+      "screen": "charts-style-export-menu",
+      "owner": "ui-data",
+      "reason": "same button"
+    },
+    {
+      "rule": "aria-hidden-focus",
+      "screen": "project-menu",
+      "owner": "ui-data",
+      "reason": "Radix modal dropdown aria-hides the skip link, header, aside and grid while they stay focusable"
+    }
+  ]
+}

@@ -80,11 +80,13 @@ test.describe("project menu", () => {
     await app.openProjectMenu();
     await app.menuItem("Open or create project…").click();
     const picker = page.getByRole("dialog", { name: "Projects" });
-    await picker
-      .getByRole("button", { name: new RegExp(project.name.slice(0, 20)) })
-      .first()
-      .click();
-    await expect(app.projectName).toContainText(project.name);
+    // A row's name also holds its timestamp, so match the start; "(?! copy)" skips the duplicate.
+    const escaped = project.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    await picker.getByRole("button", { name: new RegExp(`^${escaped}(?! copy)`) }).click();
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem("viz.lastProject")))
+      .toBe(project.id);
+    await expect(app.projectName).toHaveText(project.name);
 
     await api.deleteProject(copyId ?? "");
     await api.deleteDatasetByName(dataset);

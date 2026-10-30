@@ -18,7 +18,7 @@ test("an edit autosaves after a pause (no Save press) and survives a reload", as
   await createChart(page);
   // The edit makes the project dirty; autosave fires after a 2 s debounce.
   await setChartTitle(page, "Autosaved title");
-  await expect(app.saveStatus).toHaveAttribute("data-status", /unsaved|saving|saved/);
+  await expect(app.saveStatus).toHaveAttribute("data-status", /^(unsaved|saving)$/);
   await app.waitForSaved();
   await shot(page, "autosave-1-saved");
 

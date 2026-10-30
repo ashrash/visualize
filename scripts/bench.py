@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import itertools
 import json
 import math
 import os
@@ -63,14 +64,29 @@ DESCRIBE_BUDGET_S = 3.0
 
 # Failures that docs/STATUS.md already tracks (they do not fail the run unless --strict).
 _LARGE_DATASETS = 'STATUS MVP 1 "Large dataset handling" (data-core)'
+
+
+@dataclass(frozen=True)
+class Known:
+    """A tracked miss: tolerated up to `ceiling_ms` (about 1.5x the tracked number)."""
+
+    ceiling_ms: float
+    note: str
+
+
 KNOWN_ISSUES = {
-    # Keys are the case labels used by Bench.cold_case / grid_case.
-    "sorted, cold": f"{_LARGE_DATASETS}: first sorted page ~190 ms cold; Wave 4",
-    "sorted, deep offset, cold": (
-        f"{_LARGE_DATASETS}: a deep page before its view is ready (~2.7 s at 10M); Wave 4"
+    # Keys are the case labels used by Bench.cold_case / grid_case (10M-row numbers).
+    "sorted, cold": Known(
+        340, f"{_LARGE_DATASETS}: first sorted page ~190-340 ms cold (ceiling 340 ms); Wave 4"
     ),
-    "filtered range, deep offset, cold": (
-        f"{_LARGE_DATASETS}: a deep page before its view is ready (~0.7 s at 10M); Wave 4"
+    "sorted, deep offset, cold": Known(
+        4000, f"{_LARGE_DATASETS}: deep page before its view is built ~1.8-2.7 s (ceiling 4 s)"
+    ),
+    "filtered range, deep offset, cold": Known(
+        1000, f"{_LARGE_DATASETS}: deep page before its view is built ~0.6-0.7 s (ceiling 1 s)"
+    ),
+    "search, free text": Known(
+        1000, f"{_LARGE_DATASETS}: free-text search ~620-660 ms (ceiling 1 s); Wave 4 search pass"
     ),
 }
 
@@ -95,10 +111,23 @@ class Result:
         return self.status == "FAIL"
 
 
-def verdict(ok: bool, key: str | None = None) -> tuple[str, bool]:
+def verdict(ok: bool, key: str | None = None, value_ms: float | None = None) -> tuple[str, bool]:
+    """(status, known). A tracked miss is 'known' only while it stays under its ceiling."""
     if ok:
         return "PASS", False
-    return "FAIL", key in KNOWN_ISSUES
+    known = KNOWN_ISSUES.get(key) if key else None
+    return "FAIL", known is not None and value_ms is not None and value_ms <= known.ceiling_ms
+
+
+def known_note(key: str, known: bool, value_ms: float) -> str:
+    entry = KNOWN_ISSUES.get(key)
+    if entry is None:
+        return ""
+    if known:
+        return entry.note
+    return (
+        f"ABOVE the tracked ceiling of {entry.ceiling_ms:.0f} ms ({value_ms:,.0f} ms). {entry.note}"
+    )
 
 
 def percentile(values: Sequence[float], q: float) -> float:
@@ -146,6 +175,7 @@ class Server:
         self.data_dir: Path | None = None
         self.proc: subprocess.Popen[bytes] | None = None
         self.log_path: Path | None = None
+        self.log_handle: Any = None
         self.port = port or (0 if self.external else free_port())
         self.url = url.rstrip("/") if url else f"http://127.0.0.1:{self.port}"
 
@@ -158,7 +188,7 @@ class Server:
         env["VIZ_DATA_DIR"] = str(self.data_dir)
         env["PYTHONUNBUFFERED"] = "1"
         self.log_path = self.data_dir / "server.log"
-        log = self.log_path.open("wb")
+        log = self.log_handle = self.log_path.open("wb")
         kwargs: dict[str, Any] = {}
         if os.name != "nt":
             kwargs["start_new_session"] = True
@@ -204,15 +234,27 @@ class Server:
 
                 with suppress(ProcessLookupError):
                     os.killpg(self.proc.pid, signal.SIGTERM)
-            with suppress(subprocess.TimeoutExpired):
+            try:
                 self.proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                if os.name != "nt":
+                    import signal
+
+                    with suppress(ProcessLookupError):
+                        os.killpg(self.proc.pid, signal.SIGKILL)
+                    with suppress(subprocess.TimeoutExpired):
+                        self.proc.wait(timeout=10)
+        if self.log_handle is not None:
+            with suppress(OSError):
+                self.log_handle.close()
         if self.data_dir is not None:
             for _ in range(10):
                 try:
                     shutil.rmtree(self.data_dir)
-                    break
+                    return
                 except OSError:
                     time.sleep(0.5)  # Windows still releases file handles
+            print(f"warning: could not remove the bench data dir {self.data_dir}")
 
 
 class PeakMemory:
@@ -386,9 +428,13 @@ def chart_body(
     }
 
 
-def bust(rows: int, k: int) -> dict[str, Any]:
-    """A filter that scans the same data but never repeats, so no result cache can answer it."""
-    return {"op": "range", "field": "order_id", "min": 1, "max": rows - (k % 997) - 1}
+_BUST = itertools.count(1)
+
+
+def bust(rows: int) -> dict[str, Any]:
+    """A filter that scans nearly the same data but never repeats within a run (one global,
+    ever-increasing counter), so no result cache can answer it."""
+    return {"op": "range", "field": "order_id", "min": 1, "max": max(1, rows - next(_BUST))}
 
 
 @dataclass
@@ -489,6 +535,7 @@ class Bench:
         self.results: list[Result] = []
         self.dataset_id = ""
         self.log = lambda message: print(f"  .. {message}", flush=True)
+        self._rounds = itertools.count(1)
 
     def add(self, result: Result) -> Result:
         self.results.append(result)
@@ -554,16 +601,17 @@ class Bench:
         return times
 
     def grid_case(self, label: str, bodies: Sequence[dict[str, Any]], note: str = "") -> None:
+        # Gated on p95 (needs >= 10 repetitions, so p95 is not just the max of a handful).
         times = self.measure_pages(bodies)
         stats = summarize(times)
-        status, known = verdict(stats["p50"] <= PAGE_BUDGET_MS, label)
+        status, known = verdict(stats["p95"] <= PAGE_BUDGET_MS, label, stats["p95"])
         self.add(
             Result(
                 f"grid {label}",
-                f"<= {PAGE_BUDGET_MS:.0f} ms",
-                f"p50 {fmt_ms(stats['p50'])} (max {fmt_ms(stats['max'])})",
+                f"<= {PAGE_BUDGET_MS:.0f} ms (p95)",
+                f"p95 {fmt_ms(stats['p95'])} (p50 {fmt_ms(stats['p50'])}, n={len(times)})",
                 status,
-                note=note or (KNOWN_ISSUES.get(label, "") if status == "FAIL" else ""),
+                note=note or (known_note(label, known, stats["p95"]) if status == "FAIL" else ""),
                 known=known,
                 data=stats,
             )
@@ -571,18 +619,28 @@ class Bench:
 
     def cold_case(self, label: str, body: dict[str, Any]) -> None:
         ms = self.measure_pages([body])[0]
-        status, known = verdict(ms <= PAGE_BUDGET_MS, label)
+        status, known = verdict(ms <= PAGE_BUDGET_MS, label, ms)
         self.add(
             Result(
                 f"grid {label}",
                 f"<= {PAGE_BUDGET_MS:.0f} ms",
                 fmt_ms(ms),
                 status,
-                note=KNOWN_ISSUES.get(label, "") if status == "FAIL" else "",
+                note=known_note(label, known, ms) if status == "FAIL" else "",
                 known=known,
                 data={"ms": ms},
             )
         )
+
+    def wait_for_view(self, bodies: Sequence[dict[str, Any]], cap_s: float) -> float:
+        """Poll later pages of the same sort/filter until all answer in < 50 ms (the background
+        view is built) or `cap_s` passes. Returns the seconds waited."""
+        started = time.perf_counter()
+        while time.perf_counter() - started < cap_s:
+            if all(t < 50 for t in self.measure_pages(bodies)):
+                break
+            time.sleep(0.5)
+        return time.perf_counter() - started
 
     def run_grid(self) -> None:
         n = self.rows
@@ -606,7 +664,13 @@ class Bench:
         self.log("grid pages: sorted")
         self.cold_case("sorted, cold", self.page_body(sort=sorted_by, offset=0))
         self.measure_pages([self.page_body(sort=sorted_by, offset=200)])  # scroll: queues the build
-        time.sleep(build_wait_s)
+        self.wait_for_view(
+            [
+                self.page_body(sort=sorted_by, offset=400),
+                self.page_body(sort=sorted_by, offset=n // 2),
+            ],
+            3 * build_wait_s,
+        )
         self.grid_case(
             "sorted, warm (after view build)",
             [self.page_body(sort=sorted_by, offset=400 + 200 * k) for k in range(reps)],
@@ -620,7 +684,7 @@ class Bench:
         category_filter = [{"op": "eq", "field": "category", "value": "Category 03"}]
         self.cold_case("filtered, cold", self.page_body(filters=category_filter, offset=0))
         self.measure_pages([self.page_body(filters=category_filter, offset=200)])
-        time.sleep(build_wait_s)
+        self.wait_for_view([self.page_body(filters=category_filter, offset=400)], 3 * build_wait_s)
         self.grid_case(
             "filtered, warm (after view build)",
             [self.page_body(filters=category_filter, offset=400 + 200 * k) for k in range(reps)],
@@ -636,7 +700,13 @@ class Bench:
             "sorted, deep offset, cold",
             self.page_body(sort=[{"field": "score", "descending": False}], offset=n // 2),
         )
-        time.sleep(build_wait_s)  # let the background view builds those two queued finish
+        # Free-text search over the text columns (tracked in STATUS as ~620-660 ms at 10M).
+        self.cold_case("search, free text", self.page_body(search="Product 01"))
+        # Let the background view builds those queries triggered finish before the next scenario.
+        self.wait_for_view(
+            [self.page_body(sort=[{"field": "score", "descending": False}], offset=n // 2 + 200)],
+            3 * build_wait_s,
+        )
 
     # -- charts --------------------------------------------------------------------------------
 
@@ -651,7 +721,7 @@ class Bench:
             self.dataset_id,
             case.plot,
             case.encodings,
-            filters=[bust(self.rows, k), *extra_filters],
+            filters=[bust(self.rows), *extra_filters],
             chart_id=chart_id,
         )
 
@@ -708,11 +778,18 @@ class Bench:
                 "bar",
                 {"x": [enc("customer_id")], "y": [enc("sales", "sum")]},
             ),
+            # `line` is a series plot (M4/LTTB downsampling) and is implemented; with no agg and
+            # no timeUnit it must reduce 10M raw points to the cap.
+            ChartCase(
+                "line (series): order_ts vs score (all rows)",
+                "line",
+                {"x": [enc("order_ts")], "y": [enc("score")]},
+            ),
             ChartCase(
                 "scatter: lat vs lon (all rows)", "scatter", {"x": [enc("lat")], "y": [enc("lon")]}
             ),
             ChartCase(
-                "line: order_ts vs score (all rows)",
+                "timeseries_line: order_ts vs score (all rows)",
                 "timeseries_line",
                 {"x": [enc("order_ts")], "y": [enc("score")]},
             ),
@@ -789,67 +866,85 @@ class Bench:
 
     # -- concurrency ---------------------------------------------------------------------------
 
-    def dashboard_round(self, k: int, pool: ThreadPoolExecutor) -> tuple[float, int]:
-        """Six charts, one shared cross-filter (new value each round, so nothing is cached)."""
-        shared = {"op": "eq", "field": "country", "value": f"Country {k % 40 + 1:02d}"}
+    def post_chart(self, body: dict[str, Any]) -> tuple[int, bool | None]:
+        """POST chart data; returns (status, meta.cached or None when the body has no meta)."""
+        response = self.api.client.post("/api/charts/data", json=body)
+        if response.status_code != 200:
+            return response.status_code, None
+        if response.headers.get("content-type", "").startswith("application/json"):
+            return 200, dict(response.json().get("meta", {})).get("cached")
+        return 200, arrow_meta(response)[1].get("cached")
+
+    def dashboard_round(self, pool: ThreadPoolExecutor) -> tuple[float, int, int]:
+        """Six charts sharing one cross-filter. Every round gets a new country value and a new
+        bust() filter, so nothing can be answered from the result cache.
+        Returns (seconds, request errors, responses that claim meta.cached)."""
+        round_no = next(self._rounds)
+        shared = [
+            {"op": "eq", "field": "country", "value": f"Country {round_no % 40 + 1:02d}"},
+            bust(self.rows),
+        ]
         bodies = [
-            chart_body(self.dataset_id, c.plot, c.encodings, filters=[shared], chart_id=f"dash-{i}")
+            chart_body(self.dataset_id, c.plot, c.encodings, filters=shared, chart_id=f"dash-{i}")
             for i, c in enumerate(DASHBOARD_CASES)
         ]
         started = time.perf_counter()
-        responses = list(
-            pool.map(lambda b: self.api.client.post("/api/charts/data", json=b), bodies)
-        )
+        results = list(pool.map(self.post_chart, bodies))
         elapsed = time.perf_counter() - started
-        errors = sum(1 for r in responses if r.status_code != 200)
-        return elapsed, errors
+        errors = sum(1 for status, _ in results if status != 200)
+        cached = sum(1 for _, was_cached in results if was_cached)
+        return elapsed, errors, cached
 
     def dashboard_idle(self) -> None:
         rounds = self.args.dashboard_rounds
         stat = self.args.stat
         with ThreadPoolExecutor(max_workers=6) as pool:
-            self.dashboard_round(0, pool)  # warm-up
-            samples, errors = [], 0
-            for k in range(1, rounds + 1):
-                elapsed, failed = self.dashboard_round(k, pool)
+            self.dashboard_round(pool)  # warm-up
+            samples, errors, cached = [], 0, 0
+            for _ in range(rounds):
+                elapsed, failed, hits = self.dashboard_round(pool)
                 samples.append(elapsed)
                 errors += failed
+                cached += hits
         stats = summarize(samples)
-        status, known = verdict(stats[stat] <= DASHBOARD_BUDGET_S and errors == 0)
+        status, known = verdict(stats[stat] <= DASHBOARD_BUDGET_S and errors == 0 and cached == 0)
         self.add(
             Result(
                 "dashboard refresh (6 charts, 1 filter), idle",
                 f"<= {DASHBOARD_BUDGET_S:.0f} s",
                 stat_text(stats, stat),
                 status,
-                note=f"{len(samples)} rounds, {errors} request errors",
+                note=f"{len(samples)} rounds, {errors} request errors, {cached} cached responses",
                 known=known,
-                data={**stats, "errors": errors},
+                data={**stats, "errors": errors, "cached": cached},
             )
         )
 
     def dashboard_during_import(self) -> None:
         stat = self.args.stat
-        wanted = self.args.dashboard_rounds
+        minimum = self.args.dashboard_rounds
         samples: list[float] = []
-        errors = 0
+        stages: dict[str, list[float]] = {}
+        errors = cached = imports = 0
         extra_datasets: list[str] = []
-        imports = 0
-        # A second import of the same file runs as a job while the dashboard keeps refreshing. If
-        # it finishes before enough rounds ran, start another (up to 4).
+        # Rounds run for the whole life of a second import of the same file (never cancelled), at
+        # least `minimum` of them: a further import starts if the first ended too soon.
         with ThreadPoolExecutor(max_workers=6) as pool:
-            while len(samples) < wanted and imports < 4:
+            while (len(samples) < minimum or imports == 0) and imports < 4:
                 imports += 1
                 job = self.api.start_import(self.csv_path, f"bench_load_{imports}")
                 time.sleep(0.3)  # let the job start scanning the file
-                while (
-                    len(samples) < wanted and self.api.job(job["id"])["status"] not in TERMINAL_JOB
-                ):
-                    elapsed, failed = self.dashboard_round(len(samples) + 100 * imports, pool)
+                while True:
+                    state = self.api.job(job["id"])
+                    if state["status"] in TERMINAL_JOB:
+                        break
+                    elapsed, failed, hits = self.dashboard_round(pool)
                     samples.append(elapsed)
+                    stages.setdefault(str(state.get("message") or state["status"]), []).append(
+                        elapsed
+                    )
                     errors += failed
-                if self.api.job(job["id"])["status"] not in TERMINAL_JOB:
-                    self.api.cancel_job(job["id"])  # enough samples; stop the import early
+                    cached += hits
                 done = self.api.wait_job(job["id"])
                 if done.get("result") and done["result"].get("datasetId"):
                     extra_datasets.append(done["result"]["datasetId"])
@@ -870,16 +965,28 @@ class Bench:
             )
             return
         stats = summarize(samples)
-        status, known = verdict(stats[stat] <= DASHBOARD_BUDGET_S and errors == 0)
+        status, known = verdict(stats[stat] <= DASHBOARD_BUDGET_S and errors == 0 and cached == 0)
+        by_stage = "; ".join(
+            f"{stage}: {len(vals)} rounds, max {fmt_s(max(vals))}" for stage, vals in stages.items()
+        )
         self.add(
             Result(
                 name,
                 f"<= {DASHBOARD_BUDGET_S:.0f} s",
                 stat_text(stats, stat),
                 status,
-                note=f"{len(samples)} rounds over {imports} import(s), {errors} request errors",
+                note=(
+                    f"{len(samples)} rounds over {imports} import(s), {errors} request errors, "
+                    f"{cached} cached responses; by import stage - {by_stage}"
+                ),
                 known=known,
-                data={**stats, "errors": errors, "imports": imports},
+                data={
+                    **stats,
+                    "errors": errors,
+                    "cached": cached,
+                    "imports": imports,
+                    "stages": {k: summarize(v) for k, v in stages.items()},
+                },
             )
         )
 
@@ -890,27 +997,25 @@ class Bench:
                 self.dataset_id,
                 c.plot,
                 c.encodings,
-                filters=[bust(self.rows, i)],
+                filters=[bust(self.rows)],
                 chart_id=f"c12-{i}",
             )
             for i, c in enumerate(cases)
         ]
         statuses: list[int] = []
         details: list[str] = []
+        cached = 0
         pid = self.server.proc.pid if self.server.proc else None
         started = time.perf_counter()
         with PeakMemory(pid) as memory, ThreadPoolExecutor(max_workers=12) as pool:
-            futures = [
-                pool.submit(self.api.client.post, "/api/charts/data", json=b) for b in bodies
-            ]
+            futures = [pool.submit(self.post_chart, b) for b in bodies]
             for future, case in zip(futures, cases, strict=True):
                 try:
-                    response = future.result()
-                    statuses.append(response.status_code)
-                    if response.status_code != 200:
-                        details.append(
-                            f"{case.label}: HTTP {response.status_code} {response.text[:80]}"
-                        )
+                    code, was_cached = future.result()
+                    statuses.append(code)
+                    cached += bool(was_cached)
+                    if code != 200:
+                        details.append(f"{case.label}: HTTP {code}")
                 except httpx.HTTPError as exc:
                     statuses.append(0)
                     details.append(f"{case.label}: {type(exc).__name__}")
@@ -920,7 +1025,9 @@ class Bench:
         with suppress(httpx.HTTPError):
             alive = self.api.client.get("/api/health").status_code == 200
         server_alive = alive and (self.server.proc is None or self.server.proc.poll() is None)
-        status, known = verdict(ok_count == len(bodies) and server_alive)
+        if cached:
+            details.append(f"{cached} responses claim meta.cached (cache-busting failed)")
+        status, known = verdict(ok_count == len(bodies) and server_alive and cached == 0)
         peak = f"; {memory.describe()}"
         self.add(
             Result(
@@ -976,12 +1083,12 @@ class Bench:
         ]
         times = []
         problems: list[str] = []
-        for k in range(5):
+        for k in range(11):  # one warm-up, then 10 timed runs (p95 needs the repetitions)
             body = {
                 "source": {"kind": "dataset", "id": self.dataset_id},
                 "fields": fields,
                 "includeMode": True,
-                "filters": [bust(self.rows, k)],
+                "filters": [bust(self.rows)],
             }
             started = time.perf_counter()
             response = self.api.client.post("/api/stats/describe", json=body)
@@ -1010,12 +1117,12 @@ class Bench:
             if result.get("sampled"):
                 problems.append("result is sampled, expected exact")
         stats = summarize(times)
-        status, known = verdict(stats["p50"] <= DESCRIBE_BUDGET_S and not problems)
+        status, known = verdict(stats["p95"] <= DESCRIBE_BUDGET_S and not problems)
         self.add(
             Result(
                 name,
-                budget,
-                f"p50 {fmt_s(stats['p50'])} (max {fmt_s(stats['max'])})",
+                budget + " (p95)",
+                f"p95 {fmt_s(stats['p95'])} (p50 {fmt_s(stats['p50'])}, n={len(times)})",
                 status,
                 note="; ".join(sorted(set(problems))) or "10 fields, ungrouped, modes on, exact",
                 known=known,
@@ -1033,7 +1140,7 @@ def render_table(results: Sequence[Result]) -> str:
         status = r.status + (" (known)" if r.failed and r.known else "")
         rows.append((r.metric, r.budget, r.measured, status))
     headers = ("Metric", "Budget", "Measured", "Result")
-    widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) for i in range(4)]
+    widths = [max([len(headers[i]), *(len(row[i]) for row in rows)]) for i in range(4)]
     line = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
 
     def fmt_row(values: Sequence[str]) -> str:
@@ -1098,7 +1205,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--fixture-dir", type=Path, default=DEFAULT_FIXTURE_DIR, help="where large_<rows>.csv lives"
     )
     parser.add_argument("--seed", type=int, default=20261030)
-    parser.add_argument("--reps", type=int, default=7, help="repetitions per grid case")
+    parser.add_argument("--reps", type=int, default=10, help="repetitions per grid case")
     parser.add_argument(
         "--chart-reps", type=int, default=12, help="requests per aggregate chart case"
     )
@@ -1116,7 +1223,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.quick:
         args.rows = 1_000_000
-        args.reps = min(args.reps, 5)
+        args.reps = max(args.reps, 10)  # p95 gating needs >= 10
         args.chart_reps = min(args.chart_reps, 8)
         args.dashboard_rounds = min(args.dashboard_rounds, 6)
 
@@ -1156,6 +1263,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("server log tail:\n" + server.tail())
     finally:
         if api is not None:
+            if server.external and bench is not None and bench.dataset_id:
+                api.delete_dataset(bench.dataset_id)  # leave an external server as we found it
             api.close()
         server.stop()
 
