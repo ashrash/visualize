@@ -149,25 +149,36 @@ def test_import_and_grid_budgets(client: TestClient, tmp_path: Path) -> None:
             timed_ms(lambda q=count_sql: engine.query_arrow(q.sql(dialect="duckdb")))
         )
 
-    # Pages while a second import of the same file runs as a job.
-    response = client.post("/api/datasets/import", json={"path": str(csv_path)})
-    second = response.json()["id"]
-    during: list[float] = []
-    stop = threading.Event()
+    def pages_during_import(queue_view_build: bool) -> list[float]:
+        """Grid pages while a second import of the same file runs as a job. With
+        `queue_view_build`, a grid-view build is queued just before the import starts (it
+        must wait for the job instead of overlapping it on the background instance)."""
+        views.wait_idle()  # nothing pending from earlier cases
+        if queue_view_build:
+            page(sort=[{"field": "qty", "descending": True}], offset=200)
+        response = client.post("/api/datasets/import", json={"path": str(csv_path)})
+        job_id = response.json()["id"]
+        samples: list[float] = []
+        stop = threading.Event()
 
-    def watch() -> None:
-        client.app.state.jobs.wait(second, 600)  # type: ignore[attr-defined]
-        stop.set()
+        def watch() -> None:
+            client.app.state.jobs.wait(job_id, 600)  # type: ignore[attr-defined]
+            stop.set()
 
-    watcher = threading.Thread(target=watch)
-    watcher.start()
-    time.sleep(0.2)
-    while not stop.is_set() and len(during) < 200:
-        during.append(timed_ms(lambda: page(offset=ROWS // 3)))
-        during.append(
-            timed_ms(lambda: page(filters=[{"op": "eq", "field": "tag", "value": "tag_1"}]))
-        )
-    watcher.join()
+        watcher = threading.Thread(target=watch)
+        watcher.start()
+        time.sleep(0.2)
+        while not stop.is_set() and len(samples) < 200:
+            samples.append(timed_ms(lambda: page(offset=ROWS // 3)))
+            samples.append(
+                timed_ms(lambda: page(filters=[{"op": "eq", "field": "tag", "value": "tag_1"}]))
+            )
+        watcher.join()
+        views.wait_idle()
+        return samples
+
+    during = pages_during_import(False)
+    during_with_view = pages_during_import(True)
 
     print(f"\nrows={ROWS:,} csv={size_mb:,.0f} MB generated in {gen_s:.1f}s")
     print(f"import job (CSV -> Parquet + profile): {import_s:.1f}s (budget {IMPORT_BUDGET_S}s)")
@@ -185,11 +196,15 @@ def test_import_and_grid_budgets(client: TestClient, tmp_path: Path) -> None:
         f"  free-text search, no match: page+count p50 {statistics.median(search_full):.1f} ms;"
         f" count alone p50 {statistics.median(search_count):.1f} ms (grid budget 150 ms)"
     )
-    if during:
-        print(
-            f"  during import: n={len(during)} p50 {statistics.median(during):.1f} ms "
-            f"max {max(during):.1f} ms"
-        )
+    for label, samples in (
+        ("during import", during),
+        ("during import + pending view build", during_with_view),
+    ):
+        if samples:
+            print(
+                f"  {label}: n={len(samples)} p50 {statistics.median(samples):.1f} ms "
+                f"max {max(samples):.1f} ms"
+            )
     assert import_s <= IMPORT_BUDGET_S
     slow = {k: v for k, v in results.items() if v > PAGE_BUDGET_MS}
     assert not slow, slow

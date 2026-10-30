@@ -9,7 +9,8 @@ read (~25 ms) and the total row count is free.
 
 Bounds
 - Builds run one at a time on the engine's background DuckDB instance (fewer threads), so
-  they don't starve interactive queries.
+  they don't starve interactive queries. They start only when no job is running there, and
+  a job that starts stops a running build (it's re-queued on the next scroll).
 - Builds are keyed by view (dataset + sort + filters + search). A running build always
   finishes; per dataset at most `MAX_QUEUED_PER_DATASET` builds wait behind it, and a newer
   view drops the oldest *waiting* one. So the user changing the sort doesn't pile up work,
@@ -49,6 +50,8 @@ DEFAULT_MAX_BYTES = 1024 * 2**20
 # A sorted view compresses worse than its source (346 MB vs 233 MB measured).
 SIZE_MARGIN = 1.6
 MAX_QUEUED_PER_DATASET = 2
+# How long a build waits for the engine to go quiet (no interactive queries, no jobs).
+BUILD_WAIT_S = 30.0
 
 
 @dataclass(eq=False)
@@ -196,10 +199,17 @@ class RowViews:
         with self._lock:
             if self._views.get(view.vid) is not view:
                 return
-        # Let a burst of interactive queries (a dashboard refresh, a page fetch) finish first.
-        self.engine.wait_interactive_idle()
+        # Let a burst of interactive queries (a dashboard refresh, a page fetch) finish first,
+        # and never build while a job (import, export, materialize) runs on the background
+        # instance: overlapping the two made grid pages during an import reach ~610 ms. If
+        # the engine doesn't go quiet in time, drop the build; the next scroll re-queues it.
+        quiet = self.engine.wait_interactive_idle(max_wait_s=BUILD_WAIT_S, no_jobs=True)
         with self._lock:
             if self._views.get(view.vid) is not view:
+                return
+            if not quiet:
+                del self._views[view.vid]
+                self._unqueue(view)
                 return
             view.started = True
         tmp = view.path.with_name(f".{view.path.name}.{uuid.uuid4().hex[:8]}.tmp")
@@ -215,7 +225,9 @@ class RowViews:
             log.info("grid view %s not built", view.vid, exc_info=True)
             tmp.unlink(missing_ok=True)
             with self._lock:
-                view.failed = True
+                # Forget it (a job may have made it yield), so a later scroll re-queues it.
+                if self._views.get(view.vid) is view:
+                    del self._views[view.vid]
                 self._unqueue(view)
             return
         with self._lock:

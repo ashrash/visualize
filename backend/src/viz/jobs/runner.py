@@ -94,6 +94,8 @@ class _State:
     cancel: threading.Event = field(default_factory=threading.Event)
     dedupe_key: str | None = None
     future: Future[None] | None = None
+    # Called once when the job reaches a final state (however it got there).
+    on_done: Callable[[], None] | None = None
     # (low, high) while a DuckDB statement reports progress into that band.
     progress_band: tuple[float, float] | None = None
     finished_mono: float | None = None
@@ -158,7 +160,13 @@ class JobRunner(Protocol):
     """What routers use. In-process now; a queue-backed runner on AWS."""
 
     def submit(
-        self, kind: JobKind, params: BaseModel, *, title: str, dedupe_key: str | None = None
+        self,
+        kind: JobKind,
+        params: BaseModel,
+        *,
+        title: str,
+        dedupe_key: str | None = None,
+        on_done: Callable[[], None] | None = None,
     ) -> Job: ...
     def get(self, job_id: str) -> Job: ...
     def find_active(self, dedupe_key: str) -> Job | None: ...
@@ -199,7 +207,33 @@ class InProcessJobRunner:
     # -- public API ---------------------------------------------------------------------
 
     def submit(
-        self, kind: JobKind, params: BaseModel, *, title: str, dedupe_key: str | None = None
+        self,
+        kind: JobKind,
+        params: BaseModel,
+        *,
+        title: str,
+        dedupe_key: str | None = None,
+        on_done: Callable[[], None] | None = None,
+    ) -> Job:
+        """Queue a job. `on_done` runs once when it ends (succeeded, failed, cancelled while
+        queued or running, or dropped at shutdown); if `dedupe_key` returns an existing job
+        instead, `on_done` runs immediately. It's local bookkeeping (e.g. releasing a staged
+        upload) and a queue-backed runner would call it when the job's final state arrives."""
+        try:
+            return self._submit(kind, params, title=title, dedupe_key=dedupe_key, on_done=on_done)
+        except BaseException:
+            if on_done is not None:
+                on_done()
+            raise
+
+    def _submit(
+        self,
+        kind: JobKind,
+        params: BaseModel,
+        *,
+        title: str,
+        dedupe_key: str | None,
+        on_done: Callable[[], None] | None,
     ) -> Job:
         registration = _HANDLERS.get(kind)
         if registration is None:
@@ -213,6 +247,8 @@ class InProcessJobRunner:
             if dedupe_key is not None:
                 for state in self._jobs.values():
                     if state.dedupe_key == dedupe_key and state.job.status not in TERMINAL:
+                        if on_done is not None:
+                            on_done()
                         return state.job
             job = Job(
                 id=new_id(),
@@ -228,7 +264,7 @@ class InProcessJobRunner:
                 error=None,
                 result=None,
             )
-            state = _State(job=job, params=params, dedupe_key=dedupe_key)
+            state = _State(job=job, params=params, dedupe_key=dedupe_key, on_done=on_done)
             self._jobs[job.id] = state
         state.future = self._executor.submit(self._run, job.id, registration)
         return job
@@ -309,6 +345,9 @@ class InProcessJobRunner:
                 state.cancel.set()
                 self.engine.interrupt(f"job:{state.job.id}", "cancelled")
         self._executor.shutdown(wait=False, cancel_futures=True)
+        for state in states:
+            if state.future is not None and state.future.cancelled():
+                self._finish(state.job.id, JobStatus.CANCELLED, message="Cancelled")
         deadline = time.monotonic() + timeout_s
         for state in states:
             if state.future is not None and not state.future.done():
@@ -363,7 +402,13 @@ class InProcessJobRunner:
                 update["progress"] = 1.0
             state.job = state.job.model_copy(update=update)
             state.finished_mono = time.monotonic()
+            done, state.on_done = state.on_done, None
             self._changed.notify_all()
+        if done is not None:
+            try:
+                done()
+            except Exception:
+                log.exception("on_done callback of job %s failed", job_id)
 
     def _run(self, job_id: str, registration: _Registration) -> None:
         state = self._state(job_id)

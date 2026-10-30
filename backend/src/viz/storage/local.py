@@ -10,11 +10,14 @@ assets/                           images and report assets
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
+import threading
 import time
 import uuid
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -22,6 +25,7 @@ from pathlib import Path
 from viz.errors import ConflictError, NotFoundError
 
 _UNSAFE = re.compile(r'[\x00-\x1f<>:"/\\|?*]')
+_KIND_SIDECAR = ".kind"
 _ID = re.compile(r"[0-9a-f\-]{8,64}")
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9_.\-]+(/[A-Za-z0-9_.\-]+)*$")
 STAGED = "_staged"
@@ -49,6 +53,8 @@ def _replace_with_retry(src: Path, dst: Path, retry_s: float) -> None:
 class LocalStorage:
     def __init__(self, root: Path) -> None:
         self.root = root.expanduser().resolve()
+        self._in_use: Counter[str] = Counter()
+        self._in_use_lock = threading.Lock()
 
     @property
     def sources_dir(self) -> Path:
@@ -140,8 +146,47 @@ class LocalStorage:
         directory = self.staged_dir / staged_id
         if not directory.is_dir():
             return None
-        files = [p for p in directory.iterdir() if p.is_file() and not p.name.endswith(".tmp")]
+        files = [
+            p
+            for p in directory.iterdir()
+            if p.is_file() and not p.name.endswith(".tmp") and p.name != _KIND_SIDECAR
+        ]
         return files[0] if files else None
+
+    # Staged uploads in use by queued or running jobs (this process): DELETE refuses them and
+    # the expiry sweep skips them.
+
+    def acquire_staged(self, staged_id: str) -> None:
+        with self._in_use_lock:
+            self._in_use[staged_id] += 1
+
+    def release_staged(self, staged_id: str) -> None:
+        with self._in_use_lock:
+            self._in_use[staged_id] -= 1
+            if self._in_use[staged_id] <= 0:
+                del self._in_use[staged_id]
+
+    def staged_in_use(self, staged_id: str) -> bool:
+        with self._in_use_lock:
+            return self._in_use.get(staged_id, 0) > 0
+
+    def touch_staged(self, staged_id: str) -> None:
+        """Refresh the upload's age (a job started using it)."""
+        directory = self.staged_dir / staged_id
+        with contextlib.suppress(OSError):
+            os.utime(directory)
+
+    def set_staged_kind(self, staged_id: str, kind: str) -> None:
+        """Remember the file type chosen at upload (for unrecognised extensions)."""
+        (self.staged_path(staged_id) / _KIND_SIDECAR).write_text(kind, encoding="utf-8")
+
+    def staged_kind(self, staged_id: str) -> str | None:
+        if not _ID.fullmatch(staged_id):
+            return None
+        try:
+            return (self.staged_dir / staged_id / _KIND_SIDECAR).read_text("utf-8").strip() or None
+        except OSError:
+            return None
 
     def delete_staged(self, staged_id: str, *, retry_s: float = 1.0) -> None:
         """Remove an upload's folder. Retried for `retry_s` (Windows refuses to delete an
@@ -250,7 +295,8 @@ class LocalStorage:
         return f"/api/exports/{export_id}/download"
 
     def sweep(self, *, staged_max_age_s: float, exports_max_age_s: float) -> int:
-        """Delete expired staged uploads and export files. Returns how many dirs were removed."""
+        """Delete expired staged uploads and export files, skipping uploads a queued or running
+        job is using. Returns how many dirs were removed."""
         now = time.time()
         removed = 0
         for parent, max_age in (
@@ -263,6 +309,8 @@ class LocalStorage:
                 try:
                     age = now - child.stat().st_mtime
                 except OSError:
+                    continue
+                if parent == self.staged_dir and self.staged_in_use(child.name):
                     continue
                 if child.is_dir() and age > max_age:
                     shutil.rmtree(child, ignore_errors=True)

@@ -24,6 +24,9 @@ from viz.errors import ConflictError, InvalidSpecError, UnsupportedFormatError
 
 _EXTENSIONS = {
     ".csv": SourceKind.CSV,
+    # Excel's "Text (Tab delimited)" export and many tools write .txt; the sniffer finds the
+    # delimiter, and prose gets a shape warning.
+    ".txt": SourceKind.CSV,
     ".tsv": SourceKind.TSV,
     ".tab": SourceKind.TSV,
     ".json": SourceKind.JSON,

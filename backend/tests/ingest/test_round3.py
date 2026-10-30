@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 from viz.contracts import ARROW_META_KEY, ImportOptions, SourceKind
 from viz.ingest import importer
 from viz.ingest.importer import choose_encoding, replaced_warning
-from viz.ingest.staging import using_staged
 
 Stage = Callable[[str, bytes], dict[str, Any]]
 
@@ -58,10 +57,11 @@ def test_threshold_is_a_small_share_of_characters(tmp_path: Path) -> None:
         path.write_bytes(content)
         return choose_encoding(path, SourceKind.CSV, ImportOptions()).transcode_from
 
-    good = "".join(f"{i},Zürich Müller\n" for i in range(100)).encode()  # 300 multi-byte chars
-    assert picked(good + b"x,\xe9\n") == "utf-8"  # 1 bad of 300: replace it
-    assert picked(good + b"x,\xe9\n" * 20) == "cp1252"  # 20 of 300 (6.7%) is too many
-    assert importer.MAX_INVALID_SHARE == 0.02
+    good = "".join(f"{i},Zürich Müller\n" for i in range(100)).encode()  # 200 multi-byte chars
+    assert picked(good + b"x,\xe9\n") == "utf-8"  # 1 bad of 200: replace it
+    assert picked(good + b"x,\xe9\n" * 25) == "utf-8"  # 25 of 200 (12.5%) is still UTF-8
+    assert picked(good + b"x,\xe9\n" * 35) == "cp1252"  # 35 of 200 (17.5%) is too many
+    assert importer.MAX_INVALID_SHARE == 0.15
 
 
 def test_utf16_with_bom_gives_no_encoding_warning(client: TestClient, stage: Stage) -> None:
@@ -111,9 +111,11 @@ def test_upload_overflow_from_fields_isnt_called_a_large_file(client: TestClient
 
 def test_delete_staged_while_an_import_reads_it_is_409(client: TestClient, stage: Stage) -> None:
     staged = stage("busy.csv", b"a\n1\n")
-    with using_staged(staged["stagedId"]):  # what a running import/refresh job holds
-        response = client.delete(f"/api/datasets/staged/{staged['stagedId']}")
-        assert response.status_code == 409 and "still reading" in response.json()["detail"]
+    storage = client.app.state.storage  # type: ignore[attr-defined]
+    storage.acquire_staged(staged["stagedId"])  # what a queued or running job holds
+    response = client.delete(f"/api/datasets/staged/{staged['stagedId']}")
+    assert response.status_code == 409 and "still reading" in response.json()["detail"]
+    storage.release_staged(staged["stagedId"])
     assert client.delete(f"/api/datasets/staged/{staged['stagedId']}").status_code == 204
 
 
@@ -160,8 +162,9 @@ PROSE = b"Meeting notes for Tuesday\nWe talked about the roadmap and the budget.
 
 
 def test_unknown_extension_is_415_listing_supported_kinds(client: TestClient) -> None:
-    response = client.post("/api/datasets/staged", files={"file": ("notes.txt", PROSE)})
-    assert response.status_code == 415
+    for name in ("notes.docx", "noext"):
+        response = client.post("/api/datasets/staged", files={"file": (name, PROSE)})
+        assert response.status_code == 415, name
     detail = response.json()["detail"]
     assert ".csv" in detail and ".xlsx" in detail and ".json" in detail
     assert client.app.state.storage.staged_dir.exists()  # type: ignore[attr-defined]
@@ -170,12 +173,15 @@ def test_unknown_extension_is_415_listing_supported_kinds(client: TestClient) ->
 
 def test_unknown_extension_with_an_explicit_kind_is_accepted(client: TestClient) -> None:
     response = client.post(
-        "/api/datasets/staged?kind=csv", files={"file": ("export.txt", b"a;b\n1;2\n")}
+        "/api/datasets/staged?kind=csv", files={"file": ("export.dat", b"a;b\n1;2\n")}
     )
     assert response.status_code == 201, response.text
     staged = response.json()
     assert staged["kind"] == "csv"
-    job = import_job(client, stagedId=staged["stagedId"], kind="csv")
+    # The kind chosen at staging is remembered: preview and import don't repeat it.
+    preview = client.post("/api/datasets/preview", json={"stagedId": staged["stagedId"]})
+    assert preview.status_code == 200, preview.text
+    job = import_job(client, stagedId=staged["stagedId"])
     assert job.status == "succeeded"
     dataset = client.get(f"/api/datasets/{job.result.dataset_id}").json()
     assert [c["name"] for c in dataset["versions"][0]["columns"]] == ["a", "b"]

@@ -6,7 +6,9 @@ option change -> POST /datasets/import (202 Job) -> follow /jobs/{id}/events.
 
 from __future__ import annotations
 
+import contextlib
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -37,12 +39,11 @@ from viz.contracts import (
     new_id,
 )
 from viz.engine import ipc_bytes, run_cancellable
-from viz.errors import ConflictError, InvalidSpecError, NotFoundError
+from viz.errors import ConflictError, InvalidSpecError, NotFoundError, UnsupportedFormatError
 from viz.ingest import catalog, readers
 from viz.ingest.jobs import ImportParams, RefreshParams, dataset_key
-from viz.ingest.preview import finish_staging, preview, resolve_input
+from viz.ingest.preview import finish_staging, preview, resolve_input, staged_kind
 from viz.ingest.rows import column_values, rows_key, rows_page
-from viz.ingest.staging import staged_in_use
 from viz.ingest.upload import UPLOAD_OPENAPI, receive_upload, upload_openapi
 from viz.ingest.views import RowViews
 from viz.jobs import JobRunner
@@ -132,7 +133,8 @@ async def stage_file(
 ) -> StagedFile:
     """Upload a file (multipart field `file`) for preview and import. The body is streamed to
     disk; files over `max_upload_mb` are refused from `Content-Length` before reading.
-    Unknown extensions are 415 unless `kind` is given."""
+    Unknown extensions (and files without one) are 415 unless `kind` is given; `.txt` is
+    read as CSV. A `kind` given here is remembered, so preview and import needn't repeat it."""
 
     def accept(name: str) -> None:
         readers.detect_kind(name, kind)
@@ -144,7 +146,7 @@ async def stage_file(
 @router.delete("/staged/{staged_id}", status_code=204)
 def delete_staged(staged_id: str, storage: StorageDep) -> Response:
     """Delete an upload. 409 while an import or refresh is still reading it."""
-    if staged_in_use(staged_id):
+    if storage.staged_in_use(staged_id):
         raise ConflictError(
             "an import is still reading this upload; delete it after the import finishes"
         )
@@ -171,7 +173,8 @@ def submit_import(
 ) -> Job:
     """Validate the source now (404/415 before any job starts), then queue the import."""
     source = resolve_input(storage, settings, body.staged_id, body.path)
-    kind = readers.sniff_kind(source, body.kind or readers.detect_kind(source.name))
+    chosen = body.kind or staged_kind(storage, body.staged_id)
+    kind = readers.sniff_kind(source, chosen or readers.detect_kind(source.name))
     if body.options.column_types:
         for type_name in body.options.column_types.values():
             readers.normalize_type(type_name)
@@ -186,8 +189,20 @@ def submit_import(
         options=body.options,
     )
     return jobs.submit(
-        JobKind.IMPORT, params, title=f"Import {name}", dedupe_key=dataset_key(dataset_id)
+        JobKind.IMPORT,
+        params,
+        title=f"Import {name}",
+        dedupe_key=dataset_key(dataset_id),
+        on_done=_hold_staged(storage, body.staged_id),
     )
+
+
+def _hold_staged(storage: LocalStorage, staged_id: str | None) -> Callable[[], None] | None:
+    """Mark a staged upload in use now (queued jobs count) and return the release callback."""
+    if staged_id is None:
+        return None
+    storage.acquire_staged(staged_id)
+    return lambda: storage.release_staged(staged_id)
 
 
 @router.post("/import", response_model=Job, status_code=202)
@@ -212,16 +227,29 @@ def refresh_dataset(
             raise ConflictError(
                 "this dataset was uploaded, so there's no original file to re-read; upload it again"
             )
-        if body.staged_id is not None and storage.find_staged(body.staged_id) is None:
-            raise NotFoundError("the uploaded file has expired; upload it again")
+        kind: SourceKind | None = None
+        if body.staged_id is not None:
+            staged = storage.find_staged(body.staged_id)
+            if staged is None:
+                raise NotFoundError("the uploaded file has expired; upload it again")
+            # The kind picked at upload, else the extension, else the dataset's own kind;
+            # checked now so a mismatch is a 415 here, not a failed job.
+            kind = staged_kind(storage, body.staged_id)
+            if kind is None:
+                try:
+                    kind = readers.detect_kind(staged.name)
+                except UnsupportedFormatError:
+                    kind = dataset.source.kind
+            kind = readers.sniff_kind(staged, kind)
         params = RefreshParams(
-            dataset_id=dataset_id, staged_id=body.staged_id, options=body.options
+            dataset_id=dataset_id, staged_id=body.staged_id, options=body.options, kind=kind
         )
         return jobs.submit(
             JobKind.REFRESH,
             params,
             title=f"Refresh {dataset.name}",
             dedupe_key=dataset_key(dataset_id),
+            on_done=_hold_staged(storage, body.staged_id),
         )
 
 
@@ -266,7 +294,8 @@ async def upload_dataset(
         # One-shot endpoint: nobody else knows the staged id, so drop it when done.
         return await run_sync(_wait_for_dataset, jobs, job, db)
     finally:
-        storage.delete_staged(upload.staged_id)
+        with contextlib.suppress(ConflictError):  # a transient lock mustn't mask the result
+            storage.delete_staged(upload.staged_id)
 
 
 @router.post("/import-path", response_model=Dataset, status_code=201)

@@ -145,9 +145,10 @@ def replaced_warning(count: int) -> str:
 
 
 # Read as UTF-8 with replacement only if invalid sequences are at most this share of the
-# valid multi-byte characters; otherwise the file is more likely cp1252 (where an accent
-# byte pair can accidentally look like one UTF-8 character, e.g. "Ã©").
-MAX_INVALID_SHARE = 0.02
+# valid multi-byte characters. A UTF-8 file with a few stray bytes is far below it;
+# cp1252 text, where an accent byte pair only sometimes looks like one UTF-8 character
+# ("Ã©"), sits around 200%.
+MAX_INVALID_SHARE = 0.15
 
 
 @dataclass(frozen=True)
@@ -174,7 +175,7 @@ def choose_encoding(
     - an explicit non-UTF-8 encoding is used as given;
     - a UTF-16 BOM means UTF-16;
     - clean UTF-8 is read as is;
-    - mostly-UTF-8 text (invalid sequences at most `MAX_INVALID_SHARE`, 2%, of the decoded
+    - mostly-UTF-8 text (invalid sequences at most `MAX_INVALID_SHARE`, 15%, of the decoded
       multi-byte characters) or an explicit "utf-8" is transcoded as UTF-8 with the bad
       bytes replaced, and a warning counts them;
     - anything else is read as cp1252.
@@ -278,6 +279,9 @@ def _prepare(
     options: ImportOptions,
     progress: Progress,
 ) -> PreparedSource:
+    if kind is None and staged_id is not None:
+        staged_kind = storage.staged_kind(staged_id)
+        kind = SourceKind(staged_kind) if staged_kind else None
     resolved_kind = readers.sniff_kind(original, kind or readers.detect_kind(original.name))
     size = original.stat().st_size
 
@@ -440,14 +444,47 @@ def write_version(
     )
 
 
-def shape_warnings(kind: SourceKind, columns: list[Column], rows: int) -> list[str]:
-    """Hints for text that probably isn't a table (e.g. prose read as a CSV)."""
-    if kind in (SourceKind.CSV, SourceKind.TSV) and len(columns) == 1 and rows == 0:
+# A single text column whose median cell is longer than this looks like prose, not a table.
+PROSE_MEDIAN_CHARS = 80
+PROSE_MIN_ROWS = 3
+
+
+def shape_warnings(
+    kind: SourceKind, columns: list[Column], rows: int, median_length: float | None = None
+) -> list[str]:
+    """Hints (never errors) for text that probably isn't a table, e.g. prose read as a CSV:
+    one column and no rows, or one column of more than a few rows of long text (no
+    delimiter was found)."""
+    if kind not in (SourceKind.CSV, SourceKind.TSV) or len(columns) != 1:
+        return []
+    label = kind.value.upper()
+    if rows == 0:
         return [
             "The file was read as one column with no rows, so it may not be a "
-            f"{kind.value.upper()} file. Check the delimiter and header options."
+            f"{label} file. Check the delimiter and header options."
+        ]
+    if rows > PROSE_MIN_ROWS and median_length is not None and median_length > PROSE_MEDIAN_CHARS:
+        return [
+            f"The file was read as one column of long text (no delimiter found), so it may not "
+            f"be a {label} file. Check the delimiter and header options."
         ]
     return []
+
+
+def median_text_length(
+    cur: duckdb.DuckDBPyConnection, parquet: Path, column: Column
+) -> float | None:
+    """Median character length of a single text column (for `shape_warnings`)."""
+    if not column.type.upper().startswith("VARCHAR"):
+        return None
+    sql = exp.select(
+        exp.Anonymous(
+            this="median",
+            expressions=[exp.Length(this=exp.column(column.name, quoted=True))],
+        )
+    ).from_(exp.Anonymous(this="read_parquet", expressions=[exp.Literal.string(str(parquet))]))
+    value = cur.sql(sql.sql(dialect="duckdb")).fetchall()[0][0]
+    return None if value is None else float(value)
 
 
 def schema_changes(before: list[Column], after: list[Column]) -> list[str]:

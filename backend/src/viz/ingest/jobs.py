@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from viz.contracts import (
     Dataset,
     DatasetSource,
+    DatasetVersion,
     ImportOptions,
     JobKind,
     JobResult,
@@ -17,16 +19,17 @@ from viz.contracts import (
 from viz.errors import NotFoundError
 from viz.ingest import catalog
 from viz.ingest.importer import (
+    PROSE_MIN_ROWS,
     PreparedSource,
     Progress,
     finish_source,
+    median_text_length,
     prepare_source,
     rollback_source,
     schema_changes,
     shape_warnings,
     write_version,
 )
-from viz.ingest.staging import using_staged
 from viz.jobs import JobContext, job_handler, job_result
 
 
@@ -45,6 +48,8 @@ class RefreshParams(BaseModel):
     staged_id: str | None = None
     # None reuses the current version's options.
     options: ImportOptions | None = None
+    # Kind of a re-upload (resolved at submit); None re-reads with the dataset's kind.
+    kind: SourceKind | None = None
 
 
 def dataset_key(dataset_id: str) -> str:
@@ -59,16 +64,31 @@ def _progress(ctx: JobContext) -> Progress:
     return report
 
 
+# The staged upload is marked in use from submit until the job ends (`on_done` releases it,
+# see `api/datasets.py`), so queued jobs are protected from DELETE and the expiry sweep too.
+
+
 @job_handler(JobKind.IMPORT, ImportParams)
 def run_import(ctx: JobContext, params: ImportParams) -> JobResult:
-    with using_staged(params.staged_id):
-        return _import(ctx, params)
+    if params.staged_id is not None:
+        ctx.storage.touch_staged(params.staged_id)
+    return _import(ctx, params)
 
 
 @job_handler(JobKind.REFRESH, RefreshParams)
 def run_refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
-    with using_staged(params.staged_id):
-        return _refresh(ctx, params)
+    if params.staged_id is not None:
+        ctx.storage.touch_staged(params.staged_id)
+    return _refresh(ctx, params)
+
+
+def _shape(cur: Any, ctx: JobContext, kind: SourceKind, version: DatasetVersion) -> list[str]:
+    median = None
+    if len(version.columns) == 1 and version.row_count > PROSE_MIN_ROWS:
+        median = median_text_length(
+            cur, ctx.storage.resolve(version.parquet_path), version.columns[0]
+        )
+    return shape_warnings(kind, version.columns, version.row_count, median)
 
 
 def _import(ctx: JobContext, params: ImportParams) -> JobResult:
@@ -90,7 +110,7 @@ def _import(ctx: JobContext, params: ImportParams) -> JobResult:
         ctx.progress(0.3, "Converting to Parquet")
         with ctx.cursor(progress=(0.3, 0.9)) as cur:
             version = write_version(cur, ctx.storage, source, params.dataset_id, 1)
-        source.warnings.extend(shape_warnings(source.kind, version.columns, version.row_count))
+            source.warnings.extend(_shape(cur, ctx, source.kind, version))
         ctx.progress(0.95, "Saving")
         original = str(Path(params.path).expanduser().resolve()) if params.path else None
         dataset = Dataset(
@@ -139,16 +159,16 @@ def _refresh(ctx: JobContext, params: RefreshParams) -> JobResult:
             dataset.id,
             staged_id=params.staged_id,
             path=path,
-            kind=dataset.source.kind if params.staged_id is None else None,
+            kind=dataset.source.kind if params.staged_id is None else params.kind,
             options=options,
             progress=_progress(ctx),
         )
         ctx.progress(0.3, "Converting to Parquet")
         with ctx.cursor(progress=(0.3, 0.9)) as cur:
             version = write_version(cur, ctx.storage, source, dataset.id, number)
+            shape = _shape(cur, ctx, source.kind, version)
         ctx.progress(0.95, "Saving")
-        warnings = list(source.warnings)
-        warnings += shape_warnings(source.kind, version.columns, version.row_count)
+        warnings = list(source.warnings) + shape
         if dataset.versions:
             warnings += schema_changes(dataset.current().columns, version.columns)
         ctx.check_cancelled()

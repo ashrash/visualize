@@ -422,6 +422,12 @@ class Engine:
                 if previous is not None and not same_request:
                     self._cancel_locked(previous, "superseded")
             self._live.add(entry)
+            if key is not None and key.startswith("job:"):
+                # Jobs share the background instance with grid-view builds, which are only a
+                # cache: stop any running build so it doesn't slow the job (or dashboards).
+                for other in self._live:
+                    if other.key is not None and other.key.startswith("view:"):
+                        self._cancel_locked(other, "yielded")
         return entry
 
     def _attach(self, entry: _Entry, background: bool, timeout_s: float | None) -> None:
@@ -553,17 +559,26 @@ class Engine:
         with self._lock:
             return sum(1 for e in self._live if e.interactive)
 
-    def wait_interactive_idle(self, quiet_s: float = 0.3, max_wait_s: float = 10.0) -> None:
-        """Block until no interactive query has run for `quiet_s` (or `max_wait_s` passes).
-        Background work that can wait (grid-view builds) calls this before starting."""
+    def active_jobs(self) -> int:
+        """Cursors of running jobs (keys `job:<id>`)."""
+        with self._lock:
+            return sum(1 for e in self._live if e.key is not None and e.key.startswith("job:"))
+
+    def wait_interactive_idle(
+        self, quiet_s: float = 0.3, max_wait_s: float = 10.0, *, no_jobs: bool = False
+    ) -> bool:
+        """Block until no interactive query (and with `no_jobs`, no job) has run for `quiet_s`.
+        Returns False if that didn't happen within `max_wait_s`. Background work that can
+        wait (grid-view builds) calls this before starting."""
         deadline = time.monotonic() + max_wait_s
         quiet_since = time.monotonic()
         while time.monotonic() < deadline and not self._closed.is_set():
-            if self.active_interactive():
+            if self.active_interactive() or (no_jobs and self.active_jobs()):
                 quiet_since = time.monotonic()
             elif time.monotonic() - quiet_since >= quiet_s:
-                return
+                return True
             time.sleep(0.02)
+        return False
 
     # -- queries ------------------------------------------------------------------------
 
