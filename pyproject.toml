@@ -55,7 +55,7 @@ artifacts = ["backend/src/viz/static/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
-addopts = "-ra"
+addopts = "-ra --import-mode=importlib"
 
 [tool.ruff]
 line-length = 100

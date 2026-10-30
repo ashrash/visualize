@@ -9,7 +9,7 @@ A web-based data visualization and analysis tool. Python does the heavy lifting 
 
 Anything not in these files is out of scope until the user confirms it.
 
-**Status (2026-10-30):** Phase 0 is done and verified on Windows; macOS is not verified yet. Wave 1 is next. Per-feature progress is in [docs/STATUS.md](docs/STATUS.md). Keep this file accurate when a decision changes.
+**Status (2026-10-30):** Phase 0 is done and verified on Windows; macOS is not verified yet. Wave 1 is in progress. Per-feature progress is in [docs/STATUS.md](docs/STATUS.md). Keep this file accurate when a decision changes.
 
 ---
 
@@ -257,6 +257,8 @@ Agent definitions live in `.claude/agents/`. Each file sets that agent's model, 
 - **Builders** run as subagents, each in its own git worktree, and commit only to their worktree branch. **Worktrees branch from the default branch**, so the lead merges finished work into `main` before starting any agent that depends on it.
 - **Review.** Every branch goes through `reviewer` before the lead merges it. The lead then runs the full test suite and updates `docs/STATUS.md` from the agent's report.
 - **Concurrency.** Run at most 6 builders at once, plus the reviewer and the lead. If reviews or merges back up, drop to 4.
+- **If the agent types aren't loaded** (a session that started before `.claude/agents/` existed), run each builder as a `general-purpose` subagent with the model, effort and worktree isolation from its file, and tell it to read its `.claude/agents/<name>.md` as its brief.
+- **Plans** that rule 4 asks for go in `docs/plans/<agent>.md`, committed on the agent's branch, so the worktree survives until the lead continues the agent.
 
 | Agent | Model · effort | Owns (write access) | Scope |
 |---|---|---|---|
