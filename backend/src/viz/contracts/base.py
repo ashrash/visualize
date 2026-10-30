@@ -39,6 +39,14 @@ class SourceRef(Contract):
     id: str
 
 
+class SortKey(Contract):
+    """One sort key, shared by the sort step, grid rows, pipeline previews and exports."""
+
+    field: str
+    descending: bool = False
+    nulls_last: bool = True
+
+
 class AggFn(StrEnum):
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"

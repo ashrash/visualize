@@ -715,6 +715,54 @@
             "type": "boolean",
             "title": "Grid",
             "default": true
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "start",
+                  "end"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "inverse": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inverse"
+          },
+          "tickRotate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tickrotate"
+          },
+          "logBase": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logbase"
           }
         },
         "additionalProperties": false,
@@ -891,6 +939,24 @@
           },
           "viewport": {
             "$ref": "#/components/schemas/Viewport"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "slot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot"
           }
         },
         "additionalProperties": false,
@@ -1126,6 +1192,95 @@
               }
             ],
             "title": "Templateid"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/SeriesStyle"
+            },
+            "type": "array",
+            "title": "Series"
+          },
+          "trendlines": {
+            "items": {
+              "$ref": "#/components/schemas/Trendline"
+            },
+            "type": "array",
+            "title": "Trendlines"
+          },
+          "errorBars": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBars"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tooltip": {
+            "$ref": "#/components/schemas/TooltipStyle"
+          },
+          "fontFamily": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fontfamily"
+          },
+          "fontSize": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fontsize"
+          },
+          "smooth": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smooth"
+          },
+          "areaOpacity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Areaopacity"
+          },
+          "labelPosition": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "inside",
+                  "outside",
+                  "top",
+                  "end"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelposition"
           }
         },
         "additionalProperties": false,
@@ -1462,6 +1617,38 @@
             "type": "string",
             "format": "date-time",
             "title": "Importedat"
+          },
+          "sourcePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepath"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizebytes"
           }
         },
         "additionalProperties": false,
@@ -1697,6 +1884,40 @@
           "value"
         ],
         "title": "EqPredicate"
+      },
+      "ErrorBars": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sd",
+              "se",
+              "ci",
+              "fixed"
+            ],
+            "title": "Kind",
+            "default": "sd"
+          },
+          "level": {
+            "type": "number",
+            "title": "Level",
+            "default": 0.95
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ErrorBars"
       },
       "Fill": {
         "properties": {
@@ -2131,6 +2352,132 @@
               }
             ],
             "title": "Headerrow"
+          },
+          "skipRows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skiprows"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote"
+          },
+          "escape": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escape"
+          },
+          "decimalSeparator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decimalseparator"
+          },
+          "nullStrings": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nullstrings"
+          },
+          "dateFormat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dateformat"
+          },
+          "timestampFormat": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestampformat"
+          },
+          "columnTypes": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columntypes"
+          },
+          "allVarchar": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allvarchar"
+          },
+          "jsonFormat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JsonFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "jsonPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jsonpath"
           }
         },
         "additionalProperties": false,
@@ -2351,6 +2698,15 @@
           "on"
         ],
         "title": "JoinStep"
+      },
+      "JsonFormat": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "array",
+          "newline_delimited"
+        ],
+        "title": "JsonFormat"
       },
       "JsonValue": {},
       "KpiWidget": {
@@ -3226,6 +3582,92 @@
         ],
         "title": "SelectStep"
       },
+      "SeriesStyle": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "yAxis": {
+            "type": "integer",
+            "title": "Yaxis",
+            "default": 0
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "bar",
+                  "line",
+                  "area",
+                  "scatter"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "marker": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marker"
+          },
+          "lineWidth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linewidth"
+          },
+          "lineStyle": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "solid",
+                  "dashed",
+                  "dotted"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linestyle"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index"
+        ],
+        "title": "SeriesStyle",
+        "description": "Per-series overrides, keyed by index into the y channel."
+      },
       "SortKey": {
         "properties": {
           "field": {
@@ -3248,7 +3690,8 @@
         "required": [
           "field"
         ],
-        "title": "SortKey"
+        "title": "SortKey",
+        "description": "One sort key, shared by the sort step, grid rows, pipeline previews and exports."
       },
       "SortStep": {
         "properties": {
@@ -3412,6 +3855,111 @@
           "minute"
         ],
         "title": "TimeUnit"
+      },
+      "TooltipStyle": {
+        "properties": {
+          "show": {
+            "type": "boolean",
+            "title": "Show",
+            "default": true
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "axis",
+                  "item"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TooltipStyle"
+      },
+      "Trendline": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TrendlineKind",
+            "default": "linear"
+          },
+          "series": {
+            "type": "integer",
+            "title": "Series",
+            "default": 0
+          },
+          "degree": {
+            "type": "integer",
+            "title": "Degree",
+            "default": 2
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          },
+          "ciLevel": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cilevel"
+          },
+          "showEquation": {
+            "type": "boolean",
+            "title": "Showequation",
+            "default": false
+          },
+          "showR2": {
+            "type": "boolean",
+            "title": "Showr2",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Trendline",
+        "description": "A server-computed overlay fitted to one y series."
+      },
+      "TrendlineKind": {
+        "type": "string",
+        "enum": [
+          "linear",
+          "polynomial",
+          "exponential",
+          "logarithmic",
+          "power",
+          "loess",
+          "moving_average"
+        ],
+        "title": "TrendlineKind"
       },
       "UnionStep": {
         "properties": {
@@ -3651,6 +4199,59 @@
             },
             "title": "Warnings",
             "type": "array"
+          },
+          "rowsMatched": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rowsmatched"
+          },
+          "params": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "xDomain": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xdomain"
           }
         },
         "required": [
@@ -3661,9 +4262,754 @@
           "fields",
           "cached",
           "ms",
-          "warnings"
+          "warnings",
+          "rowsMatched",
+          "params",
+          "xDomain"
         ],
         "title": "ChartDataMeta",
+        "type": "object"
+      },
+      "ChartStatResponse": {
+        "additionalProperties": false,
+        "description": "JSON body of /api/charts/data for plots that use a stat transform. Server-produced.",
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/StatResult"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ChartDataMeta"
+          }
+        },
+        "required": [
+          "result",
+          "meta"
+        ],
+        "title": "ChartStatResponse",
+        "type": "object"
+      },
+      "ExportFile": {
+        "additionalProperties": false,
+        "description": "Server-produced.",
+        "properties": {
+          "exportId": {
+            "title": "Exportid",
+            "type": "string"
+          },
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "sizeBytes": {
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "rowCount": {
+            "title": "Rowcount",
+            "type": "integer"
+          },
+          "downloadUrl": {
+            "title": "Downloadurl",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exportId",
+          "fileName",
+          "format",
+          "sizeBytes",
+          "rowCount",
+          "downloadUrl",
+          "expiresAt"
+        ],
+        "title": "ExportFile",
+        "type": "object"
+      },
+      "ExportFormat": {
+        "enum": [
+          "csv",
+          "xlsx"
+        ],
+        "title": "ExportFormat",
+        "type": "string"
+      },
+      "ExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          },
+          "filters": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "title": "Sort",
+            "type": "array"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Columns"
+          },
+          "fileName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Filename"
+          },
+          "delimiter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delimiter"
+          }
+        },
+        "required": [
+          "source",
+          "format"
+        ],
+        "title": "ExportRequest",
+        "type": "object"
+      },
+      "FormulaFunction": {
+        "additionalProperties": false,
+        "description": "Server-produced; feeds formula autocomplete.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "math",
+              "string",
+              "date",
+              "conditional",
+              "null",
+              "type"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "signature": {
+            "title": "Signature",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "signature",
+          "description"
+        ],
+        "title": "FormulaFunction",
+        "type": "object"
+      },
+      "ImportPreviewMeta": {
+        "additionalProperties": false,
+        "description": "Arrow metadata of a preview response. Server-produced.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "detected": {
+            "$ref": "#/components/schemas/ImportOptions"
+          },
+          "sheets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sheets",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/Column"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "rowsShown": {
+            "title": "Rowsshown",
+            "type": "integer"
+          },
+          "estimatedRows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedrows"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "detected",
+          "sheets",
+          "columns",
+          "rowsShown",
+          "estimatedRows",
+          "warnings"
+        ],
+        "title": "ImportPreviewMeta",
+        "type": "object"
+      },
+      "Job": {
+        "additionalProperties": false,
+        "description": "Server-produced. Each SSE event carries a full snapshot.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "status",
+          "progress",
+          "message",
+          "seq",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "error",
+          "result"
+        ],
+        "title": "Job",
+        "type": "object"
+      },
+      "JobKind": {
+        "enum": [
+          "import",
+          "refresh",
+          "materialize",
+          "export"
+        ],
+        "title": "JobKind",
+        "type": "string"
+      },
+      "JobResult": {
+        "additionalProperties": false,
+        "description": "Server-produced.",
+        "properties": {
+          "datasetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datasetid"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "pipelineId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipelineid"
+          },
+          "export": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportFile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "datasetId",
+          "version",
+          "pipelineId",
+          "export",
+          "warnings"
+        ],
+        "title": "JobResult",
+        "type": "object"
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "OverlayResult": {
+        "additionalProperties": false,
+        "description": "A server-computed trendline or regression fit, with an optional band. Server-produced.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TrendlineKind"
+          },
+          "series": {
+            "title": "Series",
+            "type": "integer"
+          },
+          "x": {
+            "items": {
+              "type": "number"
+            },
+            "title": "X",
+            "type": "array"
+          },
+          "y": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Y",
+            "type": "array"
+          },
+          "lo": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lo"
+          },
+          "hi": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hi"
+          },
+          "equation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equation"
+          },
+          "r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R2"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "sampled": {
+            "title": "Sampled",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "series",
+          "x",
+          "y",
+          "lo",
+          "hi",
+          "equation",
+          "r2",
+          "n",
+          "sampled",
+          "warnings"
+        ],
+        "title": "OverlayResult",
+        "type": "object"
+      },
+      "PipelinePreviewMeta": {
+        "additionalProperties": false,
+        "description": "Server-produced; travels as viz.meta in the Arrow schema.",
+        "properties": {
+          "stepId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stepid"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "totalRows": {
+            "title": "Totalrows",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "ms": {
+            "title": "Ms",
+            "type": "number"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stepId",
+          "offset",
+          "limit",
+          "totalRows",
+          "columns",
+          "ms",
+          "warnings"
+        ],
+        "title": "PipelinePreviewMeta",
+        "type": "object"
+      },
+      "ProjectDuplicate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          }
+        },
+        "title": "ProjectDuplicate",
+        "type": "object"
+      },
+      "ProjectImportResult": {
+        "additionalProperties": false,
+        "description": "Server-produced only, so every field is required.",
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "datasetsImported": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Datasetsimported",
+            "type": "array"
+          },
+          "datasetsRemapped": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Datasetsremapped",
+            "type": "object"
+          },
+          "datasetsMissing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Datasetsmissing",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project",
+          "datasetsImported",
+          "datasetsRemapped",
+          "datasetsMissing",
+          "warnings"
+        ],
+        "title": "ProjectImportResult",
+        "type": "object"
+      },
+      "ProjectRename": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "revision"
+        ],
+        "title": "ProjectRename",
+        "type": "object"
+      },
+      "ProjectRestore": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "ProjectRestore",
         "type": "object"
       },
       "Reduction": {
@@ -3691,6 +5037,30 @@
           "totalRows": {
             "title": "Totalrows",
             "type": "integer"
+          },
+          "datasetRows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Datasetrows"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
           }
         },
         "required": [
@@ -3699,6 +5069,66 @@
           "totalRows"
         ],
         "title": "RowsPageMeta",
+        "type": "object"
+      },
+      "SchemaField": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "semantic": {
+            "$ref": "#/components/schemas/ColumnSemantic"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "semantic"
+        ],
+        "title": "SchemaField",
+        "type": "object"
+      },
+      "StagedFile": {
+        "additionalProperties": false,
+        "description": "An uploaded file waiting to be previewed and imported. Server-produced.",
+        "properties": {
+          "stagedId": {
+            "title": "Stagedid",
+            "type": "string"
+          },
+          "fileName": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind"
+          },
+          "sizeBytes": {
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "sheets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sheets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stagedId",
+          "fileName",
+          "kind",
+          "sizeBytes",
+          "sheets"
+        ],
+        "title": "StagedFile",
         "type": "object"
       },
       "StatResult": {

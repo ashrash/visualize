@@ -245,6 +245,14 @@ export interface components {
              * @default true
              */
             grid: boolean;
+            /** Position */
+            position?: ("start" | "end") | null;
+            /** Inverse */
+            inverse?: boolean | null;
+            /** Tickrotate */
+            tickRotate?: number | null;
+            /** Logbase */
+            logBase?: number | null;
         };
         /** Body_upload_dataset_api_datasets_upload_post */
         Body_upload_dataset_api_datasets_upload_post: {
@@ -313,6 +321,10 @@ export interface components {
             /** Filters */
             filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
             viewport?: components["schemas"]["Viewport"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Slot */
+            slot?: string | null;
         };
         /** ChartSpec */
         ChartSpec: {
@@ -381,6 +393,22 @@ export interface components {
             refLines?: components["schemas"]["RefLine"][];
             /** Templateid */
             templateId?: string | null;
+            /** Series */
+            series?: components["schemas"]["SeriesStyle"][];
+            /** Trendlines */
+            trendlines?: components["schemas"]["Trendline"][];
+            errorBars?: components["schemas"]["ErrorBars"] | null;
+            tooltip?: components["schemas"]["TooltipStyle"];
+            /** Fontfamily */
+            fontFamily?: string | null;
+            /** Fontsize */
+            fontSize?: number | null;
+            /** Smooth */
+            smooth?: boolean | null;
+            /** Areaopacity */
+            areaOpacity?: number | null;
+            /** Labelposition */
+            labelPosition?: ("auto" | "inside" | "outside" | "top" | "end") | null;
         };
         /**
          * ChartTemplate
@@ -504,6 +532,11 @@ export interface components {
              * Format: date-time
              */
             importedAt: string;
+            /** Sourcepath */
+            sourcePath?: string | null;
+            options?: components["schemas"]["ImportOptions"] | null;
+            /** Sizebytes */
+            sizeBytes?: number | null;
         };
         /** DedupeStep */
         DedupeStep: {
@@ -588,6 +621,22 @@ export interface components {
             field: string;
             /** Value */
             value: string | number | boolean | null;
+        };
+        /** ErrorBars */
+        ErrorBars: {
+            /**
+             * Kind
+             * @default sd
+             * @enum {string}
+             */
+            kind: "sd" | "se" | "ci" | "fixed";
+            /**
+             * Level
+             * @default 0.95
+             */
+            level: number;
+            /** Value */
+            value?: number | null;
         };
         /** Fill */
         Fill: {
@@ -755,6 +804,29 @@ export interface components {
             sheet?: string | null;
             /** Headerrow */
             headerRow?: number | null;
+            /** Skiprows */
+            skipRows?: number | null;
+            /** Quote */
+            quote?: string | null;
+            /** Escape */
+            escape?: string | null;
+            /** Decimalseparator */
+            decimalSeparator?: string | null;
+            /** Nullstrings */
+            nullStrings?: string[] | null;
+            /** Dateformat */
+            dateFormat?: string | null;
+            /** Timestampformat */
+            timestampFormat?: string | null;
+            /** Columntypes */
+            columnTypes?: {
+                [key: string]: string;
+            } | null;
+            /** Allvarchar */
+            allVarchar?: boolean | null;
+            jsonFormat?: components["schemas"]["JsonFormat"] | null;
+            /** Jsonpath */
+            jsonPath?: string | null;
         };
         /** InPredicate */
         InPredicate: {
@@ -856,6 +928,11 @@ export interface components {
              */
             suffix: string;
         };
+        /**
+         * JsonFormat
+         * @enum {string}
+         */
+        JsonFormat: "auto" | "array" | "newline_delimited";
         JsonValue: unknown;
         /** KpiWidget */
         KpiWidget: {
@@ -1169,7 +1246,33 @@ export interface components {
             /** Fields */
             fields: string[];
         };
-        /** SortKey */
+        /**
+         * SeriesStyle
+         * @description Per-series overrides, keyed by index into the y channel.
+         */
+        SeriesStyle: {
+            /** Index */
+            index: number;
+            /**
+             * Yaxis
+             * @default 0
+             */
+            yAxis: number;
+            /** Color */
+            color?: string | null;
+            /** Kind */
+            kind?: ("bar" | "line" | "area" | "scatter") | null;
+            /** Marker */
+            marker?: boolean | null;
+            /** Linewidth */
+            lineWidth?: number | null;
+            /** Linestyle */
+            lineStyle?: ("solid" | "dashed" | "dotted") | null;
+        };
+        /**
+         * SortKey
+         * @description One sort key, shared by the sort step, grid rows, pipeline previews and exports.
+         */
         SortKey: {
             /** Field */
             field: string;
@@ -1258,6 +1361,55 @@ export interface components {
          * @enum {string}
          */
         TimeUnit: "year" | "quarter" | "month" | "week" | "day" | "hour" | "minute";
+        /** TooltipStyle */
+        TooltipStyle: {
+            /**
+             * Show
+             * @default true
+             */
+            show: boolean;
+            /** Trigger */
+            trigger?: ("axis" | "item") | null;
+            /** Format */
+            format?: string | null;
+        };
+        /**
+         * Trendline
+         * @description A server-computed overlay fitted to one y series.
+         */
+        Trendline: {
+            /** @default linear */
+            kind: components["schemas"]["TrendlineKind"];
+            /**
+             * Series
+             * @default 0
+             */
+            series: number;
+            /**
+             * Degree
+             * @default 2
+             */
+            degree: number;
+            /** Window */
+            window?: number | null;
+            /** Cilevel */
+            ciLevel?: number | null;
+            /**
+             * Showequation
+             * @default false
+             */
+            showEquation: boolean;
+            /**
+             * Showr2
+             * @default false
+             */
+            showR2: boolean;
+        };
+        /**
+         * TrendlineKind
+         * @enum {string}
+         */
+        TrendlineKind: "linear" | "polynomial" | "exponential" | "logarithmic" | "power" | "loess" | "moving_average";
         /** UnionStep */
         UnionStep: {
             /** Id */
@@ -1372,6 +1524,257 @@ export interface components {
             ms: number;
             /** Warnings */
             warnings: string[];
+            /** Rowsmatched */
+            rowsMatched: number | null;
+            /** Params */
+            params: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Xdomain */
+            xDomain: [
+                number | string,
+                number | string
+            ] | null;
+        };
+        /**
+         * ChartStatResponse
+         * @description JSON body of /api/charts/data for plots that use a stat transform. Server-produced.
+         */
+        ChartStatResponse: {
+            result: components["schemas"]["StatResult"];
+            meta: components["schemas"]["ChartDataMeta"];
+        };
+        /**
+         * ExportFile
+         * @description Server-produced.
+         */
+        ExportFile: {
+            /** Exportid */
+            exportId: string;
+            /** Filename */
+            fileName: string;
+            format: components["schemas"]["ExportFormat"];
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Rowcount */
+            rowCount: number;
+            /** Downloadurl */
+            downloadUrl: string;
+            /**
+             * Expiresat
+             * Format: date-time
+             */
+            expiresAt: string;
+        };
+        /**
+         * ExportFormat
+         * @enum {string}
+         */
+        ExportFormat: "csv" | "xlsx";
+        /** ExportRequest */
+        ExportRequest: {
+            source: components["schemas"]["SourceRef"];
+            format: components["schemas"]["ExportFormat"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /**
+             * Version
+             * @default null
+             */
+            version: number | null;
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /**
+             * Columns
+             * @default null
+             */
+            columns: string[] | null;
+            /**
+             * Filename
+             * @default null
+             */
+            fileName: string | null;
+            /**
+             * Delimiter
+             * @default null
+             */
+            delimiter: string | null;
+        };
+        /**
+         * FormulaFunction
+         * @description Server-produced; feeds formula autocomplete.
+         */
+        FormulaFunction: {
+            /** Name */
+            name: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "math" | "string" | "date" | "conditional" | "null" | "type";
+            /** Signature */
+            signature: string;
+            /** Description */
+            description: string;
+        };
+        /**
+         * ImportPreviewMeta
+         * @description Arrow metadata of a preview response. Server-produced.
+         */
+        ImportPreviewMeta: {
+            kind: components["schemas"]["SourceKind"];
+            detected: components["schemas"]["ImportOptions"];
+            /** Sheets */
+            sheets: string[];
+            /** Columns */
+            columns: components["schemas"]["Column"][];
+            /** Rowsshown */
+            rowsShown: number;
+            /** Estimatedrows */
+            estimatedRows: number | null;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * Job
+         * @description Server-produced. Each SSE event carries a full snapshot.
+         */
+        Job: {
+            /** Id */
+            id: string;
+            kind: components["schemas"]["JobKind"];
+            /** Title */
+            title: string;
+            status: components["schemas"]["JobStatus"];
+            /** Progress */
+            progress: number | null;
+            /** Message */
+            message: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Startedat */
+            startedAt: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Error */
+            error: string | null;
+            result: components["schemas"]["JobResult"] | null;
+        };
+        /**
+         * JobKind
+         * @enum {string}
+         */
+        JobKind: "import" | "refresh" | "materialize" | "export";
+        /**
+         * JobResult
+         * @description Server-produced.
+         */
+        JobResult: {
+            /** Datasetid */
+            datasetId: string | null;
+            /** Version */
+            version: number | null;
+            /** Pipelineid */
+            pipelineId: string | null;
+            export: components["schemas"]["ExportFile"] | null;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * JobStatus
+         * @enum {string}
+         */
+        JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        /**
+         * OverlayResult
+         * @description A server-computed trendline or regression fit, with an optional band. Server-produced.
+         */
+        OverlayResult: {
+            kind: components["schemas"]["TrendlineKind"];
+            /** Series */
+            series: number;
+            /** X */
+            x: number[];
+            /** Y */
+            y: number[];
+            /** Lo */
+            lo: number[] | null;
+            /** Hi */
+            hi: number[] | null;
+            /** Equation */
+            equation: string | null;
+            /** R2 */
+            r2: number | null;
+            /** N */
+            n: number;
+            /** Sampled */
+            sampled: boolean;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * PipelinePreviewMeta
+         * @description Server-produced; travels as viz.meta in the Arrow schema.
+         */
+        PipelinePreviewMeta: {
+            /** Stepid */
+            stepId: string | null;
+            /** Offset */
+            offset: number;
+            /** Limit */
+            limit: number;
+            /** Totalrows */
+            totalRows: number;
+            /** Columns */
+            columns: components["schemas"]["SchemaField"][];
+            /** Ms */
+            ms: number;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** ProjectDuplicate */
+        ProjectDuplicate: {
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+        };
+        /**
+         * ProjectImportResult
+         * @description Server-produced only, so every field is required.
+         */
+        ProjectImportResult: {
+            project: components["schemas"]["Project"];
+            /** Datasetsimported */
+            datasetsImported: string[];
+            /** Datasetsremapped */
+            datasetsRemapped: {
+                [key: string]: string;
+            };
+            /** Datasetsmissing */
+            datasetsMissing: string[];
+            /** Warnings */
+            warnings: string[];
+        };
+        /** ProjectRename */
+        ProjectRename: {
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+        };
+        /** ProjectRestore */
+        ProjectRestore: {
+            /** Revision */
+            revision: number;
         };
         /**
          * Reduction
@@ -1386,6 +1789,39 @@ export interface components {
             limit: number;
             /** Totalrows */
             totalRows: number;
+            /**
+             * Datasetrows
+             * @default null
+             */
+            datasetRows: number | null;
+            /**
+             * Version
+             * @default null
+             */
+            version: number | null;
+        };
+        /** SchemaField */
+        SchemaField: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            semantic: components["schemas"]["ColumnSemantic"];
+        };
+        /**
+         * StagedFile
+         * @description An uploaded file waiting to be previewed and imported. Server-produced.
+         */
+        StagedFile: {
+            /** Stagedid */
+            stagedId: string;
+            /** Filename */
+            fileName: string;
+            kind: components["schemas"]["SourceKind"];
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Sheets */
+            sheets: string[];
         };
         /** StatResult */
         StatResult: {
