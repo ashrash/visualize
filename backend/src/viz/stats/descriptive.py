@@ -396,9 +396,10 @@ def _aggregate(
         v = _value(rel, name, kind)
         selects.append(alias(exp.Count(this=v), f"_{i}_count"))
         if kind == "numeric":
-            selects.append(alias(fn("max", fn("abs", v)), f"_{i}_absmax"))
-            if i not in skip_moments:
-                for stat, function in _MOMENTS:
+            # min and max never overflow, so they're computed even when moments are skipped;
+            # max|x| = max(|min|, |max|) decides whether the moments need rescaling.
+            for stat, function in _MOMENTS:
+                if i not in skip_moments or stat in ("min", "max"):
                     selects.append(alias(fn(function, v), f"_{i}_{stat}"))
         elif kind == "temporal":
             selects.append(alias(_text(fn("min", v)), f"_{i}_min"))
@@ -413,6 +414,10 @@ def _aggregate(
     rows: list[dict[str, Any]] = rel.arrow(query).to_pylist()
     for row in rows:
         row["_key"] = groups.key(row)
+        for i, name in enumerate(fields):
+            if kinds[name] == "numeric":
+                low, high = row[f"_{i}_min"], row[f"_{i}_max"]
+                row[f"_{i}_absmax"] = None if low is None else max(abs(low), abs(high))
     return rows
 
 
