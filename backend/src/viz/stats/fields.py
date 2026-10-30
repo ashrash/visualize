@@ -16,10 +16,10 @@ from typing import Any, Literal
 from sqlglot import exp
 
 from viz.chartdata.sql import predicate_sql
-from viz.contracts import ColumnSemantic, EqPredicate, Scalar
+from viz.contracts import Column, ColumnSemantic, EqPredicate, Scalar
 from viz.stats.errors import StatsInputError
 from viz.stats.relation import Relation, col
-from viz.stats.sql import fn, is_boolean, is_float
+from viz.stats.sql import alias, fn, is_boolean, is_float
 
 Kind = Literal["numeric", "temporal", "categorical", "boolean"]
 
@@ -162,6 +162,31 @@ def match_case(rel: Relation, name: str, values: Sequence[Scalar]) -> exp.Expr:
         )
         case = case.when(condition, exp.Literal.number(index))
     return case
+
+
+def derived(
+    rel: Relation,
+    columns: Sequence[tuple[str, exp.Expr, str, ColumnSemantic]],
+    condition: exp.Expr,
+) -> Relation:
+    """A Relation over computed columns (name, expression, DuckDB type, semantic) of `rel`.
+
+    Lets the column-based kernels (reservoir_sample, cap_groups) work on expressions.
+    """
+    query = rel.narrow(condition).select(*[alias(e.copy(), name) for name, e, _, _ in columns])
+    return Relation(
+        engine=rel.engine,
+        source=query,
+        where=None,
+        columns={
+            name: Column(name=name, type=t, semantic=s, null_count=0, approx_distinct=0)
+            for name, _, t, s in columns
+        },
+        row_count=None,
+        version_key=f"{rel.version_key}:derived",
+        query_key=rel.query_key,
+        generation=rel.generation,
+    )
 
 
 def check_distinct(names: Sequence[str | None], what: str) -> None:

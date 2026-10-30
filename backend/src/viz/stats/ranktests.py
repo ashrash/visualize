@@ -14,16 +14,16 @@ from __future__ import annotations
 
 import math
 import warnings as py_warnings
-from collections.abc import Sequence
 
 import numpy as np
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import Column, ColumnSemantic, Scalar, StatResult
+from viz.contracts import ColumnSemantic, Scalar, StatResult
 from viz.stats.errors import StatsInputError
 from viz.stats.fields import (
     check_distinct,
+    derived,
     field_kind,
     key_expr,
     key_value,
@@ -35,7 +35,7 @@ from viz.stats.models import RankSampleSummary, RankTestRequest, RankTestValues
 from viz.stats.relation import Relation
 from viz.stats.results import stat_result
 from viz.stats.sampling import DEFAULT_SEED, MODEL_CAP, reservoir_sample
-from viz.stats.sql import alias, num
+from viz.stats.sql import num
 
 _METHOD = {
     "mann_whitney": "Mann-Whitney U test",
@@ -46,27 +46,6 @@ _METHOD = {
 
 def _present(*exprs: exp.Expr) -> exp.Expr:
     return exp.and_(*[exp.Not(this=exp.Is(this=e.copy(), expression=exp.Null())) for e in exprs])
-
-
-def derived(
-    rel: Relation, columns: Sequence[tuple[str, exp.Expr, str, ColumnSemantic]],
-    condition: exp.Expr,
-) -> Relation:
-    """A Relation over computed columns (name, expression, DuckDB type, semantic) of `rel`."""
-    query = rel.narrow(condition).select(*[alias(e.copy(), name) for name, e, _, _ in columns])
-    return Relation(
-        engine=rel.engine,
-        source=query,
-        where=None,
-        columns={
-            name: Column(name=name, type=t, semantic=s, null_count=0, approx_distinct=0)
-            for name, _, t, s in columns
-        },
-        row_count=None,
-        version_key=f"{rel.version_key}:derived",
-        query_key=rel.query_key,
-        generation=rel.generation,
-    )
 
 
 def _validate(req: RankTestRequest) -> None:
