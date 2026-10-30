@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { featureOn } from "../../api/features";
 import { materializePipeline } from "../../api/pipelines";
 import type { Column, Dataset, Pipeline, StepSchema } from "../../api/types";
 import { Button } from "../../components/ui/button";
@@ -15,7 +14,7 @@ import { toast } from "../../components/ui/toast";
 import { useJobsStore } from "../../state/jobs";
 import { PipelinePreview } from "./PipelinePreview";
 import { StepForm } from "./StepForm";
-import { columnsAt } from "./schema";
+import { columnsAt, describeStepError } from "./schema";
 import { createStep, type PipelineAction, STEP_META, STEP_OPS, summarizeStep } from "./stepReducer";
 import { referencedPipelines, usePipelineInspect } from "./usePipelineApi";
 
@@ -34,8 +33,9 @@ export function PipelineEditor({
   dispatch: (action: PipelineAction) => void;
 }) {
   const steps = pipeline.steps ?? [];
-  const api = featureOn("pipelineApi");
-  const inspect = usePipelineInspect(pipeline, pipelines).data ?? null;
+  const inspectQuery = usePipelineInspect(pipeline, pipelines);
+  const inspect = inspectQuery.data ?? null;
+  const checking = inspectQuery.isPlaceholderData || inspectQuery.isFetching;
   const schemaOf = (id: string): StepSchema | undefined =>
     inspect?.steps.find((s) => s.stepId === id);
   const queryClient = useQueryClient();
@@ -182,7 +182,14 @@ export function PipelineEditor({
                     <span className="block truncate text-xs text-muted">{summarizeStep(step)}</span>
                     {schemaOf(step.id)?.status === "error" ? (
                       <span className="block text-xs text-danger" data-step-status="error">
-                        {schemaOf(step.id)?.error?.message ?? "This step has an error"}
+                        {describeStepError(
+                          schemaOf(step.id)?.error ?? {
+                            message: "This step has an error",
+                            field: null,
+                            start: null,
+                            end: null,
+                          },
+                        )}
                       </span>
                     ) : null}
                     {schemaOf(step.id)?.status === "blocked" ? (
@@ -265,7 +272,7 @@ export function PipelineEditor({
               stepError={schemaOf(selected.id)?.error ?? null}
               onChange={(step) => dispatch({ type: "replace", step })}
             />
-            {api && (selected.op === "join" || selected.op === "pivot") ? (
+            {selected.op === "join" || selected.op === "pivot" ? (
               <div className="flex flex-wrap items-center gap-3 text-sm">
                 <label className="flex items-center gap-1.5">
                   <input
@@ -288,26 +295,19 @@ export function PipelineEditor({
                 ) : null}
               </div>
             ) : null}
-            {api ? (
-              <section aria-label="Preview" className="flex flex-col gap-1">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Preview after this step
-                </h4>
-                <PipelinePreview
-                  key={selected.id}
-                  pipeline={pipeline}
-                  pipelines={pipelines}
-                  stepId={selected.id}
-                />
-              </section>
-            ) : (
-              <div
-                role="note"
-                className="rounded-md border border-dashed border-line p-3 text-sm text-muted"
-              >
-                Preview after this step is coming soon.
-              </div>
-            )}
+            <section aria-label="Preview" className="flex flex-col gap-1">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Preview after this step
+              </h4>
+              <PipelinePreview
+                key={selected.id}
+                pipeline={pipeline}
+                pipelines={pipelines}
+                stepId={selected.id}
+                schema={schemaOf(selected.id)}
+                checking={checking}
+              />
+            </section>
           </>
         ) : (
           <p className="text-sm text-muted">Select or add a step to edit it.</p>

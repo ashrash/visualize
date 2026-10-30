@@ -1,19 +1,23 @@
 import { Copy, PanelRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ChartSpec, Column, Dataset } from "../api/types";
+import type { ChartSpec, Column } from "../api/types";
 import { ChartConfigPanel, ChartView, createChartSpec, getPlot } from "../charts";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import { Field, Input, Select } from "../components/ui/input";
 import { Tooltip } from "../components/ui/tooltip";
+import { fieldToColumn } from "../data/pipeline/schema";
+import { usePipelineInspect } from "../data/pipeline/usePipelineApi";
 import { useActiveDataset } from "../data/useActiveDataset";
 import { useProjectStore } from "../state/projectStore";
 import { useSelection } from "../state/selection";
 
-/** A first bar chart for a dataset: a low-cardinality category against a real measure. */
-function defaultBarChart(dataset: Dataset, columns: Column[]): ChartSpec {
+/** A first bar chart for some data: a low-cardinality category against a real measure. */
+function defaultBarChart(name: string, source: ChartSpec["source"], columns: Column[]): ChartSpec {
   const category =
-    columns.find((c) => c.semantic === "nominal" && c.approxDistinct <= 100) ?? columns[0];
+    columns.find((c) => c.semantic === "nominal" && c.approxDistinct <= 100) ??
+    columns.find((c) => c.semantic === "nominal") ??
+    columns[0];
   // Prefer a real measure over identifier columns such as order_id.
   const looksLikeId = (name: string) => /(^|[_\s-])id$/i.test(name);
   const measure = columns.find(
@@ -23,8 +27,8 @@ function defaultBarChart(dataset: Dataset, columns: Column[]): ChartSpec {
   if (!entry) throw new Error("The bar plot is not registered");
   return createChartSpec(entry, {
     id: crypto.randomUUID(),
-    name: `${dataset.name} chart`,
-    source: { kind: "dataset", id: dataset.id },
+    name: `${name} chart`,
+    source,
     encodings: {
       x: [{ field: category?.name ?? null }],
       y: [measure ? { field: measure.name, agg: "sum" } : { agg: "count" }],
@@ -49,16 +53,27 @@ export default function ChartsView() {
     charts.find((c) => c.source.id === dataset?.id) ??
     charts[0];
 
-  // Columns of the chart's own data: its dataset, or a pipeline's source dataset (the exact
-  // pipeline output columns come from the pipeline inspect endpoint, which the panel can't see).
+  // Columns of the chart's own data: a dataset's columns, or a pipeline's exact output columns
+  // from the inspect endpoint.
+  const chartPipeline =
+    chart?.source.kind === "pipeline" ? pipelines.find((p) => p.id === chart.source.id) : undefined;
+  const chartInspect = usePipelineInspect(chartPipeline, pipelines).data;
   const columns = useMemo(() => {
     if (!chart) return datasetColumns;
-    const datasetId =
-      chart.source.kind === "dataset"
-        ? chart.source.id
-        : pipelines.find((p) => p.id === chart.source.id)?.source.id;
-    return datasets.find((d) => d.id === datasetId)?.versions?.at(-1)?.columns ?? datasetColumns;
-  }, [chart, datasets, datasetColumns, pipelines]);
+    if (chart.source.kind === "pipeline") {
+      return chartInspect ? chartInspect.columns.map(fieldToColumn) : [];
+    }
+    return (
+      datasets.find((d) => d.id === chart.source.id)?.versions?.at(-1)?.columns ?? datasetColumns
+    );
+  }, [chart, chartInspect, datasets, datasetColumns]);
+
+  // What a new chart will draw: the active dataset, or any pipeline of the project.
+  const [sourceChoice, setSourceChoice] = useState<string | null>(null);
+  const choice = sourceChoice ?? (dataset ? `dataset:${dataset.id}` : "");
+  const [kind, sourceId] = choice.split(":") as ["dataset" | "pipeline", string];
+  const newPipeline = kind === "pipeline" ? pipelines.find((p) => p.id === sourceId) : undefined;
+  const newInspect = usePipelineInspect(newPipeline, pipelines).data;
 
   if (!dataset && charts.length === 0) {
     return (
@@ -71,12 +86,24 @@ export default function ChartsView() {
   const edit = (change: (charts: ChartSpec[]) => ChartSpec[]) =>
     update((p) => ({ ...p, charts: change(p.charts ?? []) }));
 
+  const canCreate =
+    kind === "pipeline"
+      ? newPipeline !== undefined && newInspect !== undefined
+      : dataset !== undefined;
   const create = () => {
-    if (!dataset) return;
-    const spec = defaultBarChart(dataset, datasetColumns);
+    let spec: ChartSpec;
+    if (kind === "pipeline" && newPipeline && newInspect) {
+      spec = defaultBarChart(
+        newPipeline.name,
+        { kind: "pipeline", id: newPipeline.id },
+        newInspect.columns.map(fieldToColumn),
+      );
+    } else if (dataset) {
+      spec = defaultBarChart(dataset.name, { kind: "dataset", id: dataset.id }, datasetColumns);
+    } else return;
     update((p) => ({
       ...p,
-      datasetIds: [...new Set([...(p.datasetIds ?? []), dataset.id])],
+      datasetIds: dataset ? [...new Set([...(p.datasetIds ?? []), dataset.id])] : p.datasetIds,
       charts: [...(p.charts ?? []), spec],
     }));
     selectChart(spec.id);
@@ -119,7 +146,23 @@ export default function ChartsView() {
             )}
           </Field>
         ) : null}
-        <Button variant="primary" onClick={create} disabled={!project || !dataset}>
+        <Field label="New chart from" className="w-56">
+          {(p) => (
+            <Select
+              {...p}
+              value={choice}
+              options={[
+                ...datasets.map((d) => ({ value: `dataset:${d.id}`, label: d.name })),
+                ...pipelines.map((x) => ({
+                  value: `pipeline:${x.id}`,
+                  label: `Pipeline: ${x.name}`,
+                })),
+              ]}
+              onChange={(e) => setSourceChoice(e.target.value)}
+            />
+          )}
+        </Field>
+        <Button variant="primary" onClick={create} disabled={!project || !canCreate}>
           <Plus size={14} aria-hidden="true" />
           New chart
         </Button>

@@ -87,20 +87,7 @@ describe("PipelineEditor", () => {
     });
   });
 
-  it("shows the preview placeholder", () => {
-    render(
-      <PipelineEditor
-        pipeline={pipelineWith("sort")}
-        sourceColumns={columns}
-        datasets={[]}
-        dispatch={vi.fn()}
-      />,
-    );
-    expect(screen.getByRole("note").textContent).toMatch(/Preview/);
-  });
-
-  it("shows server status and errors per step when the pipeline API is on", async () => {
-    localStorage.setItem("viz.features", JSON.stringify({ pipelineApi: true }));
+  it("shows server status, errors and formula ranges per step from the inspect endpoint", async () => {
     const pipeline = pipelineWith("sort", "dedupe");
     const [a, b] = pipeline.steps ?? [];
     const json = (body: unknown, status = 200) =>
@@ -110,8 +97,10 @@ describe("PipelineEditor", () => {
       });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string) =>
-        String(url).includes("/inspect")
+      vi.fn(async (input: RequestInfo | URL) =>
+        (typeof input === "string" ? input : "url" in input ? input.url : input.href).includes(
+          "/inspect",
+        )
           ? json({
               ok: false,
               sourceColumns: [],
@@ -123,7 +112,7 @@ describe("PipelineEditor", () => {
                   status: "error",
                   columns: [],
                   materialized: "none",
-                  error: { message: "boom", field: null, start: null, end: null },
+                  error: { message: "boom", field: "expression", start: 4, end: 9 },
                 },
                 {
                   stepId: b?.id,
@@ -145,7 +134,7 @@ describe("PipelineEditor", () => {
         dispatch={vi.fn()}
       />,
     );
-    await waitFor(() => expect(screen.getByText("boom")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("boom (characters 5-9)")).toBeTruthy());
     expect(screen.getByText("Blocked by an earlier step")).toBeTruthy();
   });
 });

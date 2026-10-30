@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { ApiError } from "../api/client";
 import { deleteStaged, getDataset, getJob } from "../api/datasets";
 import { followJob, isTerminal } from "../api/jobs";
 import type { Job } from "../api/types";
@@ -22,6 +23,7 @@ interface JobsState {
 }
 
 const settled = new Set<string>();
+const RETRY_DELETE_MS = 3000;
 
 // ---- which jobs this tab started -------------------------------------------------------------
 
@@ -57,6 +59,9 @@ function persistLocalJobs(): void {
 export function resetLocalJobs(): void {
   startedHere = null;
   inFlightStarts.clear();
+  startsByStaged.clear();
+  for (const poll of polls.values()) clearInterval(poll.timer);
+  polls.clear();
   stagedCleanup.clear();
   settled.clear();
 }
@@ -71,6 +76,8 @@ export function markLocalJob(jobId: string, projectId?: string): void {
 
 /** Starts that have been sent but whose job id is not known yet. */
 const inFlightStarts = new Set<Promise<unknown>>();
+/** The same, per staged upload: closing its wizard must wait for them. */
+const startsByStaged = new Map<string, Set<Promise<unknown>>>();
 
 /**
  * Start a job from this tab. The project is captured now and the job is recorded as local the
@@ -80,6 +87,7 @@ const inFlightStarts = new Set<Promise<unknown>>();
 export function startLocalJob(
   start: () => Promise<Job>,
   onStarted?: (job: Job) => void,
+  stagedId?: string,
 ): Promise<Job> {
   const project = useProjectStore.getState().project?.id;
   const run = start().then((job) => {
@@ -92,7 +100,12 @@ export function startLocalJob(
     () => undefined,
   );
   inFlightStarts.add(marker);
-  void marker.then(() => inFlightStarts.delete(marker));
+  if (stagedId)
+    startsByStaged.set(stagedId, (startsByStaged.get(stagedId) ?? new Set()).add(marker));
+  void marker.then(() => {
+    inFlightStarts.delete(marker);
+    if (stagedId) startsByStaged.get(stagedId)?.delete(marker);
+  });
   return run;
 }
 
@@ -142,14 +155,30 @@ export function addStagedJob(stagedId: string, job: Job): void {
 
 /** The wizard closed: from now on any terminal status may delete the upload. */
 export function closeStagedWizard(stagedId: string): void {
+  // An import request that is still in flight may be accepted by the server after the wizard
+  // closed (the user pressed Import): wait for it, register its job, then decide.
+  const starts = [...(startsByStaged.get(stagedId) ?? [])];
+  if (starts.length > 0) {
+    void Promise.allSettled(starts).then(() => closeStagedNow(stagedId));
+    return;
+  }
+  closeStagedNow(stagedId);
+}
+
+function closeStagedNow(stagedId: string): void {
   const entry = stagedCleanup.get(stagedId);
   if (!entry) return void deleteStagedQuietly(stagedId); // nothing was started from it
   entry.wizardOpen = false;
   maybeDeleteStaged(stagedId, entry);
 }
 
+/** Best effort: a busy upload (409) is retried once after a few seconds, then left to the sweep. */
 export function deleteStagedQuietly(stagedId: string): void {
-  void deleteStaged(stagedId).catch(() => undefined);
+  deleteStaged(stagedId).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 409) {
+      setTimeout(() => void deleteStaged(stagedId).catch(() => undefined), RETRY_DELETE_MS);
+    }
+  });
 }
 
 function recordStagedOutcome(
@@ -204,6 +233,9 @@ async function settleDataJob(job: Job): Promise<void> {
       } else {
         toast(`Imported "${dataset.name}" into the catalog`);
       }
+      // Decided: no reload should reconsider it.
+      localJobs().delete(job.id);
+      persistLocalJobs();
     }
   } catch (error) {
     toast("Couldn't load the imported dataset", {
@@ -216,48 +248,68 @@ async function settleDataJob(job: Job): Promise<void> {
 const POLL_MS = 2000;
 const GIVE_UP_AFTER = 3;
 
-export const useJobsStore = create<JobsState>((set, get) => {
-  const settle = (job: Job, onSettled?: (job: Job) => void) => {
-    if (!settled.has(job.id)) {
-      settled.add(job.id);
-      void settleDataJob(job);
-      jobSettledForCleanup(job);
-    }
-    onSettled?.(job);
-  };
+const settle = (job: Job, onSettled?: (job: Job) => void) => {
+  if (!settled.has(job.id)) {
+    settled.add(job.id);
+    void settleDataJob(job);
+    jobSettledForCleanup(job);
+  }
+  onSettled?.(job);
+};
 
-  /** The stream is gone: ask for the job until it is terminal (or cannot be found any more). */
-  const poll = (jobId: string, fallback: Job | null, onSettled?: (job: Job) => void) => {
-    let misses = 0;
-    let stopped = false;
-    const timer = setInterval(async () => {
+interface SharedPoll {
+  timer: ReturnType<typeof setInterval> | undefined;
+  listeners: Set<(job: Job) => void>;
+  misses: number;
+}
+/** One poll per job id, however many followers lost their stream. */
+const polls = new Map<string, SharedPoll>();
+
+/** The stream is gone: ask for the job until it is terminal (or cannot be found any more). */
+function joinPoll(jobId: string, fallback: Job | null, listener: (job: Job) => void): () => void {
+  let poll = polls.get(jobId);
+  if (!poll) {
+    const created: SharedPoll = { timer: undefined, listeners: new Set(), misses: 0 };
+    poll = created;
+    polls.set(jobId, created);
+    const finish = (job: Job) => {
+      clearInterval(created.timer);
+      polls.delete(jobId);
+      for (const l of [...created.listeners]) l(job);
+    };
+    created.timer = setInterval(async () => {
+      const store = useJobsStore.getState();
       try {
         const job = await getJob(jobId);
-        if (stopped) return;
-        misses = 0;
-        get().merge(job);
-        if (isTerminal(job.status)) {
-          clearInterval(timer);
-          settle(job, onSettled);
-        }
+        if (polls.get(jobId) !== created) return;
+        created.misses = 0;
+        store.merge(job);
+        if (isTerminal(job.status)) finish(job);
       } catch {
-        misses += 1;
-        if (stopped || misses < GIVE_UP_AFTER) return;
-        clearInterval(timer);
-        const known = get().jobs[jobId] ?? fallback;
+        created.misses += 1;
+        if (polls.get(jobId) !== created || created.misses < GIVE_UP_AFTER) return;
+        const known = store.jobs[jobId] ?? fallback;
         const failed: Job = known
           ? { ...known, status: "failed", error: "Lost connection to the job", seq: known.seq + 1 }
           : failedStub(jobId, "Lost connection to the job");
-        get().merge(failed);
-        settle(failed, onSettled);
+        store.merge(failed);
+        finish(failed);
       }
     }, POLL_MS);
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-    };
+  }
+  poll.listeners.add(listener);
+  return () => {
+    const current = polls.get(jobId);
+    if (!current) return;
+    current.listeners.delete(listener);
+    if (current.listeners.size === 0) {
+      clearInterval(current.timer);
+      polls.delete(jobId);
+    }
   };
+}
 
+export const useJobsStore = create<JobsState>((set, get) => {
   const follow = (
     jobId: string,
     fallback: Job | null,
@@ -270,7 +322,7 @@ export const useJobsStore = create<JobsState>((set, get) => {
         if (isTerminal(next.status)) settle(next, onSettled);
       },
       onError: () => {
-        stopPolling = poll(jobId, fallback, onSettled);
+        stopPolling = joinPoll(jobId, fallback, (job) => settle(job, onSettled));
       },
     });
     return () => {

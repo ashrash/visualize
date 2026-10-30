@@ -31,10 +31,6 @@ function mockFetch(response: Response) {
   vi.stubGlobal("fetch", fn);
   return fn;
 }
-const lastCall = (fn: ReturnType<typeof mockFetch>) => {
-  const [url, init] = fn.mock.calls.at(-1) ?? [];
-  return { url: String(url), init: init as RequestInit };
-};
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -186,21 +182,43 @@ describe("transform wrappers", () => {
       json({ ok: true, sourceColumns: [], steps: [], columns: [], sql: null }),
     );
     await inspectPipeline({ pipeline, pipelines: [], includeSql: false });
-    expect(lastCall(inspect).url).toBe("/api/pipelines/inspect");
-    expect(JSON.parse(String(lastCall(inspect).init.body)).pipeline.id).toBe("p");
+    const sentInspect = await call(inspect);
+    expect(sentInspect).toMatchObject({ url: "/api/pipelines/inspect", method: "POST" });
+    expect(JSON.parse(sentInspect.text).pipeline.id).toBe("p");
 
     const check = mockFetch(json({ ok: true, error: null, outputType: "DOUBLE", fields: [] }));
     await checkFormula({ expression: "a+1", pipeline, pipelines: [], beforeStepId: null });
-    expect(lastCall(check).url).toBe("/api/pipelines/formula/check");
+    expect((await call(check)).url).toBe("/api/pipelines/formula/check");
 
     const fns = mockFetch(
       json([{ name: "abs", category: "math", signature: "abs(x)", description: "" }]),
     );
     expect((await listFormulaFunctions())[0]?.name).toBe("abs");
-    expect(lastCall(fns).url).toBe("/api/pipelines/formula/functions");
+    expect(await call(fns)).toMatchObject({
+      url: "/api/pipelines/formula/functions",
+      method: "GET",
+    });
 
     const mat = mockFetch(json({ jobs: { s1: "j1" }, ready: [] }));
     expect((await materializePipeline({ pipeline, pipelines: [] })).jobs).toEqual({ s1: "j1" });
-    expect(lastCall(mat).url).toBe("/api/pipelines/materialize");
+    expect((await call(mat)).url).toBe("/api/pipelines/materialize");
+  });
+
+  it("shows calc-guard refusals as ordinary errors with the server's message", async () => {
+    mockFetch(
+      json({
+        ok: false,
+        error: { message: "an expression can't produce a list or struct", start: 0, end: 10 },
+        outputType: null,
+        fields: [],
+      }),
+    );
+    const result = await checkFormula({
+      expression: "[1, 2]",
+      pipeline,
+      pipelines: [],
+      beforeStepId: null,
+    });
+    expect(result.error?.message).toMatch(/can't produce a list or struct/);
   });
 });

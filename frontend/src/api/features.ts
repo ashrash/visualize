@@ -1,18 +1,15 @@
 /**
- * Feature flags for backend endpoints that are specified (types exist) but not merged yet.
- * Flip each to true when its backend lands. Each flag gates one slice of UI; when off, the old
- * behaviour (or a disabled control) stays. For local hand-testing against a backend branch,
- * override in the browser console: localStorage.setItem("viz.features", '{"stagedImport":true}').
+ * Feature flags for backend endpoints that are specified but not merged yet. Flip one to true
+ * when its backend lands, and delete the flag once the feature is simply on. For local
+ * hand-testing, override in the browser console:
+ * localStorage.setItem("viz.features", '{"platformProjects":false}').
  */
 export interface Features {
-  /** transform: inspect, preview, formula check/functions, materialize. */
-  pipelineApi: boolean;
   /** platform: rename, duplicate, delete, restore, version preview, .vizproj import/export. */
   platformProjects: boolean;
 }
 
 const DEFAULTS: Features = {
-  pipelineApi: false,
   platformProjects: true,
 };
 

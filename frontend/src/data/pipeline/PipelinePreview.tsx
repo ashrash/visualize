@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { previewPipeline } from "../../api/pipelinePreview";
-import type { Pipeline, PipelinePreviewMeta, SortKey } from "../../api/types";
+import type { Pipeline, PipelinePreviewMeta, SortKey, StepSchema } from "../../api/types";
 import { type FetchPage, GridView, useGridHead } from "../GridView";
-import { fieldToColumn } from "./schema";
+import { describeStepError, fieldToColumn } from "./schema";
 import { referencedPipelines, useDebounced } from "./usePipelineApi";
 
 /** Rows after one step (or the whole pipeline), in the same grid used for datasets. */
-export function PipelinePreview({
+function PreviewGrid({
   pipeline,
   pipelines,
   stepId,
@@ -70,4 +70,41 @@ export function PipelinePreview({
       </div>
     </div>
   );
+}
+
+/**
+ * Rows after one step. The server's inspect result decides first: a step with an error (or one
+ * blocked by an earlier error) is explained instead of previewed, so editing never fires
+ * requests that are known to fail.
+ */
+export function PipelinePreview({
+  pipeline,
+  pipelines,
+  stepId,
+  schema,
+  checking,
+}: {
+  pipeline: Pipeline;
+  pipelines: Pipeline[];
+  stepId: string | null;
+  schema: StepSchema | undefined;
+  /** The inspect result on screen is stale or still loading. */
+  checking: boolean;
+}) {
+  if (checking || !schema) return <p className="text-sm text-muted">Checking the pipeline…</p>;
+  if (schema.status === "error") {
+    return (
+      <p role="status" className="text-sm text-danger">
+        Preview unavailable:{" "}
+        {schema.error ? describeStepError(schema.error) : "this step has an error"}
+      </p>
+    );
+  }
+  if (schema.status === "blocked") {
+    return <p className="text-sm text-muted">Preview unavailable: an earlier step has an error.</p>;
+  }
+  if (schema.status === "disabled") {
+    return <p className="text-sm text-muted">This step is turned off.</p>;
+  }
+  return <PreviewGrid pipeline={pipeline} pipelines={pipelines} stepId={stepId} />;
 }

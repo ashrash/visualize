@@ -1,4 +1,10 @@
-import type { Column, PipelineInspectResult, PipelineStep, SchemaField } from "../../api/types";
+import type {
+  Column,
+  PipelineInspectResult,
+  PipelineStep,
+  SchemaField,
+  StepError,
+} from "../../api/types";
 
 /** A server schema field as a Column (profile counts are not part of a pipeline schema). */
 export function fieldToColumn(field: SchemaField): Column {
@@ -107,4 +113,16 @@ function applyStep(columns: Column[], step: PipelineStep): Column[] {
       // columns are unknown until the server reports them.
       return columns;
   }
+}
+
+/**
+ * A step error as one line: the server's message, plus the character range of the formula when
+ * it has one (1-based, inclusive), e.g. "unknown column (characters 5-9)".
+ */
+export function describeStepError(error: StepError): string {
+  const range =
+    error.start != null && error.end != null && error.end > error.start
+      ? ` (characters ${error.start + 1}-${error.end})`
+      : "";
+  return `${error.message}${range}`;
 }

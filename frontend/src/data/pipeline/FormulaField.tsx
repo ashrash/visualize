@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { StepError } from "../../api/types";
 import { FormulaEditor } from "./FormulaEditor";
 import type { FormContext } from "./StepForm";
+import { describeStepError } from "./schema";
 import { useFormulaCheck, useFormulaFunctions } from "./usePipelineApi";
 
 /** Formula editor plus the server's verdict: result type, or the error underlined in place. */
@@ -62,7 +63,7 @@ export function FormulaField({
       />
       {error ? (
         <p role="alert" className="text-xs text-danger">
-          {error.message}
+          {describeStepError(error)}
         </p>
       ) : hasText && check.data?.ok ? (
         <p className="text-xs text-muted">

@@ -61,7 +61,7 @@ export function createStep(op: StepOp, columns: Column[]): PipelineStep {
       return {
         ...base,
         op,
-        by: first ? [first] : [],
+        by: [], // grouping by the first column (often an id) would not aggregate anything
         aggregations: [{ field: null, fn: "count", asName: "count" }],
       };
     case "join":
