@@ -384,6 +384,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/charts/overlays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get Chart Overlays */
+        post: operations["get_chart_overlays_api_charts_overlays_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pipelines/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inspect Pipeline */
+        post: operations["inspect_pipeline_api_pipelines_inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pipelines/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Pipeline */
+        post: operations["preview_pipeline_api_pipelines_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pipelines/formula/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Formula */
+        post: operations["check_formula_api_pipelines_formula_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pipelines/formula/functions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Formula Functions */
+        get: operations["formula_functions_api_pipelines_formula_functions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pipelines/materialize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Materialize Pipeline
+         * @description Start (or join) a MATERIALIZE job for the pipeline's pending steps; follow it with
+         *     /api/jobs/{id}. `ready` lists steps whose Parquet already exists.
+         */
+        post: operations["materialize_pipeline_api_pipelines_materialize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects": {
         parameters: {
             query?: never;
@@ -1192,6 +1298,46 @@ export interface components {
             /** Items */
             items?: components["schemas"]["ItemRef"][];
         };
+        /** FormulaCheckRequest */
+        FormulaCheckRequest: {
+            /** Expression */
+            expression: string;
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Beforestepid */
+            beforeStepId?: string | null;
+        };
+        /**
+         * FormulaCheckResult
+         * @description Server-produced.
+         */
+        FormulaCheckResult: {
+            /** Ok */
+            ok: boolean;
+            error: components["schemas"]["StepError"] | null;
+            /** Outputtype */
+            outputType: string | null;
+            /** Fields */
+            fields: string[];
+        };
+        /**
+         * FormulaFunction
+         * @description Server-produced; feeds formula autocomplete.
+         */
+        FormulaFunction: {
+            /** Name */
+            name: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "math" | "string" | "date" | "conditional" | "null" | "type";
+            /** Signature */
+            signature: string;
+            /** Description */
+            description: string;
+        };
         /** GroupAggregateStep */
         GroupAggregateStep: {
             /** Id */
@@ -1549,6 +1695,24 @@ export interface components {
             /** Chartids */
             chartIds?: string[];
         };
+        /** MaterializeRequest */
+        MaterializeRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+        };
+        /**
+         * MaterializeResult
+         * @description Server-produced.
+         */
+        MaterializeResult: {
+            /** Jobs */
+            jobs: {
+                [key: string]: string;
+            };
+            /** Ready */
+            ready: string[];
+        };
         /** NormalizeStep */
         NormalizeStep: {
             /** Id */
@@ -1577,6 +1741,33 @@ export interface components {
              */
             method: "zscore" | "minmax" | "robust";
         };
+        /**
+         * OverlayResult
+         * @description A server-computed trendline or regression fit, with an optional band. Server-produced.
+         */
+        OverlayResult: {
+            kind: components["schemas"]["TrendlineKind"];
+            /** Series */
+            series: number;
+            /** X */
+            x: number[];
+            /** Y */
+            y: number[];
+            /** Lo */
+            lo: number[] | null;
+            /** Hi */
+            hi: number[] | null;
+            /** Equation */
+            equation: string | null;
+            /** R2 */
+            r2: number | null;
+            /** N */
+            n: number;
+            /** Sampled */
+            sampled: boolean;
+            /** Warnings */
+            warnings: string[];
+        };
         /** Pipeline */
         Pipeline: {
             /** Id */
@@ -1589,6 +1780,55 @@ export interface components {
             source: components["schemas"]["SourceRef"];
             /** Steps */
             steps?: (components["schemas"]["FilterStep"] | components["schemas"]["SortStep"] | components["schemas"]["SelectStep"] | components["schemas"]["RenameStep"] | components["schemas"]["CastStep"] | components["schemas"]["FillMissingStep"] | components["schemas"]["DropMissingStep"] | components["schemas"]["DedupeStep"] | components["schemas"]["CalcStep"] | components["schemas"]["GroupAggregateStep"] | components["schemas"]["JoinStep"] | components["schemas"]["UnionStep"] | components["schemas"]["PivotStep"] | components["schemas"]["UnpivotStep"] | components["schemas"]["NormalizeStep"])[];
+        };
+        /** PipelineInspectRequest */
+        PipelineInspectRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /**
+             * Includesql
+             * @default false
+             */
+            includeSql: boolean;
+        };
+        /**
+         * PipelineInspectResult
+         * @description Server-produced.
+         */
+        PipelineInspectResult: {
+            /** Ok */
+            ok: boolean;
+            /** Sourcecolumns */
+            sourceColumns: components["schemas"]["SchemaField"][];
+            /** Steps */
+            steps: components["schemas"]["StepSchema"][];
+            /** Columns */
+            columns: components["schemas"]["SchemaField"][];
+            /** Sql */
+            sql: string | null;
+        };
+        /** PipelinePreviewRequest */
+        PipelinePreviewRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Stepid */
+            stepId?: string | null;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Limit
+             * @default 200
+             */
+            limit: number;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
         };
         /** PivotStep */
         PivotStep: {
@@ -1846,6 +2086,14 @@ export interface components {
             /** Version */
             version?: number | null;
         };
+        /** SchemaField */
+        SchemaField: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            semantic: components["schemas"]["ColumnSemantic"];
+        };
         /** SelectStep */
         SelectStep: {
             /** Id */
@@ -1988,6 +2236,38 @@ export interface components {
              * @default 0
              */
             nMissing: number;
+        };
+        /** StepError */
+        StepError: {
+            /** Message */
+            message: string;
+            /** Field */
+            field?: string | null;
+            /** Start */
+            start?: number | null;
+            /** End */
+            end?: number | null;
+        };
+        /**
+         * StepSchema
+         * @description Server-produced.
+         */
+        StepSchema: {
+            /** Stepid */
+            stepId: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "error" | "blocked" | "disabled";
+            /** Columns */
+            columns: components["schemas"]["SchemaField"][];
+            error: components["schemas"]["StepError"] | null;
+            /**
+             * Materialized
+             * @enum {string}
+             */
+            materialized: "none" | "ready" | "pending";
         };
         /** TextWidget */
         TextWidget: {
@@ -2266,49 +2546,6 @@ export interface components {
             /** Modecount */
             modeCount: number | null;
         };
-        /** FormulaCheckRequest */
-        FormulaCheckRequest: {
-            /** Expression */
-            expression: string;
-            pipeline: components["schemas"]["Pipeline"];
-            /** Pipelines */
-            pipelines?: components["schemas"]["Pipeline"][];
-            /**
-             * Beforestepid
-             * @default null
-             */
-            beforeStepId: string | null;
-        };
-        /**
-         * FormulaCheckResult
-         * @description Server-produced.
-         */
-        FormulaCheckResult: {
-            /** Ok */
-            ok: boolean;
-            error: components["schemas"]["StepError"] | null;
-            /** Outputtype */
-            outputType: string | null;
-            /** Fields */
-            fields: string[];
-        };
-        /**
-         * FormulaFunction
-         * @description Server-produced; feeds formula autocomplete.
-         */
-        FormulaFunction: {
-            /** Name */
-            name: string;
-            /**
-             * Category
-             * @enum {string}
-             */
-            category: "math" | "string" | "date" | "conditional" | "null" | "type";
-            /** Signature */
-            signature: string;
-            /** Description */
-            description: string;
-        };
         /**
          * ImportPreviewMeta
          * @description Arrow metadata of a preview response. Server-produced.
@@ -2326,78 +2563,6 @@ export interface components {
             estimatedRows: number | null;
             /** Warnings */
             warnings: string[];
-        };
-        /** MaterializeRequest */
-        MaterializeRequest: {
-            pipeline: components["schemas"]["Pipeline"];
-            /** Pipelines */
-            pipelines?: components["schemas"]["Pipeline"][];
-        };
-        /**
-         * MaterializeResult
-         * @description Server-produced.
-         */
-        MaterializeResult: {
-            /** Jobs */
-            jobs: {
-                [key: string]: string;
-            };
-            /** Ready */
-            ready: string[];
-        };
-        /**
-         * OverlayResult
-         * @description A server-computed trendline or regression fit, with an optional band. Server-produced.
-         */
-        OverlayResult: {
-            kind: components["schemas"]["TrendlineKind"];
-            /** Series */
-            series: number;
-            /** X */
-            x: number[];
-            /** Y */
-            y: number[];
-            /** Lo */
-            lo: number[] | null;
-            /** Hi */
-            hi: number[] | null;
-            /** Equation */
-            equation: string | null;
-            /** R2 */
-            r2: number | null;
-            /** N */
-            n: number;
-            /** Sampled */
-            sampled: boolean;
-            /** Warnings */
-            warnings: string[];
-        };
-        /** PipelineInspectRequest */
-        PipelineInspectRequest: {
-            pipeline: components["schemas"]["Pipeline"];
-            /** Pipelines */
-            pipelines?: components["schemas"]["Pipeline"][];
-            /**
-             * Includesql
-             * @default false
-             */
-            includeSql: boolean;
-        };
-        /**
-         * PipelineInspectResult
-         * @description Server-produced.
-         */
-        PipelineInspectResult: {
-            /** Ok */
-            ok: boolean;
-            /** Sourcecolumns */
-            sourceColumns: components["schemas"]["SchemaField"][];
-            /** Steps */
-            steps: components["schemas"]["StepSchema"][];
-            /** Columns */
-            columns: components["schemas"]["SchemaField"][];
-            /** Sql */
-            sql: string | null;
         };
         /**
          * PipelinePreviewMeta
@@ -2418,31 +2583,6 @@ export interface components {
             ms: number;
             /** Warnings */
             warnings: string[];
-        };
-        /** PipelinePreviewRequest */
-        PipelinePreviewRequest: {
-            pipeline: components["schemas"]["Pipeline"];
-            /** Pipelines */
-            pipelines?: components["schemas"]["Pipeline"][];
-            /**
-             * Stepid
-             * @default null
-             */
-            stepId: string | null;
-            /**
-             * Offset
-             * @default 0
-             */
-            offset: number;
-            /**
-             * Limit
-             * @default 200
-             */
-            limit: number;
-            /** Sort */
-            sort?: components["schemas"]["SortKey"][];
-            /** Filters */
-            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
         };
         /** Quantile */
         Quantile: {
@@ -2474,55 +2614,6 @@ export interface components {
              * @default null
              */
             version: number | null;
-        };
-        /** SchemaField */
-        SchemaField: {
-            /** Name */
-            name: string;
-            /** Type */
-            type: string;
-            semantic: components["schemas"]["ColumnSemantic"];
-        };
-        /** StepError */
-        StepError: {
-            /** Message */
-            message: string;
-            /**
-             * Field
-             * @default null
-             */
-            field: string | null;
-            /**
-             * Start
-             * @default null
-             */
-            start: number | null;
-            /**
-             * End
-             * @default null
-             */
-            end: number | null;
-        };
-        /**
-         * StepSchema
-         * @description Server-produced.
-         */
-        StepSchema: {
-            /** Stepid */
-            stepId: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "ok" | "error" | "blocked" | "disabled";
-            /** Columns */
-            columns: components["schemas"]["SchemaField"][];
-            error: components["schemas"]["StepError"] | null;
-            /**
-             * Materialized
-             * @enum {string}
-             */
-            materialized: "none" | "ready" | "pending";
         };
     };
     responses: never;
@@ -3218,6 +3309,106 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Arrow IPC (meta under viz.meta), or JSON ChartStatResponse for plots that use a stat transform */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apache.arrow.stream": unknown;
+                    "application/json": components["schemas"]["ChartStatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chart_overlays_api_charts_overlays_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChartDataRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverlayResult"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_pipeline_api_pipelines_inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelineInspectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineInspectResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_pipeline_api_pipelines_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelinePreviewRequest"];
+            };
+        };
+        responses: {
             /** @description Arrow IPC */
             200: {
                 headers: {
@@ -3225,6 +3416,92 @@ export interface operations {
                 };
                 content: {
                     "application/vnd.apache.arrow.stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_formula_api_pipelines_formula_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FormulaCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormulaCheckResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    formula_functions_api_pipelines_formula_functions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormulaFunction"][];
+                };
+            };
+        };
+    };
+    materialize_pipeline_api_pipelines_materialize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterializeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterializeResult"];
                 };
             };
             /** @description Validation Error */
