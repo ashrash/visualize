@@ -361,6 +361,47 @@
         }
       }
     },
+    "/api/projects/import": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Import Project",
+        "operationId": "import_project_api_projects_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_project_api_projects_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectImportResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{project_id}": {
       "get": {
         "tags": [
@@ -427,6 +468,23 @@
               "default": false,
               "title": "Autosave"
             }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label"
+            }
           }
         ],
         "requestBody": {
@@ -441,6 +499,141 @@
         },
         "responses": {
           "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Rename Project",
+        "operationId": "rename_project_api_projects__project_id__patch",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectRename"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Delete Project",
+        "operationId": "delete_project_api_projects__project_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/duplicate": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Duplicate Project",
+        "operationId": "duplicate_project_api_projects__project_id__duplicate_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectDuplicate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -479,6 +672,44 @@
               "type": "string",
               "title": "Project Id"
             }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "save",
+                    "autosave"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
           }
         ],
         "responses": {
@@ -495,6 +726,163 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Version",
+        "operationId": "get_version_api_projects__project_id__versions__version_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/versions/{version_id}/restore": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Restore Version",
+        "operationId": "restore_version_api_projects__project_id__versions__version_id__restore_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectRestore"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{project_id}/export": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Export Project",
+        "operationId": "export_project_api_projects__project_id__export_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "includeData",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Includedata"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -769,6 +1157,20 @@
         "type": "object",
         "title": "AxisStyle"
       },
+      "Body_import_project_api_projects_import_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_project_api_projects_import_post"
+      },
       "Body_upload_dataset_api_datasets_upload_post": {
         "properties": {
           "file": {
@@ -900,6 +1302,53 @@
           "casts"
         ],
         "title": "CastStep"
+      },
+      "ChannelInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "accepts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ColumnSemantic"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepts"
+          },
+          "min": {
+            "type": "integer",
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "accepts",
+          "min",
+          "max"
+        ],
+        "title": "ChannelInfo",
+        "description": "A channel a plot's server module validates. Server-produced."
       },
       "ChartDataRequest": {
         "properties": {
@@ -3107,6 +3556,34 @@
           },
           "family": {
             "$ref": "#/components/schemas/PlotFamily"
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChannelInfo"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels"
+          },
+          "paramsSchema": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paramsschema"
           }
         },
         "additionalProperties": false,
@@ -3312,6 +3789,103 @@
           "name"
         ],
         "title": "ProjectCreate"
+      },
+      "ProjectDuplicate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProjectDuplicate"
+      },
+      "ProjectImportResult": {
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "datasetsImported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Datasetsimported"
+          },
+          "datasetsRemapped": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Datasetsremapped"
+          },
+          "datasetsMissing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Datasetsmissing"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "project",
+          "datasetsImported",
+          "datasetsRemapped",
+          "datasetsMissing",
+          "warnings"
+        ],
+        "title": "ProjectImportResult",
+        "description": "Server-produced only, so every field is required."
+      },
+      "ProjectRename": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "revision"
+        ],
+        "title": "ProjectRename"
+      },
+      "ProjectRestore": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "title": "ProjectRestore"
       },
       "ProjectSummary": {
         "properties": {
@@ -4288,6 +4862,213 @@
         "title": "ChartStatResponse",
         "type": "object"
       },
+      "ColumnValues": {
+        "additionalProperties": false,
+        "description": "Distinct values with counts, for filter dropdowns. Server-produced.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCount"
+            },
+            "title": "Values",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field",
+          "values",
+          "truncated"
+        ],
+        "title": "ColumnValues",
+        "type": "object"
+      },
+      "ColumnValuesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Search"
+          },
+          "filters": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "limit": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "ColumnValuesRequest",
+        "type": "object"
+      },
+      "DatasetUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          }
+        },
+        "title": "DatasetUpdate",
+        "type": "object"
+      },
+      "DescribeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Fields",
+            "type": "array"
+          },
+          "groupBy": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Groupby",
+            "type": "array"
+          },
+          "filters": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "percentiles": {
+            "items": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            "maxItems": 20,
+            "title": "Percentiles",
+            "type": "array"
+          },
+          "includeOverall": {
+            "default": true,
+            "title": "Includeoverall",
+            "type": "boolean"
+          },
+          "includeMode": {
+            "default": true,
+            "title": "Includemode",
+            "type": "boolean"
+          },
+          "maxGroups": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": 1,
+            "title": "Maxgroups",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "fields"
+        ],
+        "title": "DescribeRequest",
+        "type": "object"
+      },
       "ExportFile": {
         "additionalProperties": false,
         "description": "Server-produced.",
@@ -4454,6 +5235,383 @@
         "title": "ExportRequest",
         "type": "object"
       },
+      "FieldSummary": {
+        "additionalProperties": false,
+        "description": "One field within one group of a descriptive-statistics table. Server-produced.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "kind": {
+            "enum": [
+              "numeric",
+              "temporal",
+              "categorical",
+              "boolean"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "distinct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distinct"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "std": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Std"
+          },
+          "variance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variance"
+          },
+          "sem": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sem"
+          },
+          "sum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sum"
+          },
+          "iqr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iqr"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "q1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q1"
+          },
+          "q3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q3"
+          },
+          "skewness": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skewness"
+          },
+          "kurtosis": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kurtosis"
+          },
+          "quantiles": {
+            "items": {
+              "$ref": "#/components/schemas/Quantile"
+            },
+            "title": "Quantiles",
+            "type": "array"
+          },
+          "modes": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Modes",
+            "type": "array"
+          },
+          "modeCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modecount"
+          }
+        },
+        "required": [
+          "field",
+          "group",
+          "kind",
+          "count",
+          "missing",
+          "distinct",
+          "mean",
+          "std",
+          "variance",
+          "sem",
+          "sum",
+          "iqr",
+          "min",
+          "max",
+          "median",
+          "q1",
+          "q3",
+          "skewness",
+          "kurtosis",
+          "quantiles",
+          "modes",
+          "modeCount"
+        ],
+        "title": "FieldSummary",
+        "type": "object"
+      },
+      "FormulaCheckRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expression": {
+            "title": "Expression",
+            "type": "string"
+          },
+          "pipeline": {
+            "$ref": "#/components/schemas/Pipeline"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          },
+          "beforeStepId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Beforestepid"
+          }
+        },
+        "required": [
+          "expression",
+          "pipeline"
+        ],
+        "title": "FormulaCheckRequest",
+        "type": "object"
+      },
+      "FormulaCheckResult": {
+        "additionalProperties": false,
+        "description": "Server-produced.",
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outputtype"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "error",
+          "outputType",
+          "fields"
+        ],
+        "title": "FormulaCheckResult",
+        "type": "object"
+      },
       "FormulaFunction": {
         "additionalProperties": false,
         "description": "Server-produced; feeds formula autocomplete.",
@@ -4549,6 +5707,115 @@
           "warnings"
         ],
         "title": "ImportPreviewMeta",
+        "type": "object"
+      },
+      "ImportPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "stagedId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stagedid"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Path"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceKind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "options": {
+            "$ref": "#/components/schemas/ImportOptions"
+          },
+          "limit": {
+            "default": 1000,
+            "maximum": 1000,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ImportPreviewRequest",
+        "type": "object"
+      },
+      "ImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "stagedId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stagedid"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Path"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceKind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "options": {
+            "$ref": "#/components/schemas/ImportOptions"
+          }
+        },
+        "title": "ImportRequest",
         "type": "object"
       },
       "Job": {
@@ -4749,6 +6016,52 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "MaterializeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pipeline": {
+            "$ref": "#/components/schemas/Pipeline"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pipeline"
+        ],
+        "title": "MaterializeRequest",
+        "type": "object"
+      },
+      "MaterializeResult": {
+        "additionalProperties": false,
+        "description": "Server-produced.",
+        "properties": {
+          "jobs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Jobs",
+            "type": "object"
+          },
+          "ready": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ready",
+            "type": "array"
+          }
+        },
+        "required": [
+          "jobs",
+          "ready"
+        ],
+        "title": "MaterializeResult",
+        "type": "object"
+      },
       "OverlayResult": {
         "additionalProperties": false,
         "description": "A server-computed trendline or regression fit, with an optional band. Server-produced.",
@@ -4856,6 +6169,82 @@
         "title": "OverlayResult",
         "type": "object"
       },
+      "PipelineInspectRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pipeline": {
+            "$ref": "#/components/schemas/Pipeline"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          },
+          "includeSql": {
+            "default": false,
+            "title": "Includesql",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pipeline"
+        ],
+        "title": "PipelineInspectRequest",
+        "type": "object"
+      },
+      "PipelineInspectResult": {
+        "additionalProperties": false,
+        "description": "Server-produced.",
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "sourceColumns": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "title": "Sourcecolumns",
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepSchema"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "sql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql"
+          }
+        },
+        "required": [
+          "ok",
+          "sourceColumns",
+          "steps",
+          "columns",
+          "sql"
+        ],
+        "title": "PipelineInspectResult",
+        "type": "object"
+      },
       "PipelinePreviewMeta": {
         "additionalProperties": false,
         "description": "Server-produced; travels as viz.meta in the Arrow schema.",
@@ -4914,10 +6303,20 @@
         "title": "PipelinePreviewMeta",
         "type": "object"
       },
-      "ProjectDuplicate": {
+      "PipelinePreviewRequest": {
         "additionalProperties": false,
         "properties": {
-          "name": {
+          "pipeline": {
+            "$ref": "#/components/schemas/Pipeline"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          },
+          "stepId": {
             "anyOf": [
               {
                 "type": "string"
@@ -4927,89 +6326,92 @@
               }
             ],
             "default": null,
-            "title": "Name"
-          }
-        },
-        "title": "ProjectDuplicate",
-        "type": "object"
-      },
-      "ProjectImportResult": {
-        "additionalProperties": false,
-        "description": "Server-produced only, so every field is required.",
-        "properties": {
-          "project": {
-            "$ref": "#/components/schemas/Project"
+            "title": "Stepid"
           },
-          "datasetsImported": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Datasetsimported",
-            "type": "array"
-          },
-          "datasetsRemapped": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Datasetsremapped",
-            "type": "object"
-          },
-          "datasetsMissing": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Datasetsmissing",
-            "type": "array"
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Warnings",
-            "type": "array"
-          }
-        },
-        "required": [
-          "project",
-          "datasetsImported",
-          "datasetsRemapped",
-          "datasetsMissing",
-          "warnings"
-        ],
-        "title": "ProjectImportResult",
-        "type": "object"
-      },
-      "ProjectRename": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "revision": {
-            "title": "Revision",
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Offset",
             "type": "integer"
+          },
+          "limit": {
+            "default": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "title": "Sort",
+            "type": "array"
+          },
+          "filters": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "array"
           }
         },
         "required": [
-          "name",
-          "revision"
+          "pipeline"
         ],
-        "title": "ProjectRename",
+        "title": "PipelinePreviewRequest",
         "type": "object"
       },
-      "ProjectRestore": {
+      "Quantile": {
         "additionalProperties": false,
         "properties": {
-          "revision": {
-            "title": "Revision",
-            "type": "integer"
+          "p": {
+            "title": "P",
+            "type": "number"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
           }
         },
         "required": [
-          "revision"
+          "p",
+          "value"
         ],
-        "title": "ProjectRestore",
+        "title": "Quantile",
         "type": "object"
       },
       "Reduction": {
@@ -5022,6 +6424,36 @@
         ],
         "title": "Reduction",
         "type": "string"
+      },
+      "RefreshRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "stagedId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stagedid"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportOptions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "RefreshRequest",
+        "type": "object"
       },
       "RowsPageMeta": {
         "additionalProperties": false,
@@ -5069,6 +6501,102 @@
           "totalRows"
         ],
         "title": "RowsPageMeta",
+        "type": "object"
+      },
+      "RowsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "limit": {
+            "default": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "sort": {
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "title": "Sort",
+            "type": "array"
+          },
+          "filters": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Search"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Columns"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          }
+        },
+        "title": "RowsRequest",
         "type": "object"
       },
       "SchemaField": {
@@ -5160,6 +6688,23 @@
             },
             "title": "Warnings",
             "type": "array"
+          },
+          "nTotal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ntotal"
+          },
+          "nMissing": {
+            "default": 0,
+            "title": "Nmissing",
+            "type": "integer"
           }
         },
         "required": [
@@ -5168,6 +6713,146 @@
           "n"
         ],
         "title": "StatResult",
+        "type": "object"
+      },
+      "StepError": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Field"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "StepError",
+        "type": "object"
+      },
+      "StepSchema": {
+        "additionalProperties": false,
+        "description": "Server-produced.",
+        "properties": {
+          "stepId": {
+            "title": "Stepid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "error",
+              "blocked",
+              "disabled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaField"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "materialized": {
+            "enum": [
+              "none",
+              "ready",
+              "pending"
+            ],
+            "title": "Materialized",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stepId",
+          "status",
+          "columns",
+          "error",
+          "materialized"
+        ],
+        "title": "StepSchema",
+        "type": "object"
+      },
+      "ValueCount": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "ValueCount",
         "type": "object"
       }
     }

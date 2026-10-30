@@ -81,4 +81,6 @@ def test_unknown_field_and_unimplemented_plot(
 def test_plot_catalogue(client: TestClient) -> None:
     plots = client.get("/api/plots").json()
     assert len(plots) == 74
-    assert {"type": "sankey", "family": "specialized"} in plots
+    assert {"type": "sankey", "family": "specialized"} in [
+        {"type": p["type"], "family": p["family"]} for p in plots
+    ]

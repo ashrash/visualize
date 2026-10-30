@@ -173,7 +173,7 @@ Prerequisites: `uv` and Node LTS (≥22). On Windows, `winget install astral-sh.
 ## 6. Engineering rules
 
 ### Data and performance
-- **Budgets** (laptop, 10M rows × 20 cols): CSV import ≤ 60 s · grid page ≤ 150 ms · aggregated chart query p50 ≤ 300 ms · cross-filter refresh of a 6-chart dashboard ≤ 1 s, **including while a 10M-row import job runs** · 12 concurrent chart queries finish without running out of memory · chart payload ≤ 50k marks and ≤ 5 MB. Design for 100M+ rows, larger than RAM: set DuckDB `memory_limit` (default ~60% of RAM) and point `temp_directory` at the data dir.
+- **Budgets** (laptop, 10M rows × 20 cols): CSV import ≤ 60 s · grid page ≤ 150 ms · aggregated chart query p50 ≤ 300 ms · cross-filter refresh of a 6-chart dashboard ≤ 1 s, **including while a 10M-row import job runs** · 12 concurrent chart queries finish without running out of memory · chart payload ≤ 50k marks and ≤ 5 MB · descriptive stats for 10 fields with modes ≤ 3 s (an analysis panel, not a dashboard path). Design for 100M+ rows, larger than RAM: set DuckDB `memory_limit` (default ~60% of RAM) and point `temp_directory` at the data dir.
 - **Large files:** local mode offers **import from path**, reading the file in place with no multi-GB browser upload. AWS mode uses S3 presigned multipart upload.
 - **Long work runs as jobs** (import, materialize, big export) with SSE progress and cancellation (`cursor.interrupt()`). DuckDB and SciPy calls never run on the event loop.
 - **Exact where cheap, sampled where not:** descriptive stats, counts, quantiles, Pearson correlation and contingency tables run in DuckDB on the full data. Model fits (regression, KDE, distribution fitting, ML) use a reservoir sample (default 1M rows; KDE 100k) and return `sampled: true, n`.
@@ -353,6 +353,27 @@ Backend paths are relative to `backend/src/viz/`, with tests mirrored under `bac
 - Relations have no `fetchone()`. Use `.fetchall()` or `.limit(1).fetchall()`.
 - A cursor refuses a new query while a result is still open. Get a fresh cursor per query via `engine.cursor()`, and consume the result inside the `with` block.
 - `cur.sql(query, params=[...]).to_arrow_table()` is the efficient path. Arrow output from `cur.execute(...)` makes an extra copy.
+- `USING SAMPLE` is applied **before** `WHERE`. To sample filtered rows, sample a filtered subquery.
+- **Internal error that poisons the whole database (2.0.0):** a filter over a window ordered by the *virtual* `file_row_number` column, e.g. `QUALIFY row_number() OVER (... ORDER BY file_row_number)`. This was seen on pyarrow-written files with 3+ columns. After it, every query in the process fails. Read the row number explicitly with `read_parquet(path, file_row_number = true)`, which is safe. The engine must also recreate its DuckDB instance after a `duckdb.FatalException`.
+- A single NaN makes `avg` return NaN. Treat NaN and ±inf as missing (`CASE WHEN isfinite(x) THEN x END`). On degenerate input (std with n<2, skewness with n<3, kurtosis with n<4, a constant column), DuckDB returns NULL rather than NaN.
+- `skewness`/`kurtosis` match SciPy with `bias=False` (G1 and excess G2). `quantile_cont` is NumPy `linear` (R type 7); `quantile_disc` is NumPy `inverted_cdf`.
+- DuckDB finalizes each quantile aggregate on one thread, so many quantiles in one SELECT run serially. Unpivot to (field, value) and GROUP BY field to parallelize them.
+- `quantile_disc` with a long list of probabilities is O(n·m). For ECDF/Q-Q grids, use a `row_number()` window instead.
+- `query_progress()` returns -1 from Python, so job progress is reported by stage, plus byte or batch counts.
+- Python `read_csv` accepts only UTF-8. Non-UTF-8 files are transcoded into `sources/`, even above the copy threshold.
+- Fetching TIMESTAMPTZ with `fetchall()` needs pytz, which isn't installed. Use Arrow, or cast to VARCHAR.
+- DECIMAL reaches the browser as unscaled integers and TIME as microseconds. Cast them in chart-data output: DECIMAL and HUGEINT to DOUBLE, TIME to VARCHAR.
+
+**SQLGlot 30**
+- `exp.Bracket` shifts list indexes by one when generating DuckDB SQL. Use `list_extract` through `exp.Anonymous`.
+
+**Python tooling**
+- `ruff format --check` also formats Python code blocks inside Markdown files, so plan docs with code must be formatted too.
+- mypy types `int ** float` as `Any`; use `math.pow` or `math.cbrt`.
+
+**Metadata DB**
+- Optimistic concurrency needs a conditional write: `UPDATE ... WHERE id = ? AND revision = ?`, with a 409 when no row matches. Reading the revision first and comparing in Python loses edits under concurrent saves.
+- Never use an id taken from an imported file (`.vizproj`, manifests) as a path component or a catalog key. Windows and macOS paths are case-insensitive and normalise `.` and trailing spaces. Mint a new id instead.
 
 **SQLGlot 30**
 - The base expression type is `exp.Expr`; `exp.Expression` is a subclass. Annotate with `exp.Expr`.
