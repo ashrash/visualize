@@ -6,6 +6,7 @@ import { AppShell } from "./AppShell";
 const DataScreen = lazy(() => import("./DataScreen"));
 const PipelinesView = lazy(() => import("./PipelinesView"));
 const ChartsView = lazy(() => import("./ChartsView"));
+const StatsView = lazy(() => import("./StatsView"));
 
 export function App() {
   return (
@@ -15,6 +16,7 @@ export function App() {
         <Route path="data" element={<DataScreen />} />
         <Route path="pipelines" element={<PipelinesView />} />
         <Route path="charts" element={<ChartsView />} />
+        <Route path="stats" element={<StatsView />} />
         <Route path="*" element={<Navigate to="/data" replace />} />
       </Route>
     </Routes>
