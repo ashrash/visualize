@@ -69,9 +69,6 @@ export function buildRowsQuery(params: {
   return query;
 }
 
-/** Sorting and filtering are shown but disabled until the rows endpoint accepts them. */
-export const SERVER_SORT_FILTER_SUPPORTED = false;
-
 /** User-facing text for an import failure; the server's `detail` is kept when present. */
 export function describeImportError(error: unknown): string {
   if (error instanceof ApiError) {

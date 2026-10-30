@@ -1,6 +1,30 @@
+import { Check } from "lucide-react";
 import { DropdownMenu as MenuPrimitive } from "radix-ui";
 import type { ComponentProps } from "react";
 import { cn } from "./cn";
+
+export function DropdownMenuCheckboxItem({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof MenuPrimitive.CheckboxItem>) {
+  return (
+    <MenuPrimitive.CheckboxItem
+      className={cn(
+        "flex cursor-default select-none items-center gap-2 rounded px-2 py-1.5 outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-surface-2",
+        className,
+      )}
+      {...props}
+    >
+      <span className="inline-flex h-4 w-4 items-center justify-center">
+        <MenuPrimitive.ItemIndicator>
+          <Check size={13} aria-hidden="true" />
+        </MenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </MenuPrimitive.CheckboxItem>
+  );
+}
 
 export const DropdownMenu = MenuPrimitive.Root;
 export const DropdownMenuTrigger = MenuPrimitive.Trigger;

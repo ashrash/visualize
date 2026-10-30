@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown, CircleAlert, Loader2, Redo2, Save, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "zustand";
-import { listVersions, PLATFORM_PROJECT_ENDPOINTS } from "../api/projects";
+import { featureOn } from "../api/features";
+import { exportProjectUrl } from "../api/projects";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import {
@@ -17,6 +17,13 @@ import { toast } from "../components/ui/toast";
 import { Tooltip } from "../components/ui/tooltip";
 import { autosaver, type SaveStatus, useSaveState } from "../state/autosave";
 import { redo, undo, useProjectStore } from "../state/projectStore";
+import {
+  DeleteProjectDialog,
+  ImportProjectDialog,
+  RenameDialog,
+  VersionsDialog,
+} from "./ProjectDialogs";
+import { duplicateCurrentProject } from "./projectActions";
 import {
   createAndOpenProject,
   openProject,
@@ -86,19 +93,28 @@ export function UndoRedo() {
   );
 }
 
-function PlatformItem({ label, onSelect }: { label: string; onSelect?: () => void }) {
-  // TODO(platform): enabled once rename/duplicate/delete/restore endpoints are merged.
-  return (
-    <DropdownMenuItem disabled={!PLATFORM_PROJECT_ENDPOINTS} onSelect={onSelect}>
-      {label}
-      {PLATFORM_PROJECT_ENDPOINTS ? null : <span className="ml-auto text-xs text-muted">soon</span>}
-    </DropdownMenuItem>
-  );
-}
+type MenuDialog = "switch" | "versions" | "rename" | "delete" | "import" | null;
 
 export function ProjectMenu() {
   const project = useProjectStore((s) => s.project);
-  const [dialog, setDialog] = useState<"switch" | "versions" | null>(null);
+  const [dialog, setDialog] = useState<MenuDialog>(null);
+  const platform = featureOn("platformProjects");
+  const close = (which: Exclude<MenuDialog, null>) => (open: boolean) =>
+    setDialog(open ? which : null);
+
+  const run = async (action: () => Promise<void>, failure: string) => {
+    try {
+      await action();
+    } catch (error) {
+      toast(failure, {
+        variant: "error",
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+  };
+
+  // Platform items stay visible but disabled until the endpoints exist.
+  const soon = platform ? null : <span className="ml-auto text-xs text-muted">soon</span>;
   return (
     <>
       <DropdownMenu>
@@ -116,19 +132,39 @@ export function ProjectMenu() {
             Version history…
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <PlatformItem label="Rename…" />
-          <PlatformItem label="Duplicate" />
-          <PlatformItem label="Delete…" />
+          <DropdownMenuItem disabled={!platform} onSelect={() => setDialog("rename")}>
+            Rename…{soon}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!platform}
+            onSelect={() => void run(() => duplicateCurrentProject(null), "Couldn't duplicate")}
+          >
+            Duplicate{soon}
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!platform} onSelect={() => setDialog("delete")}>
+            Delete…{soon}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={!platform || !project} asChild>
+            <a href={project ? exportProjectUrl(project.id, false) : undefined} download>
+              Export .vizproj{soon}
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!platform || !project} asChild>
+            <a href={project ? exportProjectUrl(project.id, true) : undefined} download>
+              Export with data{soon}
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!platform} onSelect={() => setDialog("import")}>
+            Import .vizproj…{soon}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <ProjectPicker
-        open={dialog === "switch"}
-        onOpenChange={(o) => setDialog(o ? "switch" : null)}
-      />
-      <VersionsDialog
-        open={dialog === "versions"}
-        onOpenChange={(o) => setDialog(o ? "versions" : null)}
-      />
+      <ProjectPicker open={dialog === "switch"} onOpenChange={close("switch")} />
+      <VersionsDialog open={dialog === "versions"} onOpenChange={close("versions")} />
+      <RenameDialog open={dialog === "rename"} onOpenChange={close("rename")} />
+      <DeleteProjectDialog open={dialog === "delete"} onOpenChange={close("delete")} />
+      <ImportProjectDialog open={dialog === "import"} onOpenChange={close("import")} />
     </>
   );
 }
@@ -205,52 +241,6 @@ function ProjectPicker({
             Create
           </Button>
         </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function VersionsDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-}) {
-  const id = useProjectStore((s) => s.project?.id);
-  const versions = useQuery({
-    queryKey: ["versions", id],
-    queryFn: ({ signal }) => listVersions(id as string, signal),
-    enabled: open && id !== undefined,
-  });
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="Version history" description="Snapshots stored on save and autosave.">
-        {versions.isPending ? <p className="text-sm text-muted">Loading…</p> : null}
-        {versions.isError ? (
-          <p role="alert" className="text-sm text-danger">
-            {versions.error.message}
-          </p>
-        ) : null}
-        {versions.data?.length === 0 ? (
-          <p className="text-sm text-muted">No versions yet.</p>
-        ) : null}
-        <ul className="flex max-h-72 flex-col divide-y divide-line overflow-y-auto">
-          {[...(versions.data ?? [])].reverse().map((v) => (
-            <li key={v.id} className="flex items-center gap-3 py-1.5 text-sm">
-              <span className="w-16 shrink-0 font-medium">Rev {v.revision}</span>
-              <span className="w-20 shrink-0 text-muted">{v.kind}</span>
-              <span className="min-w-0 flex-1 truncate text-muted">
-                {new Date(v.createdAt).toLocaleString()}
-                {v.label ? ` · ${v.label}` : ""}
-              </span>
-              {/* TODO(platform): POST /api/projects/{id}/versions/{versionId}/restore {revision} */}
-              <Button size="sm" disabled={!PLATFORM_PROJECT_ENDPOINTS}>
-                Restore
-              </Button>
-            </li>
-          ))}
-        </ul>
       </DialogContent>
     </Dialog>
   );

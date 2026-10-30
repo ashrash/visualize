@@ -6,7 +6,7 @@ import { redo, undo, useProjectStore } from "../state/projectStore";
 
 const LAST_PROJECT_KEY = "viz.lastProject";
 
-function rememberProject(id: string): void {
+export function rememberProject(id: string): void {
   try {
     localStorage.setItem(LAST_PROJECT_KEY, id);
   } catch {

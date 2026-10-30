@@ -1,16 +1,14 @@
-import { ApiError, api, detailOf, unwrap } from "./client";
-import type { components } from "./schema";
-import type { Project, ProjectSummary, ProjectVersion } from "./types";
-
-type Schemas = components["schemas"];
-export type ProjectImportResult = Schemas["ProjectImportResult"];
-
-/**
- * Platform's rename/duplicate/delete/restore/import endpoints are specified but not merged yet,
- * so the menu items stay disabled until this flips.
- * TODO(platform): set true once their branch is merged and schema.d.ts has the paths.
- */
-export const PLATFORM_PROJECT_ENDPOINTS = false;
+import { api, unwrap } from "./client";
+import { deleteRequest, enc, getJson, patchJson, postForm, postJson } from "./http";
+import type {
+  Project,
+  ProjectDuplicate,
+  ProjectImportResult,
+  ProjectRename,
+  ProjectRestore,
+  ProjectSummary,
+  ProjectVersion,
+} from "./types";
 
 export async function listProjects(signal?: AbortSignal): Promise<ProjectSummary[]> {
   return unwrap(await api.GET("/api/projects", { signal }));
@@ -49,51 +47,44 @@ export async function listVersions(id: string, signal?: AbortSignal): Promise<Pr
   );
 }
 
-// Endpoints below are not in the generated paths yet; they use plain fetch with the same errors.
+// Platform endpoints (flag `platformProjects`). Paths are not generated yet; see api/http.ts.
 
-async function send<T>(url: string, init: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (response.status === 204) return undefined as T;
-  const body: unknown = await response.json().catch(() => undefined);
-  if (!response.ok) {
-    throw new ApiError(detailOf(body) ?? `Request failed (${response.status})`, response.status);
-  }
-  return body as T;
-}
-
-const json = (method: string, body: unknown, signal?: AbortSignal): RequestInit => ({
-  method,
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(body),
-  signal,
-});
-
-const enc = encodeURIComponent;
-
-/** TODO(platform): PATCH /api/projects/{id} {name, revision} -> Project */
+/** PATCH /api/projects/{id} {name, revision} -> Project */
 export const renameProject = (id: string, name: string, revision: number, signal?: AbortSignal) =>
-  send<Project>(`/api/projects/${enc(id)}`, json("PATCH", { name, revision }, signal));
+  patchJson<ProjectRename, Project>(`/api/projects/${enc(id)}`, { name, revision }, signal);
 
-/** TODO(platform): POST /api/projects/{id}/duplicate {name?} -> Project (201) */
+/** POST /api/projects/{id}/duplicate {name?} -> Project (201) */
 export const duplicateProject = (id: string, name: string | null, signal?: AbortSignal) =>
-  send<Project>(`/api/projects/${enc(id)}/duplicate`, json("POST", { name }, signal));
+  postJson<ProjectDuplicate, Project>(`/api/projects/${enc(id)}/duplicate`, { name }, signal);
 
-/** TODO(platform): DELETE /api/projects/{id} -> 204 */
+/** DELETE /api/projects/{id} -> 204 */
 export const deleteProject = (id: string, signal?: AbortSignal) =>
-  send<void>(`/api/projects/${enc(id)}`, { method: "DELETE", signal });
+  deleteRequest(`/api/projects/${enc(id)}`, signal);
 
-/** TODO(platform): POST /api/projects/{id}/versions/{versionId}/restore {revision} -> Project */
+/** GET /api/projects/{id}/versions/{versionId} -> the snapshot Project */
+export const getVersionSnapshot = (id: string, versionId: number, signal?: AbortSignal) =>
+  getJson<Project>(`/api/projects/${enc(id)}/versions/${versionId}`, signal);
+
+/** POST /api/projects/{id}/versions/{versionId}/restore {revision} -> Project */
 export const restoreVersion = (
   id: string,
   versionId: number,
   revision: number,
   signal?: AbortSignal,
 ) =>
-  send<Project>(
+  postJson<ProjectRestore, Project>(
     `/api/projects/${enc(id)}/versions/${versionId}/restore`,
-    json("POST", { revision }, signal),
+    { revision },
+    signal,
   );
 
-/** TODO(platform): GET /api/projects/{id}/export?includeData=bool; use as a plain link. */
+/** GET /api/projects/{id}/export?includeData=bool; used as a plain download link. */
 export const exportProjectUrl = (id: string, includeData: boolean) =>
   `/api/projects/${enc(id)}/export?includeData=${includeData}`;
+
+/** POST /api/projects/import (multipart `file`) -> ProjectImportResult (201) */
+export function importProjectFile(file: File, signal?: AbortSignal): Promise<ProjectImportResult> {
+  const form = new FormData();
+  form.append("file", file);
+  return postForm<ProjectImportResult>("/api/projects/import", form, signal);
+}
