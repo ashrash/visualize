@@ -23,6 +23,9 @@ from viz.config import Settings, get_settings
 from viz.contracts import EXPORTED_MODELS
 from viz.engine import Engine
 from viz.errors import VizError
+from viz.ingest.catalog import sweep_orphans
+from viz.ingest.views import RowViews
+from viz.jobs import InProcessJobRunner
 from viz.meta.db import create_db_engine, make_sessionmaker, run_migrations
 from viz.storage import LocalStorage
 
@@ -44,9 +47,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.storage = storage
         app.state.sessionmaker = make_sessionmaker(db_engine)
         app.state.engine = engine
+        # data-core: background jobs (imports, materialisation, exports).
+        jobs = InProcessJobRunner(
+            engine=engine,
+            storage=storage,
+            sessionmaker=app.state.sessionmaker,
+            settings=settings,
+        )
+        app.state.jobs = jobs
+        app.state.row_views = RowViews(engine, storage, max_bytes=settings.grid_views_mb * 2**20)
+        # Expired uploads/exports and files of imports that never reached the catalog.
+        # The job runner repeats the expiry sweep hourly.
+        storage.sweep(
+            staged_max_age_s=settings.staged_retention_s,
+            exports_max_age_s=settings.export_retention_s,
+        )
+        with app.state.sessionmaker() as db:
+            sweep_orphans(db, storage)
         try:
             yield
         finally:
+            jobs.close()
+            app.state.row_views.close()
             engine.close()
             db_engine.dispose()
 

@@ -49,6 +49,107 @@ export interface paths {
         get: operations["get_dataset_api_datasets__dataset_id__get"];
         put?: never;
         post?: never;
+        /**
+         * Delete Dataset
+         * @description Delete a dataset: files first (all or nothing; 409 if Windows reports them in use),
+         *     then the catalog row.
+         */
+        delete: operations["delete_dataset_api_datasets__dataset_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Dataset */
+        patch: operations["update_dataset_api_datasets__dataset_id__patch"];
+        trace?: never;
+    };
+    "/api/datasets/staged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stage File
+         * @description Upload a file (multipart field `file`) for preview and import. The body is streamed to
+         *     disk; files over `max_upload_mb` are refused from `Content-Length` before reading.
+         */
+        post: operations["stage_file_api_datasets_staged_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/staged/{staged_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Staged */
+        delete: operations["delete_staged_api_datasets_staged__staged_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Import
+         * @description First rows with the given options; meta (ImportPreviewMeta) has what was detected.
+         */
+        post: operations["preview_import_api_datasets_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Dataset */
+        post: operations["import_dataset_api_datasets_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{dataset_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Dataset
+         * @description Re-read the original file (or a re-upload) as a new version; old versions stay.
+         */
+        post: operations["refresh_dataset_api_datasets__dataset_id__refresh_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -64,7 +165,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Upload Dataset */
+        /**
+         * Upload Dataset
+         * @description One-shot upload + import that waits for the job. The wizard uses staged + import.
+         *     Form fields: `file`, optional `name`, `kind`, `options` (ImportOptions as JSON).
+         */
         post: operations["upload_dataset_api_datasets_upload_post"];
         delete?: never;
         options?: never;
@@ -81,7 +186,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import From Path */
+        /**
+         * Import From Path
+         * @description One-shot import from a local path that waits for the job.
+         */
         post: operations["import_from_path_api_datasets_import_path_post"];
         delete?: never;
         options?: never;
@@ -96,8 +204,144 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Rows */
+        /**
+         * Get Rows
+         * @description Unsorted, unfiltered pages (kept for compatibility; the grid uses POST).
+         */
         get: operations["get_rows_api_datasets__dataset_id__rows_get"];
+        put?: never;
+        /**
+         * Query Rows
+         * @description A grid page with sort, filters, search and a column subset. Meta: RowsPageMeta.
+         */
+        post: operations["query_rows_api_datasets__dataset_id__rows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{dataset_id}/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query Values
+         * @description Distinct values of one column with counts (most frequent first), for filter lists.
+         */
+        post: operations["query_values_api_datasets__dataset_id__values_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Job */
+        post: operations["cancel_job_api_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job Events
+         * @description `event: job` with the full Job JSON on every change; closes after the final state.
+         */
+        get: operations["job_events_api_jobs__job_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Export
+         * @description Export a source (with filters, sort and a column subset) as CSV or Excel.
+         *     The finished job's `result.export.downloadUrl` serves the file until it expires.
+         */
+        post: operations["start_export_api_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exports/{export_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Export */
+        get: operations["download_export_api_exports__export_id__download_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -280,6 +524,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats/describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Describe Fields
+         * @description Exact descriptive statistics; `values.summaries` is a list of FieldSummary.
+         */
+        post: operations["describe_fields_api_stats_describe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -345,13 +609,6 @@ export interface components {
         Body_import_project_api_projects_import_post: {
             /** File */
             file: string;
-        };
-        /** Body_upload_dataset_api_datasets_upload_post */
-        Body_upload_dataset_api_datasets_upload_post: {
-            /** File */
-            file: string;
-            /** Name */
-            name?: string | null;
         };
         /** CalcStep */
         CalcStep: {
@@ -554,6 +811,32 @@ export interface components {
          * @enum {string}
          */
         ColumnSemantic: "quantitative" | "temporal" | "nominal" | "ordinal" | "geo";
+        /**
+         * ColumnValues
+         * @description Distinct values with counts, for filter dropdowns. Server-produced.
+         */
+        ColumnValues: {
+            /** Field */
+            field: string;
+            /** Values */
+            values: components["schemas"]["ValueCount"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** ColumnValuesRequest */
+        ColumnValuesRequest: {
+            /** Field */
+            field: string;
+            /** Search */
+            search?: string | null;
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+        };
         /** Dashboard */
         Dashboard: {
             /** Id */
@@ -623,6 +906,11 @@ export interface components {
             originalPath?: string | null;
             options?: components["schemas"]["ImportOptions"];
         };
+        /** DatasetUpdate */
+        DatasetUpdate: {
+            /** Name */
+            name?: string | null;
+        };
         /** DatasetVersion */
         DatasetVersion: {
             /** N */
@@ -671,6 +959,35 @@ export interface components {
              * @enum {string}
              */
             keep: "first" | "last";
+        };
+        /** DescribeRequest */
+        DescribeRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Fields */
+            fields: string[];
+            /** Groupby */
+            groupBy?: string[];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Percentiles */
+            percentiles?: number[];
+            /**
+             * Includeoverall
+             * @default true
+             */
+            includeOverall: boolean;
+            /**
+             * Includemode
+             * @default true
+             */
+            includeMode: boolean;
+            /**
+             * Maxgroups
+             * @default 50
+             */
+            maxGroups: number;
         };
         /** DropMissingStep */
         DropMissingStep: {
@@ -743,6 +1060,52 @@ export interface components {
             level: number;
             /** Value */
             value?: number | null;
+        };
+        /**
+         * ExportFile
+         * @description Server-produced.
+         */
+        ExportFile: {
+            /** Exportid */
+            exportId: string;
+            /** Filename */
+            fileName: string;
+            format: components["schemas"]["ExportFormat"];
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Rowcount */
+            rowCount: number;
+            /** Downloadurl */
+            downloadUrl: string;
+            /**
+             * Expiresat
+             * Format: date-time
+             */
+            expiresAt: string;
+        };
+        /**
+         * ExportFormat
+         * @enum {string}
+         */
+        ExportFormat: "csv" | "xlsx";
+        /** ExportRequest */
+        ExportRequest: {
+            source: components["schemas"]["SourceRef"];
+            format: components["schemas"]["ExportFormat"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Version */
+            version?: number | null;
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /** Columns */
+            columns?: string[] | null;
+            /** Filename */
+            fileName?: string | null;
+            /** Delimiter */
+            delimiter?: string | null;
         };
         /** Fill */
         Fill: {
@@ -934,7 +1297,36 @@ export interface components {
             /** Jsonpath */
             jsonPath?: string | null;
         };
-        /** InPredicate */
+        /** ImportPreviewRequest */
+        ImportPreviewRequest: {
+            /** Stagedid */
+            stagedId?: string | null;
+            /** Path */
+            path?: string | null;
+            kind?: components["schemas"]["SourceKind"] | null;
+            options?: components["schemas"]["ImportOptions"];
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+        };
+        /** ImportRequest */
+        ImportRequest: {
+            /** Stagedid */
+            stagedId?: string | null;
+            /** Path */
+            path?: string | null;
+            /** Name */
+            name?: string | null;
+            kind?: components["schemas"]["SourceKind"] | null;
+            options?: components["schemas"]["ImportOptions"];
+        };
+        /**
+         * InPredicate
+         * @description Membership. `None` in `values` matches NULL. `not_in` keeps NULL rows unless `None` is
+         *     in `values`, so excluding "North" never silently drops rows with a missing region.
+         */
         InPredicate: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -993,6 +1385,61 @@ export interface components {
             /** Id */
             id: string;
         };
+        /**
+         * Job
+         * @description Server-produced. Each SSE event carries a full snapshot.
+         */
+        Job: {
+            /** Id */
+            id: string;
+            kind: components["schemas"]["JobKind"];
+            /** Title */
+            title: string;
+            status: components["schemas"]["JobStatus"];
+            /** Progress */
+            progress: number | null;
+            /** Message */
+            message: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Startedat */
+            startedAt: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Error */
+            error: string | null;
+            result: components["schemas"]["JobResult"] | null;
+        };
+        /**
+         * JobKind
+         * @enum {string}
+         */
+        JobKind: "import" | "refresh" | "materialize" | "export";
+        /**
+         * JobResult
+         * @description Server-produced.
+         */
+        JobResult: {
+            /** Datasetid */
+            datasetId: string | null;
+            /** Version */
+            version: number | null;
+            /** Pipelineid */
+            pipelineId: string | null;
+            export: components["schemas"]["ExportFile"] | null;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * JobStatus
+         * @enum {string}
+         */
+        JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         /** JoinKey */
         JoinKey: {
             /** Left */
@@ -1346,6 +1793,12 @@ export interface components {
              */
             lineStyle: "solid" | "dashed" | "dotted";
         };
+        /** RefreshRequest */
+        RefreshRequest: {
+            /** Stagedid */
+            stagedId?: string | null;
+            options?: components["schemas"]["ImportOptions"] | null;
+        };
         /** RenameStep */
         RenameStep: {
             /** Id */
@@ -1369,6 +1822,29 @@ export interface components {
             mapping: {
                 [key: string]: string;
             };
+        };
+        /** RowsRequest */
+        RowsRequest: {
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Limit
+             * @default 200
+             */
+            limit: number;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Search */
+            search?: string | null;
+            /** Columns */
+            columns?: string[] | null;
+            /** Version */
+            version?: number | null;
         };
         /** SelectStep */
         SelectStep: {
@@ -1472,6 +1948,46 @@ export interface components {
             kind: "dataset" | "pipeline";
             /** Id */
             id: string;
+        };
+        /**
+         * StagedFile
+         * @description An uploaded file waiting to be previewed and imported. Server-produced.
+         */
+        StagedFile: {
+            /** Stagedid */
+            stagedId: string;
+            /** Filename */
+            fileName: string;
+            kind: components["schemas"]["SourceKind"];
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Sheets */
+            sheets: string[];
+        };
+        /** StatResult */
+        StatResult: {
+            /** Values */
+            values: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Method */
+            method: string;
+            /** N */
+            n: number;
+            /**
+             * Sampled
+             * @default false
+             */
+            sampled: boolean;
+            /** Warnings */
+            warnings?: string[];
+            /** Ntotal */
+            nTotal?: number | null;
+            /**
+             * Nmissing
+             * @default 0
+             */
+            nMissing: number;
         };
         /** TextWidget */
         TextWidget: {
@@ -1630,6 +2146,13 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** ValueCount */
+        ValueCount: {
+            /** Value */
+            value: string | number | boolean | null;
+            /** Count */
+            count: number;
+        };
         /** Viewport */
         Viewport: {
             /**
@@ -1689,130 +2212,6 @@ export interface components {
         ChartStatResponse: {
             result: components["schemas"]["StatResult"];
             meta: components["schemas"]["ChartDataMeta"];
-        };
-        /**
-         * ColumnValues
-         * @description Distinct values with counts, for filter dropdowns. Server-produced.
-         */
-        ColumnValues: {
-            /** Field */
-            field: string;
-            /** Values */
-            values: components["schemas"]["ValueCount"][];
-            /** Truncated */
-            truncated: boolean;
-        };
-        /** ColumnValuesRequest */
-        ColumnValuesRequest: {
-            /** Field */
-            field: string;
-            /**
-             * Search
-             * @default null
-             */
-            search: string | null;
-            /** Filters */
-            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
-            /**
-             * Limit
-             * @default 100
-             */
-            limit: number;
-        };
-        /** DatasetUpdate */
-        DatasetUpdate: {
-            /**
-             * Name
-             * @default null
-             */
-            name: string | null;
-        };
-        /** DescribeRequest */
-        DescribeRequest: {
-            source: components["schemas"]["SourceRef"];
-            /** Pipelines */
-            pipelines?: components["schemas"]["Pipeline"][];
-            /** Fields */
-            fields: string[];
-            /** Groupby */
-            groupBy?: string[];
-            /** Filters */
-            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
-            /** Percentiles */
-            percentiles?: number[];
-            /**
-             * Includeoverall
-             * @default true
-             */
-            includeOverall: boolean;
-            /**
-             * Includemode
-             * @default true
-             */
-            includeMode: boolean;
-            /**
-             * Maxgroups
-             * @default 50
-             */
-            maxGroups: number;
-        };
-        /**
-         * ExportFile
-         * @description Server-produced.
-         */
-        ExportFile: {
-            /** Exportid */
-            exportId: string;
-            /** Filename */
-            fileName: string;
-            format: components["schemas"]["ExportFormat"];
-            /** Sizebytes */
-            sizeBytes: number;
-            /** Rowcount */
-            rowCount: number;
-            /** Downloadurl */
-            downloadUrl: string;
-            /**
-             * Expiresat
-             * Format: date-time
-             */
-            expiresAt: string;
-        };
-        /**
-         * ExportFormat
-         * @enum {string}
-         */
-        ExportFormat: "csv" | "xlsx";
-        /** ExportRequest */
-        ExportRequest: {
-            source: components["schemas"]["SourceRef"];
-            format: components["schemas"]["ExportFormat"];
-            /** Pipelines */
-            pipelines?: components["schemas"]["Pipeline"][];
-            /**
-             * Version
-             * @default null
-             */
-            version: number | null;
-            /** Filters */
-            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
-            /** Sort */
-            sort?: components["schemas"]["SortKey"][];
-            /**
-             * Columns
-             * @default null
-             */
-            columns: string[] | null;
-            /**
-             * Filename
-             * @default null
-             */
-            fileName: string | null;
-            /**
-             * Delimiter
-             * @default null
-             */
-            delimiter: string | null;
         };
         /**
          * FieldSummary
@@ -1928,103 +2327,6 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
-        /** ImportPreviewRequest */
-        ImportPreviewRequest: {
-            /**
-             * Stagedid
-             * @default null
-             */
-            stagedId: string | null;
-            /**
-             * Path
-             * @default null
-             */
-            path: string | null;
-            /** @default null */
-            kind: components["schemas"]["SourceKind"] | null;
-            options?: components["schemas"]["ImportOptions"];
-            /**
-             * Limit
-             * @default 1000
-             */
-            limit: number;
-        };
-        /** ImportRequest */
-        ImportRequest: {
-            /**
-             * Stagedid
-             * @default null
-             */
-            stagedId: string | null;
-            /**
-             * Path
-             * @default null
-             */
-            path: string | null;
-            /**
-             * Name
-             * @default null
-             */
-            name: string | null;
-            /** @default null */
-            kind: components["schemas"]["SourceKind"] | null;
-            options?: components["schemas"]["ImportOptions"];
-        };
-        /**
-         * Job
-         * @description Server-produced. Each SSE event carries a full snapshot.
-         */
-        Job: {
-            /** Id */
-            id: string;
-            kind: components["schemas"]["JobKind"];
-            /** Title */
-            title: string;
-            status: components["schemas"]["JobStatus"];
-            /** Progress */
-            progress: number | null;
-            /** Message */
-            message: string | null;
-            /** Seq */
-            seq: number;
-            /**
-             * Createdat
-             * Format: date-time
-             */
-            createdAt: string;
-            /** Startedat */
-            startedAt: string | null;
-            /** Finishedat */
-            finishedAt: string | null;
-            /** Error */
-            error: string | null;
-            result: components["schemas"]["JobResult"] | null;
-        };
-        /**
-         * JobKind
-         * @enum {string}
-         */
-        JobKind: "import" | "refresh" | "materialize" | "export";
-        /**
-         * JobResult
-         * @description Server-produced.
-         */
-        JobResult: {
-            /** Datasetid */
-            datasetId: string | null;
-            /** Version */
-            version: number | null;
-            /** Pipelineid */
-            pipelineId: string | null;
-            export: components["schemas"]["ExportFile"] | null;
-            /** Warnings */
-            warnings: string[];
-        };
-        /**
-         * JobStatus
-         * @enum {string}
-         */
-        JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         /** MaterializeRequest */
         MaterializeRequest: {
             pipeline: components["schemas"]["Pipeline"];
@@ -2154,16 +2456,6 @@ export interface components {
          * @enum {string}
          */
         Reduction: "none" | "aggregated" | "binned" | "downsampled" | "sampled";
-        /** RefreshRequest */
-        RefreshRequest: {
-            /**
-             * Stagedid
-             * @default null
-             */
-            stagedId: string | null;
-            /** @default null */
-            options: components["schemas"]["ImportOptions"] | null;
-        };
         /** RowsPageMeta */
         RowsPageMeta: {
             /** Offset */
@@ -2183,38 +2475,6 @@ export interface components {
              */
             version: number | null;
         };
-        /** RowsRequest */
-        RowsRequest: {
-            /**
-             * Offset
-             * @default 0
-             */
-            offset: number;
-            /**
-             * Limit
-             * @default 200
-             */
-            limit: number;
-            /** Sort */
-            sort?: components["schemas"]["SortKey"][];
-            /** Filters */
-            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
-            /**
-             * Search
-             * @default null
-             */
-            search: string | null;
-            /**
-             * Columns
-             * @default null
-             */
-            columns: string[] | null;
-            /**
-             * Version
-             * @default null
-             */
-            version: number | null;
-        };
         /** SchemaField */
         SchemaField: {
             /** Name */
@@ -2222,49 +2482,6 @@ export interface components {
             /** Type */
             type: string;
             semantic: components["schemas"]["ColumnSemantic"];
-        };
-        /**
-         * StagedFile
-         * @description An uploaded file waiting to be previewed and imported. Server-produced.
-         */
-        StagedFile: {
-            /** Stagedid */
-            stagedId: string;
-            /** Filename */
-            fileName: string;
-            kind: components["schemas"]["SourceKind"];
-            /** Sizebytes */
-            sizeBytes: number;
-            /** Sheets */
-            sheets: string[];
-        };
-        /** StatResult */
-        StatResult: {
-            /** Values */
-            values: {
-                [key: string]: components["schemas"]["JsonValue"];
-            };
-            /** Method */
-            method: string;
-            /** N */
-            n: number;
-            /**
-             * Sampled
-             * @default false
-             */
-            sampled: boolean;
-            /** Warnings */
-            warnings?: string[];
-            /**
-             * Ntotal
-             * @default null
-             */
-            nTotal: number | null;
-            /**
-             * Nmissing
-             * @default 0
-             */
-            nMissing: number;
         };
         /** StepError */
         StepError: {
@@ -2306,13 +2523,6 @@ export interface components {
              * @enum {string}
              */
             materialized: "none" | "ready" | "pending";
-        };
-        /** ValueCount */
-        ValueCount: {
-            /** Value */
-            value: string | number | boolean | null;
-            /** Count */
-            count: number;
         };
     };
     responses: never;
@@ -2394,21 +2604,54 @@ export interface operations {
             };
         };
     };
-    upload_dataset_api_datasets_upload_post: {
+    delete_dataset_api_datasets__dataset_id__delete: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_dataset_api_datasets__dataset_id__patch: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                dataset_id: string;
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_dataset_api_datasets_upload_post"];
+                "application/json": components["schemas"]["DatasetUpdate"];
             };
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2423,6 +2666,195 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stage_file_api_datasets_staged_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagedFile"];
+                };
+            };
+        };
+    };
+    delete_staged_api_datasets_staged__staged_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                staged_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_import_api_datasets_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Arrow IPC */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apache.arrow.stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_dataset_api_datasets_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_dataset_api_datasets__dataset_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_dataset_api_datasets_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    name?: string;
+                    /** @enum {string} */
+                    kind?: "csv" | "tsv" | "excel" | "json";
+                    /** @description ImportOptions as JSON */
+                    options?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dataset"];
                 };
             };
         };
@@ -2481,6 +2913,265 @@ export interface operations {
                 };
                 content: {
                     "application/vnd.apache.arrow.stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_rows_api_datasets__dataset_id__rows_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RowsRequest"];
+            };
+        };
+        responses: {
+            /** @description Arrow IPC */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.apache.arrow.stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_values_api_datasets__dataset_id__values_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ColumnValuesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnValues"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_api_jobs_get: {
+        parameters: {
+            query?: {
+                active?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_api_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_events_api_jobs__job_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_export_api_exports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_export_api_exports__export_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                export_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv; charset=utf-8": unknown;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
                 };
             };
             /** @description Validation Error */
@@ -2922,6 +3613,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    describe_fields_api_stats_describe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
             };
             /** @description Validation Error */
             422: {

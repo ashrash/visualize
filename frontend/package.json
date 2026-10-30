@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "e2e": "playwright test --config e2e/playwright.config.ts",
     "lint": "biome check .",
     "format": "biome check --write .",
     "gen:api": "uv run --project .. viz openapi --out src/api/openapi.json && openapi-typescript src/api/openapi.json -o src/api/schema.d.ts"
@@ -40,7 +41,9 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@biomejs/biome": "^2.6.4",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",

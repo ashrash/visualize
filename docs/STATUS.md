@@ -28,6 +28,20 @@ items in their final report and the lead updates this file. Status values: `todo
   chart export). Follow-ups before Wave 2: multi-grid detection, required `affectsData`, EChart
   component replacement. All three merged (5a9a92f); charts screen wired by ui-data (e526497).
   Lead browser smoke on integrated main: import, grid, charts, new chart, reload, dark: no errors.
+- 2026-10-30: data-core merged (40edf54): engine owners/tickets and supersede-on-arrival, fatal
+  recovery, UTC sessions, second DuckDB instance for jobs and grid views, jobs runner with SSE,
+  staged import + preview, Excel/JSON/encodings, refresh, rename/delete, server rows/values,
+  materialized grid views, CSV/Excel export. Reviewer: approve with nits after one fix round.
+  Perf (10M x 20): import 5.0 s; unsorted page ~20 ms; grid page during import max 78 ms; first
+  sorted page 190 ms cold (over the 150 ms budget, Wave 4). Follow-ups in progress: cp1252
+  fallback on mostly-UTF-8 files, generation counter guard, sticky conditional cancel,
+  request_scope in dependencies, upload parser edge cases, explicit memory-limit split.
+- 2026-10-30: platform follow-up merged (vizproj uses data-core's bundle registration and ref walker).
+- 2026-10-30: stats Wave 1 merged (bd5649f): shared kernels (sampling incl. stratified with group
+  caps, quantiles, ECDF, histogram bins, Q-Q, KDE 1-D/2-D, OLS/LOWESS fits, bootstrap) and
+  `/api/stats/describe`. Reviewer: approve with nits after one fix round. Describe (10M rows, 10
+  fields): 1.6 s, with modes 2.6 s; grouped with modes 7-8 s (Wave 4 perf item). Follow-ups in
+  progress: stratified n_missing, KDE method on coarse grids, mixed-magnitude rescale.
 
 ## MVP.md
 
@@ -35,12 +49,12 @@ items in their final report and the lead updates this file. Status values: `todo
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| CSV / TSV import | data-core · ui-data | partial | Backend: upload/path → Parquet. UI: import dialog with options; staged wizard + live preview behind `stagedImport` until data-core merges. |
-| Excel import | data-core · ui-data | partial | UI: sheet selection, one dataset per sheet (behind `stagedImport`). Backend: data-core in progress. |
-| JSON import | data-core · ui-data | partial | Backend via DuckDB read_json; not exercised in the UI yet. |
-| Data preview | data-core · ui-data | partial | Grid with scaled scrolling to 10M+ rows, resize, go-to-row. Server sort/filter/values UI behind `serverRows`. |
-| Data refresh | data-core · ui-data | partial | UI: dataset menu refresh (behind flag). Backend: data-core in progress. |
-| Large dataset handling | data-core · ui-data | partial | Parquet + DuckDB + paging. No jobs, no perf-budget run yet. |
+| CSV / TSV import | data-core · ui-data | partial | Backend done: staged upload/path, preview, options, import job. UI: staged wizard behind `stagedImport` until ui-data flips it. |
+| Excel import | data-core · ui-data | partial | Backend done (fastexcel, sheets, header row, skip rows). UI: sheet selection behind `stagedImport`. |
+| JSON import | data-core · ui-data | partial | Backend done (array/NDJSON, nested-JSON hint). Not exercised in the UI yet. |
+| Data preview | data-core · ui-data | partial | Backend done: rows with sort/filter/search, values, materialized views for deep pages. UI behind `serverRows` until ui-data flips it. |
+| Data refresh | data-core · ui-data | partial | Backend done (new version, cache invalidation). UI: dataset menu refresh behind flag. |
+| Large dataset handling | data-core · ui-data | partial | Jobs with SSE + cancel, background DuckDB instance, import from path. 10M rows: import 5.0 s, pages ~20 ms. First sorted page 190 ms cold (budget 150 ms). |
 
 ### 2. Data Preparation & Transformation
 
@@ -81,7 +95,7 @@ Tracked per plot under Plots.md below.
 | Line styles and thickness | ui-charts | done | Generated config panel + applyStyle (basic plots). |
 | Error bars | ui-charts | partial | SD/SE/CI/fixed rendered (incl. with color). Server bounds: transform branch in review. |
 | Trendlines | ui-charts | partial | Rendering + config done. Server fits (/api/charts/overlays): transform branch in review. |
-| Regression lines | ui-charts | partial | As trendlines; server fit via stats kernels (in review). |
+| Regression lines | ui-charts | partial | As trendlines; server fit kernels merged (stats); overlays endpoint: transform in progress. |
 | Confidence intervals | ui-charts | partial | CI band primitive done; server bands via overlays (in review). |
 | Tooltips | ui-charts | done | Formatted axis/item tooltips. |
 | Reference lines | ui-charts | done | Generated config panel + applyStyle (basic plots). |
@@ -92,11 +106,11 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Mean, median and mode | stats · ui-data | todo |  |
-| Standard deviation and variance | stats · ui-data | todo |  |
-| Percentiles and quartiles | stats · ui-data | todo |  |
+| Mean, median and mode | stats · ui-data | partial | Backend: describe (exact, SQL; modes with tie warning). Stats panel UI: Wave 2. |
+| Standard deviation and variance | stats · ui-data | partial | Backend: describe (overflow-safe moments). Stats panel UI: Wave 2. |
+| Percentiles and quartiles | stats · ui-data | partial | Backend: describe + quantiles kernel (exact, R type 7). Stats panel UI: Wave 2. |
 | Correlation analysis | stats · ui-data | todo |  |
-| Linear regression | stats · ui-data | todo |  |
+| Linear regression | stats · ui-data | partial | Kernel: OLS fit with CI band (used by trendlines). Endpoint + UI: Wave 2. |
 | Multiple regression | stats · ui-data | todo |  |
 | Hypothesis testing | stats · ui-data | todo |  |
 | T-tests | stats · ui-data | todo |  |
@@ -104,8 +118,8 @@ Tracked per plot under Plots.md below.
 | Chi-square tests | stats · ui-data | todo |  |
 | Distribution fitting | stats · ui-data | todo |  |
 | Outlier detection | stats · ui-data | todo |  |
-| Confidence intervals | stats · ui-data | todo |  |
-| Descriptive statistics | stats · ui-data | todo |  |
+| Confidence intervals | stats · ui-data | partial | Kernel: bootstrap CIs; fit bands. Endpoint + UI: Wave 2. |
+| Descriptive statistics | stats · ui-data | partial | Backend done: `/api/stats/describe` (grouped, filtered, percentiles, skew/kurtosis). 10 fields with modes 2.6 s at 10M; grouped 7-8 s (Wave 4). Stats panel UI: Wave 2. |
 
 ### 6. Interactivity
 
@@ -165,8 +179,8 @@ Tracked per plot under Plots.md below.
 | Export as SVG | ui-charts | done | Offscreen SVG render. |
 | Export as PDF | ui-charts | done | Vector via lazy jsPDF + svg2pdf; raster fallback for non-Latin-1 text. |
 | Export as JPEG | ui-charts | done |  |
-| Export as CSV | data-core | todo |  |
-| Export underlying data to Excel | data-core | todo |  |
+| Export as CSV | data-core · ui-data | partial | Backend done (DuckDB COPY, job + download). Pipeline sources wait on transform. UI behind `exports`. |
+| Export underlying data to Excel | data-core · ui-data | partial | Backend done (streamed xlsxwriter, row-limit warning). UI behind `exports`. |
 | Copy chart to clipboard | ui-charts | done | ClipboardItem PNG. |
 | Share dashboard through URL | platform · ui-dashboard | todo |  |
 | Embed visualizations | platform · ui-dashboard | todo |  |
