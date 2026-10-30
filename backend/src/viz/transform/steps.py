@@ -370,14 +370,23 @@ def join_step(step: JoinStep, inp: StepInput) -> exp.Select:
     if not step.on:
         raise StepProblem("choose at least one pair of join keys")
     right = inp.compiler.source_body(step.right)
-    right_names = {c.name.lower(): c.name for c in right.columns}
+    right_fields = {c.name.lower(): c for c in right.columns}
     pairs: list[tuple[str, str]] = []
     for key in step.on:
-        left_name = inp.resolve(key.left)
-        right_name = right_names.get(key.right.lower())
-        if right_name is None:
+        left = inp.schema(key.left)
+        right_field = right_fields.get(key.right.lower())
+        if right_field is None:
             raise StepProblem(f"unknown field {key.right!r} in the joined data", field=key.right)
-        pairs.append((left_name, right_name))
+        if left.semantic != right_field.semantic and ColumnSemantic.NOMINAL in (
+            left.semantic,
+            right_field.semantic,
+        ):
+            raise StepProblem(
+                f"join keys {left.name!r} ({left.type}) and {right_field.name!r} "
+                f"({right_field.type}) have different types; add a cast step first",
+                field=left.name,
+            )
+        pairs.append((left.name, right_field.name))
     shared = {lk: rk for lk, rk in pairs if lk.lower() == rk.lower()}
     coalesce = step.how in ("right", "full")
     items: list[exp.Expr] = []

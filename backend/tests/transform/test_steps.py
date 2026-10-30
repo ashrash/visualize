@@ -315,6 +315,24 @@ def test_join_inner_and_unknown_key(world: Any, people: Dataset, pipe: Any) -> N
     assert compiled.steps[0].error.field == "nope"
 
 
+def test_join_key_type_mismatch_is_a_clear_error(world: Any, pipe: Any) -> None:
+    world.dataset("t", "SELECT '1' AS k")
+    world.dataset("r", "SELECT 1 AS k")
+    compiled = world.compile(
+        pipe(
+            [
+                {
+                    "op": "join",
+                    "right": {"kind": "dataset", "id": "r"},
+                    "how": "full",
+                    "on": [{"left": "k", "right": "k"}],
+                }
+            ]
+        )
+    )
+    assert "cast step" in compiled.steps[0].error.message
+
+
 def test_union_by_name_and_position(world: Any) -> None:
     world.dataset("t", "SELECT * FROM (VALUES (1, 'a')) AS v(id, x)")
     world.dataset("u", "SELECT * FROM (VALUES ('b', 2, true)) AS v(x, id, extra)")
@@ -481,6 +499,19 @@ def test_dataset_with_file_row_number_column(world: Any) -> None:
     world.dataset("t", "SELECT * FROM (VALUES (7, 'a'), (8, 'b')) AS v(file_row_number, x)")
     _, rows = world.run([{"op": "sort", "keys": [{"field": "x", "descending": True}]}])
     assert rows == [{"file_row_number": 8, "x": "b"}, {"file_row_number": 7, "x": "a"}]
+
+
+@pytest.mark.parametrize("keep", ["first", "last"])
+def test_dedupe_on_pyarrow_parquet_regression(world: Any, keep: str) -> None:
+    """DuckDB 2.0.0: QUALIFY over the *virtual* file_row_number column of a pyarrow-written
+    file with 3+ columns hit an internal error that invalidated the database (found by the
+    compiler fuzz test). The compiler now uses read_parquet(..., file_row_number = true)."""
+    import pyarrow as pa
+
+    table = pa.table({"k": ["a", "b", None, "a"], "f": [0.5, 1.5, 2.5, 3.5], "i": [1, 2, 3, 4]})
+    world.arrow_dataset("t", table)
+    _, rows = world.run([{"op": "dedupe", "fields": ["k"], "keep": keep}])
+    assert [r["i"] for r in rows] == ([1, 2, 3] if keep == "first" else [2, 3, 4])
 
 
 def test_timestamps_survive(world: Any) -> None:

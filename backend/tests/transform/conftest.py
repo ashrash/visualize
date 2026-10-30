@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 from viz.contracts import Dataset, DatasetSource, DatasetVersion, Pipeline, SourceKind
@@ -26,11 +28,25 @@ class World:
         self.datasets: dict[str, Dataset] = {}
 
     def dataset(self, dataset_id: str, select_sql: str) -> Dataset:
-        rel = self.storage.parquet_rel(dataset_id, 1)
-        path = self.storage.resolve(rel)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        """A dataset written by DuckDB from test-controlled SQL."""
+        path = self._path(dataset_id)
         with self.engine.cursor() as cur:
             cur.sql(select_sql).write_parquet(str(path))
+        return self._register(dataset_id)
+
+    def arrow_dataset(self, dataset_id: str, table: pa.Table) -> Dataset:
+        """A dataset written by pyarrow (a different Parquet writer than DuckDB's)."""
+        pq.write_table(table, self._path(dataset_id))
+        return self._register(dataset_id)
+
+    def _path(self, dataset_id: str) -> Path:
+        path = self.storage.resolve(self.storage.parquet_rel(dataset_id, 1))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _register(self, dataset_id: str) -> Dataset:
+        rel = self.storage.parquet_rel(dataset_id, 1)
+        path = self.storage.resolve(rel)
         columns, rows = profile_parquet(self.engine, path)
         dataset = Dataset(
             id=dataset_id,

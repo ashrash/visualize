@@ -33,6 +33,7 @@ from viz.chartdata.sql import (
     fn,
     lit,
     parquet_source,
+    star_except,
     table,
     to_sql,
     with_ctes,
@@ -207,11 +208,25 @@ class Compiler:
         path = self.storage.resolve(version.parquet_path)
         names = [c.name for c in version.columns]
         if any(n.lower() == "file_row_number" for n in names):
-            # The column shadows DuckDB's virtual file_row_number; fall back to scan order.
-            row_order: exp.Expr = row_order_fallback()
+            # The data has its own file_row_number column, so DuckDB can't add one; fall back
+            # to scan order (preserve_insertion_order keeps it stable for a single file).
+            body = exp.select(exp.Star(), alias(row_order_fallback(), RN)).from_(
+                parquet_source(path)
+            )
         else:
-            row_order = col("file_row_number")
-        body = exp.select(exp.Star(), alias(row_order, RN)).from_(parquet_source(path))
+            # Use the read_parquet option, not the virtual column: in DuckDB 2.0.0 filtering on
+            # a window over the virtual file_row_number (QUALIFY, as dedupe does) hits an
+            # internal error that invalidates the whole database.
+            source = exp.Anonymous(
+                this="read_parquet",
+                expressions=[
+                    exp.Literal.string(str(path)),
+                    exp.EQ(this=exp.column("file_row_number"), expression=exp.true()),
+                ],
+            )
+            body = exp.select(
+                star_except("file_row_number"), alias(col("file_row_number"), RN)
+            ).from_(source)
         columns = tuple(
             SchemaField(name=c.name, type=c.type, semantic=c.semantic) for c in version.columns
         )
@@ -326,6 +341,9 @@ class Compiler:
             fields.append(
                 SchemaField(name=name, type=duck_type, semantic=infer_semantic(name, duck_type))
             )
+        if not fields:
+            # e.g. a pivot with no index over data with no values in the pivot column.
+            raise StepProblem("this step leaves no columns")
         return fields
 
     def describe(self, query: exp.Expr) -> tuple[tuple[str, str], ...]:
