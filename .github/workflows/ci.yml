@@ -1,0 +1,117 @@
+name: CI
+
+# Windows, macOS arm64 and macOS Intel (x86_64; kept while Intel Macs are supported, CLAUDE.md
+# section 2). Runner labels, from actions/runner-images:
+#   windows-latest   Windows Server (x64)
+#   macos-26         macOS 26 on Apple silicon (arm64)
+#   macos-26-intel   macOS 26 on Intel (x86_64); macos-15-intel is the previous image
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Superseded pushes to branches and PRs are cancelled; every push to main runs to the end.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+          - name: macOS arm64
+            os: macos-26
+          - name: macOS x86_64
+            os: macos-26-intel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      # setup-uv has no floating v10 tag (floating majors stop at v7): pin the full version.
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: uv sync --locked
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      # -- backend -----------------------------------------------------------------------------
+      - name: pytest
+        run: uv run pytest
+
+      - name: ruff check
+        run: uv run ruff check
+
+      - name: ruff format --check
+        run: uv run ruff format --check
+
+      - name: mypy
+        run: uv run mypy backend/src
+
+      # -- frontend ----------------------------------------------------------------------------
+      - name: vitest
+        run: npm --prefix frontend run test
+
+      - name: biome
+        run: npm --prefix frontend run lint
+
+      # `viz build` runs tsc (which also type-checks frontend/e2e) and vite build into
+      # backend/src/viz/static.
+      - name: Build the frontend
+        run: uv run viz build
+
+      # -- contracts ---------------------------------------------------------------------------
+      - name: Contract drift (openapi.json and schema.d.ts are up to date)
+        run: uv run python scripts/check_contract_drift.py
+
+      # -- end to end --------------------------------------------------------------------------
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\ms-playwright' || '~/Library/Caches/ms-playwright' }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install the Playwright browser
+        run: npm --prefix frontend exec -- playwright install chromium
+
+      # @large tests are opt-in (they need the 10M-row fixture) and are not run here.
+      - name: Playwright e2e
+        env:
+          E2E_SKIP_BUILD: "1" # the frontend was built above
+        run: npm --prefix frontend run e2e
+
+      - name: Upload e2e results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-${{ matrix.os }}
+          path: |
+            frontend/playwright-report
+            frontend/test-results/axe-report.md
+            frontend/test-results/axe-report.json
+            frontend/test-results/screenshots
+            frontend/test-results/artifacts
+          if-no-files-found: ignore
+          retention-days: 14

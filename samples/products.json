@@ -1,0 +1,2188 @@
+[
+ {
+  "sku": "SKU-1000",
+  "name": "Product 1",
+  "category": "Garden",
+  "price": 36.85,
+  "stock": 452,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2021-08-09",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 6.2,
+   "h": 14.5,
+   "d": 6.5
+  }
+ },
+ {
+  "sku": "SKU-1001",
+  "name": "Product 2",
+  "category": "Outdoor",
+  "price": 33.7,
+  "stock": 200,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2022-03-03",
+  "tags": [
+   "eco",
+   "limited"
+  ],
+  "dimensions": {
+   "w": 58.7,
+   "h": 10.7,
+   "d": 14.7
+  }
+ },
+ {
+  "sku": "SKU-1002",
+  "name": "Product 3",
+  "category": "Kitchen",
+  "price": 55.76,
+  "stock": 190,
+  "rating": 3.7,
+  "discontinued": true,
+  "launched": "2021-06-30",
+  "tags": [],
+  "dimensions": {
+   "w": 38.3,
+   "h": 11.4,
+   "d": 27.3
+  }
+ },
+ {
+  "sku": "SKU-1003",
+  "name": "Product 4",
+  "category": "Office",
+  "price": 20.49,
+  "stock": 241,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2023-09-08",
+  "tags": [],
+  "dimensions": {
+   "w": 54.8,
+   "h": 33.7,
+   "d": 22.9
+  }
+ },
+ {
+  "sku": "SKU-1004",
+  "name": "Product 5",
+  "category": "Office",
+  "price": 30.23,
+  "stock": 56,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2023-06-25",
+  "tags": [
+   "bestseller",
+   "sale",
+   "pro"
+  ],
+  "dimensions": {
+   "w": 31.8,
+   "h": 79.3,
+   "d": 26.8
+  }
+ },
+ {
+  "sku": "SKU-1005",
+  "name": "Product 6",
+  "category": "Garden",
+  "price": 50.67,
+  "stock": 170,
+  "rating": 3.2,
+  "discontinued": false,
+  "launched": "2019-06-13",
+  "tags": [],
+  "dimensions": {
+   "w": 42.6,
+   "h": 6.9,
+   "d": 23.1
+  }
+ },
+ {
+  "sku": "SKU-1006",
+  "name": "Product 7",
+  "category": "Garden",
+  "price": 27.14,
+  "stock": 475,
+  "rating": 5.0,
+  "discontinued": false,
+  "launched": "2019-12-30",
+  "tags": [
+   "sale",
+   "limited"
+  ],
+  "dimensions": {
+   "w": 75.3,
+   "h": 29.9,
+   "d": 27.8
+  }
+ },
+ {
+  "sku": "SKU-1007",
+  "name": "Product 8",
+  "category": "Garden",
+  "price": 144.38,
+  "stock": 72,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2019-07-19",
+  "tags": [
+   "new",
+   "pro",
+   "sale"
+  ],
+  "dimensions": {
+   "w": 63.0,
+   "h": 7.4,
+   "d": 8.8
+  }
+ },
+ {
+  "sku": "SKU-1008",
+  "name": "Product 9",
+  "category": "Kitchen",
+  "price": 11.07,
+  "stock": 101,
+  "rating": 3.6,
+  "discontinued": false,
+  "launched": "2021-08-18",
+  "tags": [
+   "bestseller",
+   "pro",
+   "new"
+  ],
+  "dimensions": {
+   "w": 54.3,
+   "h": 33.2,
+   "d": 28.3
+  }
+ },
+ {
+  "sku": "SKU-1009",
+  "name": "Product 10",
+  "category": "Lighting",
+  "price": 40.85,
+  "stock": 219,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2022-04-23",
+  "tags": [],
+  "dimensions": {
+   "w": 27.7,
+   "h": 44.2,
+   "d": 24.1
+  }
+ },
+ {
+  "sku": "SKU-1010",
+  "name": "Product 11",
+  "category": "Office",
+  "price": 88.76,
+  "stock": 118,
+  "rating": 3.9,
+  "discontinued": false,
+  "launched": "2023-10-27",
+  "tags": [
+   "new",
+   "pro",
+   "sale"
+  ],
+  "dimensions": {
+   "w": 79.4,
+   "h": 52.0,
+   "d": 20.1
+  }
+ },
+ {
+  "sku": "SKU-1011",
+  "name": "Product 12",
+  "category": "Lighting",
+  "price": 21.07,
+  "stock": 32,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2025-04-29",
+  "tags": [
+   "eco"
+  ],
+  "dimensions": {
+   "w": 39.9,
+   "h": 50.8,
+   "d": 28.0
+  }
+ },
+ {
+  "sku": "SKU-1012",
+  "name": "Product 13",
+  "category": "Lighting",
+  "price": 13.06,
+  "stock": 387,
+  "rating": 4.5,
+  "discontinued": true,
+  "launched": "2021-10-30",
+  "tags": [
+   "bestseller",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 30.5,
+   "h": 14.9,
+   "d": 29.1
+  }
+ },
+ {
+  "sku": "SKU-1013",
+  "name": "Product 14",
+  "category": "Office",
+  "price": 93.82,
+  "stock": 220,
+  "rating": 3.9,
+  "discontinued": false,
+  "launched": "2019-07-22",
+  "tags": [
+   "limited",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 76.1,
+   "h": 9.5,
+   "d": 32.8
+  }
+ },
+ {
+  "sku": "SKU-1014",
+  "name": "Product 15",
+  "category": "Kitchen",
+  "price": 16.36,
+  "stock": 148,
+  "rating": 3.9,
+  "discontinued": false,
+  "launched": "2019-06-12",
+  "tags": [
+   "limited"
+  ],
+  "dimensions": {
+   "w": 78.1,
+   "h": 57.7,
+   "d": 38.7
+  }
+ },
+ {
+  "sku": "SKU-1015",
+  "name": "Product 16",
+  "category": "Office",
+  "price": 6.77,
+  "stock": 288,
+  "rating": 3.9,
+  "discontinued": false,
+  "launched": "2021-01-17",
+  "tags": [],
+  "dimensions": {
+   "w": 73.0,
+   "h": 64.5,
+   "d": 33.0
+  }
+ },
+ {
+  "sku": "SKU-1016",
+  "name": "Product 17",
+  "category": "Toys",
+  "price": 197.04,
+  "stock": 484,
+  "rating": 2.8,
+  "discontinued": false,
+  "launched": "2023-07-16",
+  "tags": [
+   "gift",
+   "sale"
+  ],
+  "dimensions": {
+   "w": 13.6,
+   "h": 40.4,
+   "d": 3.0
+  }
+ },
+ {
+  "sku": "SKU-1017",
+  "name": "Product 18",
+  "category": "Toys",
+  "price": 28.89,
+  "stock": 198,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2021-12-23",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 13.7,
+   "h": 58.1,
+   "d": 6.5
+  }
+ },
+ {
+  "sku": "SKU-1018",
+  "name": "Product 19",
+  "category": "Garden",
+  "price": 114.12,
+  "stock": 219,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2023-03-30",
+  "tags": [
+   "eco"
+  ],
+  "dimensions": {
+   "w": 18.2,
+   "h": 44.6,
+   "d": 31.0
+  }
+ },
+ {
+  "sku": "SKU-1019",
+  "name": "Product 20",
+  "category": "Lighting",
+  "price": 73.2,
+  "stock": 59,
+  "rating": 4.7,
+  "discontinued": true,
+  "launched": "2021-06-12",
+  "tags": [
+   "gift",
+   "eco",
+   "pro"
+  ],
+  "dimensions": {
+   "w": 18.6,
+   "h": 6.4,
+   "d": 26.6
+  }
+ },
+ {
+  "sku": "SKU-1020",
+  "name": "Product 21",
+  "category": "Outdoor",
+  "price": 41.36,
+  "stock": 128,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2023-11-23",
+  "tags": [],
+  "dimensions": {
+   "w": 7.2,
+   "h": 62.7,
+   "d": 8.6
+  }
+ },
+ {
+  "sku": "SKU-1021",
+  "name": "Product 22",
+  "category": "Toys",
+  "price": 108.8,
+  "stock": 44,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2023-05-26",
+  "tags": [
+   "limited",
+   "eco"
+  ],
+  "dimensions": {
+   "w": 58.3,
+   "h": 30.7,
+   "d": 36.9
+  }
+ },
+ {
+  "sku": "SKU-1022",
+  "name": "Product 23",
+  "category": "Garden",
+  "price": 58.23,
+  "stock": 444,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2021-08-13",
+  "tags": [
+   "limited",
+   "new"
+  ],
+  "dimensions": {
+   "w": 60.7,
+   "h": 78.3,
+   "d": 2.4
+  }
+ },
+ {
+  "sku": "SKU-1023",
+  "name": "Product 24",
+  "category": "Lighting",
+  "price": 10.14,
+  "stock": 220,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2024-07-24",
+  "tags": [
+   "eco"
+  ],
+  "dimensions": {
+   "w": 5.9,
+   "h": 28.4,
+   "d": 18.6
+  }
+ },
+ {
+  "sku": "SKU-1024",
+  "name": "Product 25",
+  "category": "Toys",
+  "price": 52.97,
+  "stock": 206,
+  "rating": 4.6,
+  "discontinued": false,
+  "launched": "2021-06-17",
+  "tags": [
+   "sale",
+   "new",
+   "eco"
+  ],
+  "dimensions": {
+   "w": 14.4,
+   "h": 52.6,
+   "d": 14.4
+  }
+ },
+ {
+  "sku": "SKU-1025",
+  "name": "Product 26",
+  "category": "Tools",
+  "price": 25.31,
+  "stock": 31,
+  "rating": 4.0,
+  "discontinued": false,
+  "launched": "2020-06-16",
+  "tags": [
+   "pro",
+   "bestseller",
+   "new"
+  ],
+  "dimensions": {
+   "w": 37.1,
+   "h": 35.5,
+   "d": 33.0
+  }
+ },
+ {
+  "sku": "SKU-1026",
+  "name": "Product 27",
+  "category": "Lighting",
+  "price": 22.16,
+  "stock": 354,
+  "rating": 4.5,
+  "discontinued": false,
+  "launched": "2025-03-28",
+  "tags": [],
+  "dimensions": {
+   "w": 67.9,
+   "h": 60.1,
+   "d": 15.0
+  }
+ },
+ {
+  "sku": "SKU-1027",
+  "name": "Product 28",
+  "category": "Lighting",
+  "price": 41.85,
+  "stock": 257,
+  "rating": 4.1,
+  "discontinued": false,
+  "launched": "2025-02-09",
+  "tags": [
+   "gift"
+  ],
+  "dimensions": {
+   "w": 47.2,
+   "h": 41.5,
+   "d": 36.2
+  }
+ },
+ {
+  "sku": "SKU-1028",
+  "name": "Product 29",
+  "category": "Garden",
+  "price": 14.71,
+  "stock": 200,
+  "rating": 4.1,
+  "discontinued": false,
+  "launched": "2023-01-02",
+  "tags": [
+   "pro"
+  ],
+  "dimensions": {
+   "w": 48.7,
+   "h": 40.6,
+   "d": 25.6
+  }
+ },
+ {
+  "sku": "SKU-1029",
+  "name": "Product 30",
+  "category": "Outdoor",
+  "price": 209.14,
+  "stock": 202,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2022-07-26",
+  "tags": [
+   "gift",
+   "eco",
+   "limited"
+  ],
+  "dimensions": {
+   "w": 25.7,
+   "h": 33.6,
+   "d": 2.5
+  }
+ },
+ {
+  "sku": "SKU-1030",
+  "name": "Product 31",
+  "category": "Kitchen",
+  "price": 93.48,
+  "stock": 412,
+  "rating": 4.5,
+  "discontinued": false,
+  "launched": "2023-01-19",
+  "tags": [
+   "pro",
+   "gift",
+   "new"
+  ],
+  "dimensions": {
+   "w": 79.4,
+   "h": 42.7,
+   "d": 14.1
+  }
+ },
+ {
+  "sku": "SKU-1031",
+  "name": "Product 32",
+  "category": "Outdoor",
+  "price": 27.53,
+  "stock": 410,
+  "rating": 2.6,
+  "discontinued": false,
+  "launched": "2022-07-18",
+  "tags": [
+   "eco"
+  ],
+  "dimensions": {
+   "w": 8.4,
+   "h": 46.9,
+   "d": 14.5
+  }
+ },
+ {
+  "sku": "SKU-1032",
+  "name": "Product 33",
+  "category": "Office",
+  "price": 16.64,
+  "stock": 163,
+  "rating": 4.1,
+  "discontinued": false,
+  "launched": "2023-04-13",
+  "tags": [
+   "sale",
+   "gift",
+   "eco"
+  ],
+  "dimensions": {
+   "w": 69.4,
+   "h": 75.5,
+   "d": 11.3
+  }
+ },
+ {
+  "sku": "SKU-1033",
+  "name": "Product 34",
+  "category": "Toys",
+  "price": 23.7,
+  "stock": 312,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2021-11-26",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 8.5,
+   "h": 15.0,
+   "d": 30.9
+  }
+ },
+ {
+  "sku": "SKU-1034",
+  "name": "Product 35",
+  "category": "Tools",
+  "price": 17.23,
+  "stock": 275,
+  "rating": 3.6,
+  "discontinued": false,
+  "launched": "2021-04-21",
+  "tags": [
+   "pro",
+   "sale",
+   "new"
+  ],
+  "dimensions": {
+   "w": 37.0,
+   "h": 41.9,
+   "d": 15.2
+  }
+ },
+ {
+  "sku": "SKU-1035",
+  "name": "Product 36",
+  "category": "Outdoor",
+  "price": 51.29,
+  "stock": 331,
+  "rating": 4.0,
+  "discontinued": false,
+  "launched": "2020-02-07",
+  "tags": [
+   "eco",
+   "new",
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 77.9,
+   "h": 51.5,
+   "d": 5.8
+  }
+ },
+ {
+  "sku": "SKU-1036",
+  "name": "Product 37",
+  "category": "Office",
+  "price": 68.43,
+  "stock": 82,
+  "rating": 3.9,
+  "discontinued": false,
+  "launched": "2022-05-27",
+  "tags": [],
+  "dimensions": {
+   "w": 9.6,
+   "h": 44.1,
+   "d": 39.3
+  }
+ },
+ {
+  "sku": "SKU-1037",
+  "name": "Product 38",
+  "category": "Toys",
+  "price": 31.3,
+  "stock": 39,
+  "rating": 5.0,
+  "discontinued": false,
+  "launched": "2022-01-27",
+  "tags": [],
+  "dimensions": {
+   "w": 59.4,
+   "h": 22.6,
+   "d": 33.5
+  }
+ },
+ {
+  "sku": "SKU-1038",
+  "name": "Product 39",
+  "category": "Lighting",
+  "price": 45.11,
+  "stock": 270,
+  "rating": 4.2,
+  "discontinued": false,
+  "launched": "2024-01-31",
+  "tags": [
+   "pro",
+   "bestseller",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 14.1,
+   "h": 43.8,
+   "d": 5.0
+  }
+ },
+ {
+  "sku": "SKU-1039",
+  "name": "Product 40",
+  "category": "Garden",
+  "price": 32.05,
+  "stock": 63,
+  "rating": 5.0,
+  "discontinued": false,
+  "launched": "2022-01-17",
+  "tags": [
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 72.0,
+   "h": 58.1,
+   "d": 28.6
+  }
+ },
+ {
+  "sku": "SKU-1040",
+  "name": "Product 41",
+  "category": "Outdoor",
+  "price": 42.05,
+  "stock": 71,
+  "rating": 3.4,
+  "discontinued": true,
+  "launched": "2022-12-10",
+  "tags": [],
+  "dimensions": {
+   "w": 50.9,
+   "h": 9.7,
+   "d": 24.1
+  }
+ },
+ {
+  "sku": "SKU-1041",
+  "name": "Product 42",
+  "category": "Outdoor",
+  "price": 4.65,
+  "stock": 89,
+  "rating": 4.7,
+  "discontinued": false,
+  "launched": "2022-06-10",
+  "tags": [
+   "new",
+   "pro",
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 31.1,
+   "h": 49.7,
+   "d": 26.0
+  }
+ },
+ {
+  "sku": "SKU-1042",
+  "name": "Product 43",
+  "category": "Kitchen",
+  "price": 184.13,
+  "stock": 172,
+  "rating": 3.5,
+  "discontinued": false,
+  "launched": "2024-12-15",
+  "tags": [
+   "gift",
+   "limited",
+   "new"
+  ],
+  "dimensions": {
+   "w": 73.1,
+   "h": 18.9,
+   "d": 15.6
+  }
+ },
+ {
+  "sku": "SKU-1043",
+  "name": "Product 44",
+  "category": "Kitchen",
+  "price": 23.11,
+  "stock": 347,
+  "rating": 4.2,
+  "discontinued": false,
+  "launched": "2022-02-06",
+  "tags": [],
+  "dimensions": {
+   "w": 42.0,
+   "h": 75.3,
+   "d": 34.4
+  }
+ },
+ {
+  "sku": "SKU-1044",
+  "name": "Product 45",
+  "category": "Office",
+  "price": 20.51,
+  "stock": 4,
+  "rating": 4.2,
+  "discontinued": false,
+  "launched": "2019-12-28",
+  "tags": [
+   "eco",
+   "bestseller",
+   "sale"
+  ],
+  "dimensions": {
+   "w": 31.9,
+   "h": 29.7,
+   "d": 38.1
+  }
+ },
+ {
+  "sku": "SKU-1045",
+  "name": "Product 46",
+  "category": "Garden",
+  "price": 17.89,
+  "stock": 175,
+  "rating": 3.8,
+  "discontinued": false,
+  "launched": "2024-01-07",
+  "tags": [
+   "gift",
+   "eco"
+  ],
+  "dimensions": {
+   "w": 33.6,
+   "h": 48.0,
+   "d": 14.3
+  }
+ },
+ {
+  "sku": "SKU-1046",
+  "name": "Product 47",
+  "category": "Garden",
+  "price": 41.17,
+  "stock": 42,
+  "rating": 3.2,
+  "discontinued": false,
+  "launched": "2021-01-01",
+  "tags": [
+   "bestseller",
+   "sale",
+   "limited"
+  ],
+  "dimensions": {
+   "w": 53.8,
+   "h": 28.0,
+   "d": 31.6
+  }
+ },
+ {
+  "sku": "SKU-1047",
+  "name": "Product 48",
+  "category": "Tools",
+  "price": 14.81,
+  "stock": 76,
+  "rating": 4.1,
+  "discontinued": false,
+  "launched": "2023-03-02",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 74.8,
+   "h": 75.4,
+   "d": 26.9
+  }
+ },
+ {
+  "sku": "SKU-1048",
+  "name": "Product 49",
+  "category": "Garden",
+  "price": 105.06,
+  "stock": 194,
+  "rating": 4.7,
+  "discontinued": false,
+  "launched": "2019-03-23",
+  "tags": [
+   "gift",
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 12.7,
+   "h": 26.4,
+   "d": 13.1
+  }
+ },
+ {
+  "sku": "SKU-1049",
+  "name": "Product 50",
+  "category": "Tools",
+  "price": 15.83,
+  "stock": 284,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2019-03-12",
+  "tags": [
+   "sale",
+   "pro",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 49.3,
+   "h": 29.6,
+   "d": 26.1
+  }
+ },
+ {
+  "sku": "SKU-1050",
+  "name": "Product 51",
+  "category": "Outdoor",
+  "price": 43.39,
+  "stock": 288,
+  "rating": 3.5,
+  "discontinued": false,
+  "launched": "2023-02-10",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 63.7,
+   "h": 19.5,
+   "d": 16.8
+  }
+ },
+ {
+  "sku": "SKU-1051",
+  "name": "Product 52",
+  "category": "Toys",
+  "price": 44.69,
+  "stock": 392,
+  "rating": 4.5,
+  "discontinued": false,
+  "launched": "2024-03-25",
+  "tags": [
+   "pro"
+  ],
+  "dimensions": {
+   "w": 24.6,
+   "h": 42.0,
+   "d": 23.9
+  }
+ },
+ {
+  "sku": "SKU-1052",
+  "name": "Product 53",
+  "category": "Tools",
+  "price": 50.11,
+  "stock": 293,
+  "rating": 3.8,
+  "discontinued": false,
+  "launched": "2021-05-23",
+  "tags": [
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 60.0,
+   "h": 34.7,
+   "d": 23.4
+  }
+ },
+ {
+  "sku": "SKU-1053",
+  "name": "Product 54",
+  "category": "Office",
+  "price": 48.72,
+  "stock": 195,
+  "rating": 3.9,
+  "discontinued": false,
+  "launched": "2020-10-10",
+  "tags": [],
+  "dimensions": {
+   "w": 66.7,
+   "h": 10.7,
+   "d": 18.2
+  }
+ },
+ {
+  "sku": "SKU-1054",
+  "name": "Product 55",
+  "category": "Kitchen",
+  "price": 86.86,
+  "stock": 242,
+  "rating": 4.2,
+  "discontinued": false,
+  "launched": "2021-05-26",
+  "tags": [
+   "pro"
+  ],
+  "dimensions": {
+   "w": 39.8,
+   "h": 35.7,
+   "d": 23.9
+  }
+ },
+ {
+  "sku": "SKU-1055",
+  "name": "Product 56",
+  "category": "Lighting",
+  "price": 41.33,
+  "stock": 392,
+  "rating": 4.2,
+  "discontinued": false,
+  "launched": "2021-04-01",
+  "tags": [],
+  "dimensions": {
+   "w": 32.8,
+   "h": 56.5,
+   "d": 34.0
+  }
+ },
+ {
+  "sku": "SKU-1056",
+  "name": "Product 57",
+  "category": "Office",
+  "price": 88.61,
+  "stock": 260,
+  "rating": 4.5,
+  "discontinued": false,
+  "launched": "2020-10-22",
+  "tags": [
+   "limited",
+   "sale"
+  ],
+  "dimensions": {
+   "w": 68.6,
+   "h": 53.8,
+   "d": 16.1
+  }
+ },
+ {
+  "sku": "SKU-1057",
+  "name": "Product 58",
+  "category": "Tools",
+  "price": 43.16,
+  "stock": 83,
+  "rating": 3.3,
+  "discontinued": false,
+  "launched": "2021-03-16",
+  "tags": [
+   "pro"
+  ],
+  "dimensions": {
+   "w": 59.9,
+   "h": 75.1,
+   "d": 35.3
+  }
+ },
+ {
+  "sku": "SKU-1058",
+  "name": "Product 59",
+  "category": "Outdoor",
+  "price": 66.12,
+  "stock": 182,
+  "rating": 4.2,
+  "discontinued": false,
+  "launched": "2024-05-18",
+  "tags": [
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 67.8,
+   "h": 48.9,
+   "d": 13.1
+  }
+ },
+ {
+  "sku": "SKU-1059",
+  "name": "Product 60",
+  "category": "Kitchen",
+  "price": 43.52,
+  "stock": 484,
+  "rating": 3.8,
+  "discontinued": true,
+  "launched": "2020-05-03",
+  "tags": [
+   "gift"
+  ],
+  "dimensions": {
+   "w": 28.7,
+   "h": 35.1,
+   "d": 9.2
+  }
+ },
+ {
+  "sku": "SKU-1060",
+  "name": "Product 61",
+  "category": "Outdoor",
+  "price": 162.12,
+  "stock": 437,
+  "rating": 3.5,
+  "discontinued": false,
+  "launched": "2019-11-22",
+  "tags": [
+   "pro"
+  ],
+  "dimensions": {
+   "w": 78.0,
+   "h": 22.0,
+   "d": 16.4
+  }
+ },
+ {
+  "sku": "SKU-1061",
+  "name": "Product 62",
+  "category": "Garden",
+  "price": 11.52,
+  "stock": 413,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2021-04-10",
+  "tags": [
+   "bestseller",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 55.1,
+   "h": 19.2,
+   "d": 6.5
+  }
+ },
+ {
+  "sku": "SKU-1062",
+  "name": "Product 63",
+  "category": "Kitchen",
+  "price": 19.17,
+  "stock": 241,
+  "rating": 3.1,
+  "discontinued": false,
+  "launched": "2021-02-27",
+  "tags": [],
+  "dimensions": {
+   "w": 43.6,
+   "h": 12.7,
+   "d": 20.0
+  }
+ },
+ {
+  "sku": "SKU-1063",
+  "name": "Product 64",
+  "category": "Lighting",
+  "price": 15.12,
+  "stock": 460,
+  "rating": 3.7,
+  "discontinued": false,
+  "launched": "2024-04-25",
+  "tags": [
+   "new",
+   "pro",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 42.1,
+   "h": 40.9,
+   "d": 32.3
+  }
+ },
+ {
+  "sku": "SKU-1064",
+  "name": "Product 65",
+  "category": "Office",
+  "price": 10.32,
+  "stock": 463,
+  "rating": 3.1,
+  "discontinued": false,
+  "launched": "2019-07-08",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 77.4,
+   "h": 28.1,
+   "d": 6.0
+  }
+ },
+ {
+  "sku": "SKU-1065",
+  "name": "Product 66",
+  "category": "Kitchen",
+  "price": 24.63,
+  "stock": 214,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2025-05-04",
+  "tags": [],
+  "dimensions": {
+   "w": 53.9,
+   "h": 57.5,
+   "d": 9.3
+  }
+ },
+ {
+  "sku": "SKU-1066",
+  "name": "Product 67",
+  "category": "Outdoor",
+  "price": 10.97,
+  "stock": 365,
+  "rating": 4.1,
+  "discontinued": false,
+  "launched": "2020-08-16",
+  "tags": [
+   "bestseller",
+   "pro"
+  ],
+  "dimensions": {
+   "w": 10.4,
+   "h": 77.8,
+   "d": 36.2
+  }
+ },
+ {
+  "sku": "SKU-1067",
+  "name": "Product 68",
+  "category": "Outdoor",
+  "price": 26.47,
+  "stock": 53,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2024-11-16",
+  "tags": [
+   "new",
+   "eco",
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 6.3,
+   "h": 18.9,
+   "d": 30.8
+  }
+ },
+ {
+  "sku": "SKU-1068",
+  "name": "Product 69",
+  "category": "Toys",
+  "price": 18.15,
+  "stock": 260,
+  "rating": 4.8,
+  "discontinued": false,
+  "launched": "2025-05-11",
+  "tags": [],
+  "dimensions": {
+   "w": 6.7,
+   "h": 69.1,
+   "d": 12.7
+  }
+ },
+ {
+  "sku": "SKU-1069",
+  "name": "Product 70",
+  "category": "Tools",
+  "price": 11.0,
+  "stock": 108,
+  "rating": 4.5,
+  "discontinued": false,
+  "launched": "2022-03-28",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 15.4,
+   "h": 60.7,
+   "d": 29.1
+  }
+ },
+ {
+  "sku": "SKU-1070",
+  "name": "Product 71",
+  "category": "Toys",
+  "price": 46.19,
+  "stock": 95,
+  "rating": 3.0,
+  "discontinued": false,
+  "launched": "2021-06-16",
+  "tags": [
+   "bestseller",
+   "sale",
+   "new"
+  ],
+  "dimensions": {
+   "w": 8.9,
+   "h": 79.1,
+   "d": 22.6
+  }
+ },
+ {
+  "sku": "SKU-1071",
+  "name": "Product 72",
+  "category": "Outdoor",
+  "price": 45.16,
+  "stock": 287,
+  "rating": 3.2,
+  "discontinued": false,
+  "launched": "2020-01-24",
+  "tags": [
+   "pro",
+   "eco"
+  ],
+  "dimensions": {
+   "w": 44.9,
+   "h": 32.8,
+   "d": 36.6
+  }
+ },
+ {
+  "sku": "SKU-1072",
+  "name": "Product 73",
+  "category": "Outdoor",
+  "price": 23.62,
+  "stock": 260,
+  "rating": 4.0,
+  "discontinued": false,
+  "launched": "2019-11-19",
+  "tags": [],
+  "dimensions": {
+   "w": 35.3,
+   "h": 15.3,
+   "d": 38.2
+  }
+ },
+ {
+  "sku": "SKU-1073",
+  "name": "Product 74",
+  "category": "Lighting",
+  "price": 22.74,
+  "stock": 414,
+  "rating": 3.6,
+  "discontinued": false,
+  "launched": "2020-12-17",
+  "tags": [
+   "pro",
+   "new",
+   "sale"
+  ],
+  "dimensions": {
+   "w": 72.9,
+   "h": 30.6,
+   "d": 28.6
+  }
+ },
+ {
+  "sku": "SKU-1074",
+  "name": "Product 75",
+  "category": "Toys",
+  "price": 62.92,
+  "stock": 265,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2025-06-07",
+  "tags": [
+   "pro",
+   "limited"
+  ],
+  "dimensions": {
+   "w": 71.8,
+   "h": 39.1,
+   "d": 9.1
+  }
+ },
+ {
+  "sku": "SKU-1075",
+  "name": "Product 76",
+  "category": "Tools",
+  "price": 33.68,
+  "stock": 233,
+  "rating": 3.2,
+  "discontinued": false,
+  "launched": "2023-06-17",
+  "tags": [
+   "sale"
+  ],
+  "dimensions": {
+   "w": 77.7,
+   "h": 44.0,
+   "d": 9.0
+  }
+ },
+ {
+  "sku": "SKU-1076",
+  "name": "Product 77",
+  "category": "Outdoor",
+  "price": 4.61,
+  "stock": 398,
+  "rating": 3.7,
+  "discontinued": false,
+  "launched": "2021-12-18",
+  "tags": [
+   "limited",
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 40.5,
+   "h": 73.7,
+   "d": 31.2
+  }
+ },
+ {
+  "sku": "SKU-1077",
+  "name": "Product 78",
+  "category": "Garden",
+  "price": 24.19,
+  "stock": 223,
+  "rating": 3.9,
+  "discontinued": true,
+  "launched": "2022-08-19",
+  "tags": [],
+  "dimensions": {
+   "w": 35.7,
+   "h": 20.8,
+   "d": 26.3
+  }
+ },
+ {
+  "sku": "SKU-1078",
+  "name": "Product 79",
+  "category": "Lighting",
+  "price": 15.02,
+  "stock": 389,
+  "rating": 4.1,
+  "discontinued": false,
+  "launched": "2021-02-18",
+  "tags": [
+   "eco",
+   "sale"
+  ],
+  "dimensions": {
+   "w": 22.0,
+   "h": 28.8,
+   "d": 39.2
+  }
+ },
+ {
+  "sku": "SKU-1079",
+  "name": "Product 80",
+  "category": "Tools",
+  "price": 30.62,
+  "stock": 166,
+  "rating": 2.8,
+  "discontinued": false,
+  "launched": "2023-08-19",
+  "tags": [],
+  "dimensions": {
+   "w": 27.0,
+   "h": 79.7,
+   "d": 37.1
+  }
+ },
+ {
+  "sku": "SKU-1080",
+  "name": "Product 81",
+  "category": "Tools",
+  "price": 93.88,
+  "stock": 381,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2021-11-21",
+  "tags": [
+   "gift",
+   "limited"
+  ],
+  "dimensions": {
+   "w": 21.8,
+   "h": 45.4,
+   "d": 2.0
+  }
+ },
+ {
+  "sku": "SKU-1081",
+  "name": "Product 82",
+  "category": "Garden",
+  "price": 12.07,
+  "stock": 189,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2023-12-01",
+  "tags": [],
+  "dimensions": {
+   "w": 47.5,
+   "h": 8.2,
+   "d": 22.1
+  }
+ },
+ {
+  "sku": "SKU-1082",
+  "name": "Product 83",
+  "category": "Outdoor",
+  "price": 88.23,
+  "stock": 240,
+  "rating": 4.2,
+  "discontinued": false,
+  "launched": "2021-02-22",
+  "tags": [
+   "gift"
+  ],
+  "dimensions": {
+   "w": 19.0,
+   "h": 24.0,
+   "d": 25.4
+  }
+ },
+ {
+  "sku": "SKU-1083",
+  "name": "Product 84",
+  "category": "Office",
+  "price": 99.38,
+  "stock": 62,
+  "rating": 3.7,
+  "discontinued": true,
+  "launched": "2024-11-29",
+  "tags": [
+   "limited"
+  ],
+  "dimensions": {
+   "w": 38.4,
+   "h": 70.5,
+   "d": 6.3
+  }
+ },
+ {
+  "sku": "SKU-1084",
+  "name": "Product 85",
+  "category": "Outdoor",
+  "price": 96.15,
+  "stock": 38,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2019-06-30",
+  "tags": [
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 60.8,
+   "h": 49.5,
+   "d": 21.3
+  }
+ },
+ {
+  "sku": "SKU-1085",
+  "name": "Product 86",
+  "category": "Lighting",
+  "price": 16.3,
+  "stock": 237,
+  "rating": 3.5,
+  "discontinued": false,
+  "launched": "2024-01-10",
+  "tags": [],
+  "dimensions": {
+   "w": 9.4,
+   "h": 71.2,
+   "d": 33.6
+  }
+ },
+ {
+  "sku": "SKU-1086",
+  "name": "Product 87",
+  "category": "Toys",
+  "price": 55.93,
+  "stock": 263,
+  "rating": 3.6,
+  "discontinued": false,
+  "launched": "2022-11-03",
+  "tags": [
+   "limited",
+   "new",
+   "pro"
+  ],
+  "dimensions": {
+   "w": 67.8,
+   "h": 48.5,
+   "d": 23.5
+  }
+ },
+ {
+  "sku": "SKU-1087",
+  "name": "Product 88",
+  "category": "Kitchen",
+  "price": 20.41,
+  "stock": 298,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2025-01-03",
+  "tags": [],
+  "dimensions": {
+   "w": 75.2,
+   "h": 14.1,
+   "d": 21.9
+  }
+ },
+ {
+  "sku": "SKU-1088",
+  "name": "Product 89",
+  "category": "Garden",
+  "price": 16.15,
+  "stock": 86,
+  "rating": 3.6,
+  "discontinued": false,
+  "launched": "2024-02-15",
+  "tags": [
+   "eco"
+  ],
+  "dimensions": {
+   "w": 71.9,
+   "h": 49.6,
+   "d": 11.3
+  }
+ },
+ {
+  "sku": "SKU-1089",
+  "name": "Product 90",
+  "category": "Tools",
+  "price": 14.02,
+  "stock": 499,
+  "rating": 4.8,
+  "discontinued": true,
+  "launched": "2022-10-25",
+  "tags": [
+   "pro",
+   "sale"
+  ],
+  "dimensions": {
+   "w": 10.3,
+   "h": 53.5,
+   "d": 5.8
+  }
+ },
+ {
+  "sku": "SKU-1090",
+  "name": "Product 91",
+  "category": "Office",
+  "price": 64.21,
+  "stock": 65,
+  "rating": 4.0,
+  "discontinued": false,
+  "launched": "2019-01-25",
+  "tags": [
+   "bestseller",
+   "eco",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 56.8,
+   "h": 63.0,
+   "d": 29.1
+  }
+ },
+ {
+  "sku": "SKU-1091",
+  "name": "Product 92",
+  "category": "Office",
+  "price": 12.55,
+  "stock": 68,
+  "rating": 4.2,
+  "discontinued": true,
+  "launched": "2019-02-03",
+  "tags": [
+   "limited"
+  ],
+  "dimensions": {
+   "w": 62.9,
+   "h": 14.3,
+   "d": 25.4
+  }
+ },
+ {
+  "sku": "SKU-1092",
+  "name": "Product 93",
+  "category": "Garden",
+  "price": 17.31,
+  "stock": 129,
+  "rating": 3.7,
+  "discontinued": false,
+  "launched": "2020-10-15",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 43.9,
+   "h": 68.1,
+   "d": 9.7
+  }
+ },
+ {
+  "sku": "SKU-1093",
+  "name": "Product 94",
+  "category": "Office",
+  "price": 18.55,
+  "stock": 176,
+  "rating": 3.6,
+  "discontinued": false,
+  "launched": "2023-08-19",
+  "tags": [
+   "new",
+   "sale",
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 36.7,
+   "h": 24.6,
+   "d": 23.6
+  }
+ },
+ {
+  "sku": "SKU-1094",
+  "name": "Product 95",
+  "category": "Lighting",
+  "price": 39.7,
+  "stock": 317,
+  "rating": 4.8,
+  "discontinued": false,
+  "launched": "2025-06-29",
+  "tags": [
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 73.3,
+   "h": 51.0,
+   "d": 26.3
+  }
+ },
+ {
+  "sku": "SKU-1095",
+  "name": "Product 96",
+  "category": "Office",
+  "price": 36.52,
+  "stock": 195,
+  "rating": 5.0,
+  "discontinued": false,
+  "launched": "2020-01-06",
+  "tags": [],
+  "dimensions": {
+   "w": 50.5,
+   "h": 44.0,
+   "d": 20.0
+  }
+ },
+ {
+  "sku": "SKU-1096",
+  "name": "Product 97",
+  "category": "Outdoor",
+  "price": 30.61,
+  "stock": 102,
+  "rating": 4.1,
+  "discontinued": false,
+  "launched": "2022-12-07",
+  "tags": [
+   "eco",
+   "gift",
+   "limited"
+  ],
+  "dimensions": {
+   "w": 37.0,
+   "h": 43.6,
+   "d": 30.1
+  }
+ },
+ {
+  "sku": "SKU-1097",
+  "name": "Product 98",
+  "category": "Tools",
+  "price": 49.38,
+  "stock": 493,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2022-11-28",
+  "tags": [],
+  "dimensions": {
+   "w": 16.9,
+   "h": 44.9,
+   "d": 5.2
+  }
+ },
+ {
+  "sku": "SKU-1098",
+  "name": "Product 99",
+  "category": "Outdoor",
+  "price": 7.08,
+  "stock": 392,
+  "rating": 5.0,
+  "discontinued": false,
+  "launched": "2025-07-23",
+  "tags": [
+   "pro",
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 52.0,
+   "h": 32.9,
+   "d": 14.5
+  }
+ },
+ {
+  "sku": "SKU-1099",
+  "name": "Product 100",
+  "category": "Kitchen",
+  "price": 12.91,
+  "stock": 171,
+  "rating": 2.7,
+  "discontinued": false,
+  "launched": "2022-05-09",
+  "tags": [
+   "eco"
+  ],
+  "dimensions": {
+   "w": 39.1,
+   "h": 49.7,
+   "d": 17.8
+  }
+ },
+ {
+  "sku": "SKU-1100",
+  "name": "Product 101",
+  "category": "Tools",
+  "price": 72.81,
+  "stock": 88,
+  "rating": 3.6,
+  "discontinued": false,
+  "launched": "2025-02-18",
+  "tags": [
+   "limited"
+  ],
+  "dimensions": {
+   "w": 60.9,
+   "h": 23.4,
+   "d": 6.7
+  }
+ },
+ {
+  "sku": "SKU-1101",
+  "name": "Product 102",
+  "category": "Office",
+  "price": 61.5,
+  "stock": 12,
+  "rating": 3.9,
+  "discontinued": false,
+  "launched": "2020-05-06",
+  "tags": [],
+  "dimensions": {
+   "w": 56.1,
+   "h": 33.6,
+   "d": 10.6
+  }
+ },
+ {
+  "sku": "SKU-1102",
+  "name": "Product 103",
+  "category": "Outdoor",
+  "price": 78.59,
+  "stock": 149,
+  "rating": 3.2,
+  "discontinued": false,
+  "launched": "2020-08-02",
+  "tags": [],
+  "dimensions": {
+   "w": 36.8,
+   "h": 53.1,
+   "d": 22.9
+  }
+ },
+ {
+  "sku": "SKU-1103",
+  "name": "Product 104",
+  "category": "Toys",
+  "price": 30.45,
+  "stock": 49,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2024-04-02",
+  "tags": [],
+  "dimensions": {
+   "w": 50.4,
+   "h": 21.9,
+   "d": 7.7
+  }
+ },
+ {
+  "sku": "SKU-1104",
+  "name": "Product 105",
+  "category": "Tools",
+  "price": 14.88,
+  "stock": 123,
+  "rating": 4.6,
+  "discontinued": true,
+  "launched": "2019-08-24",
+  "tags": [
+   "pro"
+  ],
+  "dimensions": {
+   "w": 62.3,
+   "h": 20.8,
+   "d": 5.0
+  }
+ },
+ {
+  "sku": "SKU-1105",
+  "name": "Product 106",
+  "category": "Outdoor",
+  "price": 82.33,
+  "stock": 172,
+  "rating": 3.8,
+  "discontinued": false,
+  "launched": "2025-06-21",
+  "tags": [
+   "limited"
+  ],
+  "dimensions": {
+   "w": 22.4,
+   "h": 59.5,
+   "d": 37.0
+  }
+ },
+ {
+  "sku": "SKU-1106",
+  "name": "Product 107",
+  "category": "Outdoor",
+  "price": 61.76,
+  "stock": 408,
+  "rating": 5.0,
+  "discontinued": false,
+  "launched": "2024-11-22",
+  "tags": [
+   "new"
+  ],
+  "dimensions": {
+   "w": 31.7,
+   "h": 34.6,
+   "d": 38.6
+  }
+ },
+ {
+  "sku": "SKU-1107",
+  "name": "Product 108",
+  "category": "Outdoor",
+  "price": 78.38,
+  "stock": 415,
+  "rating": 4.9,
+  "discontinued": false,
+  "launched": "2019-07-24",
+  "tags": [
+   "eco",
+   "new",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 74.2,
+   "h": 14.4,
+   "d": 2.3
+  }
+ },
+ {
+  "sku": "SKU-1108",
+  "name": "Product 109",
+  "category": "Office",
+  "price": 19.21,
+  "stock": 429,
+  "rating": 3.7,
+  "discontinued": false,
+  "launched": "2025-06-02",
+  "tags": [
+   "bestseller",
+   "sale",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 37.6,
+   "h": 79.4,
+   "d": 15.0
+  }
+ },
+ {
+  "sku": "SKU-1109",
+  "name": "Product 110",
+  "category": "Kitchen",
+  "price": 36.23,
+  "stock": 199,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2024-12-20",
+  "tags": [
+   "gift",
+   "eco"
+  ],
+  "dimensions": {
+   "w": 60.4,
+   "h": 19.6,
+   "d": 32.0
+  }
+ },
+ {
+  "sku": "SKU-1110",
+  "name": "Product 111",
+  "category": "Toys",
+  "price": 38.71,
+  "stock": 113,
+  "rating": 5.0,
+  "discontinued": true,
+  "launched": "2024-11-01",
+  "tags": [
+   "bestseller",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 41.1,
+   "h": 43.0,
+   "d": 32.4
+  }
+ },
+ {
+  "sku": "SKU-1111",
+  "name": "Product 112",
+  "category": "Lighting",
+  "price": 10.25,
+  "stock": 224,
+  "rating": 3.8,
+  "discontinued": false,
+  "launched": "2020-04-11",
+  "tags": [
+   "sale",
+   "new",
+   "gift"
+  ],
+  "dimensions": {
+   "w": 55.1,
+   "h": 49.9,
+   "d": 19.1
+  }
+ },
+ {
+  "sku": "SKU-1112",
+  "name": "Product 113",
+  "category": "Tools",
+  "price": 23.75,
+  "stock": 405,
+  "rating": 3.0,
+  "discontinued": false,
+  "launched": "2024-07-26",
+  "tags": [
+   "gift",
+   "sale",
+   "new"
+  ],
+  "dimensions": {
+   "w": 66.6,
+   "h": 77.6,
+   "d": 4.4
+  }
+ },
+ {
+  "sku": "SKU-1113",
+  "name": "Product 114",
+  "category": "Kitchen",
+  "price": 14.78,
+  "stock": 395,
+  "rating": 4.6,
+  "discontinued": false,
+  "launched": "2019-08-05",
+  "tags": [
+   "eco",
+   "bestseller",
+   "new"
+  ],
+  "dimensions": {
+   "w": 14.7,
+   "h": 48.6,
+   "d": 11.1
+  }
+ },
+ {
+  "sku": "SKU-1114",
+  "name": "Product 115",
+  "category": "Toys",
+  "price": 29.23,
+  "stock": 117,
+  "rating": 4.3,
+  "discontinued": false,
+  "launched": "2020-05-10",
+  "tags": [
+   "new",
+   "eco",
+   "limited"
+  ],
+  "dimensions": {
+   "w": 11.3,
+   "h": 41.9,
+   "d": 14.1
+  }
+ },
+ {
+  "sku": "SKU-1115",
+  "name": "Product 116",
+  "category": "Kitchen",
+  "price": 20.61,
+  "stock": 85,
+  "rating": 3.6,
+  "discontinued": false,
+  "launched": "2021-03-24",
+  "tags": [],
+  "dimensions": {
+   "w": 8.6,
+   "h": 55.8,
+   "d": 27.8
+  }
+ },
+ {
+  "sku": "SKU-1116",
+  "name": "Product 117",
+  "category": "Kitchen",
+  "price": 74.68,
+  "stock": 70,
+  "rating": null,
+  "discontinued": false,
+  "launched": "2019-08-01",
+  "tags": [
+   "eco",
+   "new"
+  ],
+  "dimensions": {
+   "w": 24.3,
+   "h": 77.2,
+   "d": 13.3
+  }
+ },
+ {
+  "sku": "SKU-1117",
+  "name": "Product 118",
+  "category": "Tools",
+  "price": 22.32,
+  "stock": 389,
+  "rating": 3.4,
+  "discontinued": false,
+  "launched": "2020-12-13",
+  "tags": [],
+  "dimensions": {
+   "w": 76.3,
+   "h": 42.2,
+   "d": 4.5
+  }
+ },
+ {
+  "sku": "SKU-1118",
+  "name": "Product 119",
+  "category": "Kitchen",
+  "price": 28.26,
+  "stock": 308,
+  "rating": 3.7,
+  "discontinued": true,
+  "launched": "2021-04-24",
+  "tags": [
+   "bestseller"
+  ],
+  "dimensions": {
+   "w": 17.0,
+   "h": 78.7,
+   "d": 39.2
+  }
+ },
+ {
+  "sku": "SKU-1119",
+  "name": "Product 120",
+  "category": "Outdoor",
+  "price": 25.44,
+  "stock": 372,
+  "rating": 4.9,
+  "discontinued": true,
+  "launched": "2023-01-07",
+  "tags": [],
+  "dimensions": {
+   "w": 18.4,
+   "h": 74.7,
+   "d": 23.3
+  }
+ }
+]

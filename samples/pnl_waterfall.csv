@@ -1,0 +1,12 @@
+step,item,amount_k,kind
+1,Revenue,1250,total
+2,Cost of goods,-480,delta
+3,Gross profit,770,total
+4,Salaries,-310,delta
+5,Marketing,-95,delta
+6,R&D,-120,delta
+7,Other income,40,delta
+8,Operating profit,285,total
+9,Interest,-22,delta
+10,Tax,-58,delta
+11,Net profit,205,total

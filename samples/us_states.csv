@@ -1,0 +1,52 @@
+state,usps,region,population_m,median_income_k,unemployment_pct,broadband_pct
+Alabama,AL,South,5.1,59,4,88
+Alaska,AK,West,0.73,86,5.2,78.4
+Arizona,AZ,West,7.4,72,3,75.5
+Arkansas,AR,South,3.07,56,4.3,86.2
+California,CA,West,39,91,6.3,79.9
+Colorado,CO,West,5.8,87,4.2,87.7
+Connecticut,CT,Northeast,3.6,90,3.3,72.2
+Delaware,DE,South,1,79,4.3,91.5
+District of Columbia,DC,South,0.68,101,4.4,88.6
+Florida,FL,South,22.6,68,3.5,76.2
+Georgia,GA,South,11,74,2.8,80.9
+Hawaii,HI,West,1.44,95,3.3,85.9
+Idaho,ID,West,1.96,72,3.8,96.8
+Illinois,IL,Midwest,12.5,78,3.2,77.5
+Indiana,IN,Midwest,6.8,68,3,81.1
+Iowa,IA,Midwest,3.2,71,2.7,88.2
+Kansas,KS,Midwest,2.94,69,2.1,88.3
+Kentucky,KY,South,4.5,61,4.4,79.6
+Louisiana,LA,South,4.6,58,3.5,88.6
+Maine,ME,Northeast,1.4,71,3.7,89.8
+Maryland,MD,South,6.2,98,3.5,80.2
+Massachusetts,MA,Northeast,7,96,4,84.3
+Michigan,MI,Midwest,10,69,4.4,90.6
+Minnesota,MN,Midwest,5.7,84,4.1,81.8
+Mississippi,MS,South,2.96,52,3.4,91
+Missouri,MO,Midwest,6.2,66,4.9,85.6
+Montana,MT,West,1.1,67,4.2,94.4
+Nebraska,NE,Midwest,1.97,74,5.6,86.5
+Nevada,NV,West,3.2,72,4.5,88.5
+New Hampshire,NH,Northeast,1.4,90,2.8,72.6
+New Jersey,NJ,Northeast,9.3,97,4,94
+New Mexico,NM,West,2.1,58,2.9,90.4
+New York,NY,Northeast,19.6,82,3.4,87.7
+North Carolina,NC,South,10.7,69,3.2,80
+North Dakota,ND,Midwest,0.78,76,3.4,100
+Ohio,OH,Midwest,11.8,68,2.6,100
+Oklahoma,OK,South,4,62,2.7,93.4
+Oregon,OR,West,4.2,77,3.7,86.1
+Pennsylvania,PA,Northeast,13,74,3.2,80.8
+Rhode Island,RI,Northeast,1.1,81,4.5,75
+South Carolina,SC,South,5.4,64,3.1,81.5
+South Dakota,SD,Midwest,0.92,71,4.8,92.9
+Tennessee,TN,South,7.1,64,3.9,88.9
+Texas,TX,South,30.5,76,2.4,90.6
+Utah,UT,West,3.4,89,3.2,85.1
+Vermont,VT,Northeast,0.65,75,3.5,80.7
+Virginia,VA,South,8.7,88,3.5,76.3
+Washington,WA,West,7.8,92,2,82.5
+West Virginia,WV,South,1.77,55,4.5,73.2
+Wisconsin,WI,Midwest,5.9,73,4.7,100
+Wyoming,WY,West,0.58,72,3.2,85
