@@ -10,7 +10,7 @@ The flow (run inside an import/refresh job):
 
 from __future__ import annotations
 
-import shutil
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -116,8 +116,6 @@ class PreparedSource:
     kind: SourceKind
     # Options with the encoding resolved (so a refresh repeats it).
     options: ImportOptions
-    # Where a moved staged upload came from (moved back by `rollback_source`).
-    moved_from: Path | None = None
     warnings: list[str] = field(default_factory=list)
 
 
@@ -133,14 +131,15 @@ class NotUtf8Error(InvalidSpecError):
 def not_utf8_warning(encoding: str) -> str:
     return (
         f"The file isn't valid UTF-8, so it was read as {encoding}. If characters look wrong, "
-        "set Encoding and refresh."
+        "set Encoding in the import options (or the refresh options) and try again."
     )
 
 
 def replaced_warning(count: int) -> str:
     return (
         f"{count:,} byte{'s' if count != 1 else ''} that aren't valid UTF-8 were replaced "
-        "with \ufffd. Set Encoding if the file uses another encoding."
+        "with \ufffd. If the file uses another encoding, set Encoding in the import options "
+        "(or the refresh options)."
     )
 
 
@@ -191,6 +190,13 @@ def choose_encoding(
     )
 
 
+def _link_or_copy(src: Path, dst: Path, on_bytes: Callable[[int], None]) -> None:
+    try:
+        os.link(src, dst)
+    except OSError:
+        _copy(src, dst, on_bytes)
+
+
 def _copy(src: Path, dst: Path, on_bytes: Callable[[int], None]) -> None:
     copied = 0
     try:
@@ -222,7 +228,7 @@ def prepare_source(
 
     Text files are scanned in full first (`choose_encoding`), so a bad byte deep in the file
     is handled here instead of failing the conversion. A staged upload is moved into
-    `sources/<id>/` (moved back by `rollback_source` if the import fails; `finish_source`
+    `sources/<id>/` (hard-linked or copied; the staged upload itself is kept; `finish_source`
     deletes the staged folder on success)."""
     if staged_id is not None:
         original = storage.find_staged(staged_id)
@@ -271,24 +277,25 @@ def prepare_source(
             original.name,
             resolved_kind,
             resolved_options,
-            None,
-            warnings,
+            warnings=warnings,
         )
     if staged_id is not None:
+        # The staged upload stays (another sheet of the same workbook may be imported from
+        # it, even in parallel); the source copy is a hard link where possible, so it costs
+        # no extra disk and stays valid after the staged folder is deleted or expires.
         target = storage.new_source_path(dataset_id, original.name)
-        shutil.move(original, target)
+        _link_or_copy(original, target, copy_progress)
         return PreparedSource(
             target,
             storage.rel(target),
             original.name,
             resolved_kind,
             resolved_options,
-            original,
-            warnings,
+            warnings=warnings,
         )
     if in_place_allowed and size > settings.copy_source_max_mb * 1024 * 1024:
         return PreparedSource(
-            original, None, original.name, resolved_kind, resolved_options, None, warnings
+            original, None, original.name, resolved_kind, resolved_options, warnings=warnings
         )
     progress(0.1, "Copying source file")
     target = storage.new_source_path(dataset_id, original.name)
@@ -299,29 +306,22 @@ def prepare_source(
         original.name,
         resolved_kind,
         resolved_options,
-        None,
-        warnings,
+        warnings=warnings,
     )
 
 
 def rollback_source(storage: LocalStorage, source: PreparedSource | None) -> None:
-    """Undo `prepare_source` after a failed import: move a staged upload back, or delete the
-    copy made under `sources/`."""
+    """Undo `prepare_source` after a failed import: delete the copy (or hard link) made under
+    `sources/`. The staged upload was never touched."""
     if source is None or source.source_rel is None:
         return
-    created = storage.resolve(source.source_rel)
-    if source.moved_from is not None:
-        source.moved_from.parent.mkdir(parents=True, exist_ok=True)
-        if created.exists():
-            shutil.move(created, source.moved_from)
-    else:
-        created.unlink(missing_ok=True)
+    storage.resolve(source.source_rel).unlink(missing_ok=True)
 
 
 def finish_source(storage: LocalStorage, staged_id: str | None) -> None:
-    """After a successful import: the staged upload (moved or transcoded) is no longer needed."""
-    if staged_id is not None:
-        storage.delete_staged(staged_id)
+    """After a successful import. The staged upload is kept until `DELETE /datasets/staged/{id}`
+    or the expiry sweep, so several imports (e.g. one per Excel sheet) can use it."""
+    del storage, staged_id
 
 
 def open_relation(

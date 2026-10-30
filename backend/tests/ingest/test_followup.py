@@ -294,3 +294,94 @@ def test_scan_counts(tmp_path: Path) -> None:
     path.write_bytes("Zürich".encode() + b"\xe9" + b"x" * 10)
     stats = readers.scan_utf8(path)
     assert stats.invalid == 1 and stats.multibyte >= 2
+
+
+# -- ui-data follow-ups -------------------------------------------------------------------
+
+
+def test_two_sheets_from_one_upload_in_parallel(client: TestClient, stage: Stage) -> None:
+    import io
+
+    import xlsxwriter
+
+    buffer = io.BytesIO()
+    book = xlsxwriter.Workbook(buffer, {"in_memory": True})
+    for name, rows in {"North": [["a"], [1], [2]], "South": [["b"], [3]]}.items():
+        sheet = book.add_worksheet(name)
+        for r, row in enumerate(rows):
+            sheet.write_row(r, 0, row)
+    book.close()
+    staged = stage("regions.xlsx", buffer.getvalue())
+    jobs = client.app.state.jobs  # type: ignore[attr-defined]
+    submitted = [
+        client.post(
+            "/api/datasets/import",
+            json={"stagedId": staged["stagedId"], "options": {"sheet": sheet}},
+        ).json()
+        for sheet in ("North", "South")
+    ]
+    done = [jobs.wait(job["id"], 60) for job in submitted]
+    assert [j.status for j in done] == ["succeeded", "succeeded"], [j.error for j in done]
+    counts = [
+        client.get(f"/api/datasets/{j.result.dataset_id}").json()["versions"][0]["rowCount"]
+        for j in done
+    ]
+    assert counts == [2, 1]
+    storage = client.app.state.storage  # type: ignore[attr-defined]
+    assert storage.find_staged(staged["stagedId"]) is not None  # kept for more sheets
+    # Deleting the upload doesn't touch the imported datasets' source copies.
+    assert client.delete(f"/api/datasets/staged/{staged['stagedId']}").status_code == 204
+    for j in done:
+        version = client.get(f"/api/datasets/{j.result.dataset_id}").json()["versions"][0]
+        assert (storage.root / version["sourcePath"]).is_file()
+    # Expired uploads are still swept.
+    again = stage("regions.xlsx", buffer.getvalue())
+    assert storage.sweep(staged_max_age_s=-1, exports_max_age_s=1e9) >= 1
+    assert storage.find_staged(again["stagedId"]) is None
+
+
+def test_two_imports_of_one_upload_run_in_parallel(client: TestClient, stage: Stage) -> None:
+    from viz.jobs import InProcessJobRunner
+
+    staged = stage("p.csv", b"a\n1\n2\n")
+    app_jobs = client.app.state.jobs  # type: ignore[attr-defined]
+    runner = InProcessJobRunner(
+        engine=client.app.state.engine,  # type: ignore[attr-defined]
+        storage=client.app.state.storage,  # type: ignore[attr-defined]
+        sessionmaker=client.app.state.sessionmaker,  # type: ignore[attr-defined]
+        settings=client.app.state.settings,  # type: ignore[attr-defined]
+        max_workers=2,
+    )
+    client.app.state.jobs = runner  # type: ignore[attr-defined]
+    try:
+        ids = [
+            client.post("/api/datasets/import", json={"stagedId": staged["stagedId"]}).json()["id"]
+            for _ in range(2)
+        ]
+        assert [runner.wait(i, 60).status for i in ids] == ["succeeded", "succeeded"]
+    finally:
+        client.app.state.jobs = app_jobs  # type: ignore[attr-defined]
+        runner.close()
+
+
+def test_one_shot_upload_cleans_its_staging(client: TestClient) -> None:
+    response = client.post("/api/datasets/upload", files={"file": ("x.csv", b"a\n1\n")})
+    assert response.status_code == 201
+    assert _staged_dirs(client) == []
+
+
+def test_search_is_accent_insensitive(client: TestClient, stage: Stage) -> None:
+    staged = stage("cities.csv", "city\nZürich\nMontréal\nOslo\n".encode())
+    job = import_job(client, stagedId=staged["stagedId"])
+    ds = job.result.dataset_id
+    for needle, expected in (("zur", ["Zürich"]), ("ZÜR", ["Zürich"]), ("montre", ["Montréal"])):
+        response = client.post(f"/api/datasets/{ds}/rows", json={"search": needle})
+        table, _ = read_arrow(response.content)
+        assert table.column("city").to_pylist() == expected, needle
+
+
+def test_encoding_warnings_mention_import_options() -> None:
+    from viz.ingest.importer import not_utf8_warning, replaced_warning
+
+    for text in (not_utf8_warning("cp1252"), replaced_warning(3)):
+        assert "import options" in text

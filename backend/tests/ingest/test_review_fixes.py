@@ -137,10 +137,10 @@ def test_failed_import_keeps_the_upload_and_removes_files(client: TestClient, st
     storage = client.app.state.storage  # type: ignore[attr-defined]
     assert storage.find_staged(staged["stagedId"]) is not None  # can retry with new options
     assert _orphans(client) == []
-    # Retrying with working options succeeds and then removes the staged upload.
+    # Retrying with working options succeeds; the upload stays until deleted or expired.
     job = import_job(client, stagedId=staged["stagedId"])
     assert job.status == "succeeded"
-    assert storage.find_staged(staged["stagedId"]) is None
+    assert storage.find_staged(staged["stagedId"]) is not None
 
 
 def test_failed_refresh_leaves_only_the_old_version(
