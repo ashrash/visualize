@@ -8,7 +8,7 @@ import pyarrow as pa
 from sqlalchemy.orm import Session
 from sqlglot import exp
 
-from viz.chartdata.sql import alias, col, lit, ordered, predicate_sql, star_except, table, to_sql
+from viz.chartdata.sql import RN, alias, col, ordered, predicate_sql, star_except, table, to_sql
 from viz.contracts import (
     FormulaCheckRequest,
     FormulaCheckResult,
@@ -30,7 +30,7 @@ from viz.transform import runtime
 from viz.transform.compiler import CompiledPipeline, Materialization
 from viz.transform.formula import FormulaError, function_docs, validate_formula
 from viz.transform.source import make_compiler
-from viz.transform.steps import RN, StepProblem, cast_expression
+from viz.transform.steps import cast_expression
 
 
 def _compile(
@@ -141,7 +141,10 @@ def _cast_warnings(engine: Engine, compiled: CompiledPipeline, step_id: str | No
             exp.Is(this=converted, expression=exp.Null()),
         )
         items.append(
-            alias(exp.Filter(this=exp.Count(this=exp.Star()), expression=exp.Where(this=failed)), f"c{i}")
+            alias(
+                exp.Filter(this=exp.Count(this=exp.Star()), expression=exp.Where(this=failed)),
+                f"c{i}",
+            )
         )
         names.append(name)
     counts = runtime.query_arrow(
@@ -182,7 +185,9 @@ def check_formula(
         described = runtime.describe(engine, to_sql(probe))
     except runtime.USER_ERRORS as exc:
         error = StepError(message=runtime.clean_error(exc))
-        return FormulaCheckResult(ok=False, error=error, output_type=None, fields=list(formula.fields))
+        return FormulaCheckResult(
+            ok=False, error=error, output_type=None, fields=list(formula.fields)
+        )
     return FormulaCheckResult(
         ok=True, error=None, output_type=described[0][1], fields=list(formula.fields)
     )
@@ -227,15 +232,3 @@ def materialize(
             break
         run_materialization(engine, compiled.pending[0])
     return MaterializeResult(jobs={}, ready=ready)
-
-
-__all__ = [
-    "StepProblem",
-    "check_formula",
-    "functions",
-    "inspect",
-    "lit",
-    "materialize",
-    "preview",
-    "run_materialization",
-]

@@ -26,6 +26,8 @@ from viz.contracts import (
 )
 
 DIALECT = "duckdb"
+# Hidden row-order column carried through compiled pipelines (never shown to users).
+RN = "__viz_rn"
 
 
 def ident(name: str) -> exp.Identifier:
@@ -58,10 +60,12 @@ def lit(value: Scalar) -> exp.Expr:
     if isinstance(value, int):
         return exp.Literal.number(value)
     if isinstance(value, float):
+        # A bare 0.95 is a DECIMAL in DuckDB, and Literal.number(nan) renders as `nan` (a
+        # column name). CAST of Python's round-tripping repr gives the exact DOUBLE.
         if math.isfinite(value):
-            return exp.Literal.number(repr(value))
-        # Literal.number(nan) renders as a bare `nan`, which DuckDB reads as a column name.
-        text = "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
+            text = repr(value)
+        else:
+            text = "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
         return exp.Cast(this=exp.Literal.string(text), to=exp.DataType.build("DOUBLE"))
     return exp.Literal.string(value)
 
@@ -102,7 +106,9 @@ def window(
     return exp.Window(**args)
 
 
-def row_number(order_by: Sequence[exp.Ordered] = (), partition_by: Sequence[exp.Expr] = ()) -> exp.Expr:
+def row_number(
+    order_by: Sequence[exp.Ordered] = (), partition_by: Sequence[exp.Expr] = ()
+) -> exp.Expr:
     return window(exp.RowNumber(), partition_by=partition_by, order_by=order_by)
 
 
@@ -204,9 +210,7 @@ def default_agg(encoding: Encoding) -> AggFn:
 def measure_sql(encoding: Encoding) -> exp.Expr:
     """Aggregate expression cast to DOUBLE so the browser gets plain numbers."""
     target = col(encoding.field) if encoding.field else None
-    return exp.Cast(
-        this=agg_sql(default_agg(encoding), target), to=exp.DataType.build("DOUBLE")
-    )
+    return exp.Cast(this=agg_sql(default_agg(encoding), target), to=exp.DataType.build("DOUBLE"))
 
 
 def dimension_sql(encoding: Encoding) -> exp.Expr:

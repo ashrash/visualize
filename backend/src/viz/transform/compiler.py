@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -27,13 +27,12 @@ from cachetools import LRUCache
 from sqlglot import exp
 
 from viz.chartdata.sql import (
+    RN,
     alias,
     col,
     fn,
     lit,
     parquet_source,
-    star_except,
-    subquery,
     table,
     to_sql,
     with_ctes,
@@ -44,7 +43,7 @@ from viz.errors import InvalidSpecError, NotFoundError
 from viz.ingest.importer import infer_semantic
 from viz.storage import LocalStorage
 from viz.transform import runtime
-from viz.transform.steps import RESERVED_PREFIX, RN, StepInput, StepProblem, build_step
+from viz.transform.steps import RESERVED_PREFIX, StepInput, StepProblem, build_step
 
 StepStatus = Literal["ok", "error", "blocked", "disabled"]
 MaterializedState = Literal["none", "ready", "pending"]
@@ -124,9 +123,7 @@ class CompiledPipeline:
         """CTE name and columns a step reads (None = the final output)."""
         if step_id is None:
             return self.output_cte(None)
-        index = next(
-            (i for i, s in enumerate(self.steps) if s.step_id == step_id), None
-        )
+        index = next((i for i, s in enumerate(self.steps) if s.step_id == step_id), None)
         if index is None:
             raise InvalidSpecError(f"pipeline {self.pipeline.name!r} has no step {step_id!r}")
         if index == 0:
@@ -175,6 +172,8 @@ class CompiledPipeline:
 
 
 DatasetLookup = Callable[[str], Dataset]
+
+_STEP_ERRORS: tuple[type[Exception], ...] = (InvalidSpecError, NotFoundError, *runtime.USER_ERRORS)
 
 _value_cache: LRUCache[str, list[str | None]] = LRUCache(maxsize=512)
 _value_lock = threading.Lock()
@@ -295,8 +294,10 @@ class Compiler:
                 steps.append(CompiledStep(step.id, "error", [], error=error))
                 failed = True
                 continue
-            except (InvalidSpecError, *runtime.USER_ERRORS) as exc:
-                message = str(exc) if isinstance(exc, InvalidSpecError) else runtime.clean_error(exc)
+            except _STEP_ERRORS as exc:
+                # A missing join/union source or a nested pipeline problem belongs to this step.
+                viz_error = isinstance(exc, InvalidSpecError | NotFoundError)
+                message = str(exc) if viz_error else runtime.clean_error(exc)
                 steps.append(CompiledStep(step.id, "error", [], error=StepError(message=message)))
                 failed = True
                 continue
@@ -353,16 +354,3 @@ class Compiler:
 
 def row_order_fallback() -> exp.Expr:
     return exp.Sub(this=exp.Window(this=exp.RowNumber(), over="OVER"), expression=lit(1))
-
-
-def visible(body: exp.Select, *, ordered_rows: bool, alias_name: str) -> exp.Subquery:
-    """`body` without RN, as an aliased subquery (ordered by RN when asked)."""
-    inner_alias = "__viz_body"
-    query = exp.select(star_except(RN)).from_(subquery(body, inner_alias))
-    if ordered_rows:
-        query = query.order_by(col(RN, inner_alias))
-    return subquery(query, alias_name)
-
-
-def columns_of(fields: Sequence[SchemaField]) -> list[str]:
-    return [f.name for f in fields]

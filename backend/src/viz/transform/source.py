@@ -5,18 +5,19 @@ Used by chartdata, stats (describe) and data-core (exports).
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from sqlalchemy.orm import Session
 from sqlglot import exp
 
-from viz.chartdata.sql import col, parquet_source, predicate_sql, to_sql
+from viz.chartdata.sql import RN, col, parquet_source, predicate_sql, star_except, subquery, to_sql
 from viz.contracts import Column, Pipeline, Predicate, SourceRef
 from viz.engine import Engine
+from viz.errors import InvalidSpecError
 from viz.ingest.catalog import get_dataset
+from viz.stats.relation import Relation
 from viz.storage import LocalStorage
-from viz.transform.compiler import CompiledPipeline, Compiler, sha, visible
-from viz.transform.relation import Relation
+from viz.transform.compiler import CompiledPipeline, Compiler, sha
 
 
 def make_compiler(
@@ -40,14 +41,17 @@ def resolve_source(
     """Resolve `ref` and apply `filters`.
 
     - Datasets read their current Parquet version directly.
-    - Pipelines compile to a subquery. `ordered=True` keeps the pipeline's row order (sort
-      steps, file order), for previews and exports; leave it off for aggregations.
-    - Raises NotFoundError for a missing dataset or pipeline, InvalidSpecError for a pipeline
-      step error (naming the step), an unknown filter field, or a reference cycle.
+    - Pipelines compile to a query (`pipelines` holds every pipeline `ref` reaches, including
+      unsaved edits). `ordered=True` keeps the pipeline's row order (sort steps, then file
+      order), for previews and exports; leave it off for aggregations.
+    - Filter field names match case-insensitively, as in DuckDB.
+    - Raises NotFoundError for a missing dataset or pipeline, and InvalidSpecError for a
+      pipeline step error (naming the step), an unknown filter field or a reference cycle.
     """
     compiler = make_compiler(engine, db, storage, pipelines)
-    return relation_for(compiler, ref, filters, query_key=query_key, generation=generation,
-                        ordered=ordered)
+    return relation_for(
+        compiler, ref, filters, query_key=query_key, generation=generation, ordered=ordered
+    )
 
 
 def relation_for(
@@ -59,13 +63,14 @@ def relation_for(
     generation: int | None = None,
     ordered: bool = False,
 ) -> Relation:
+    source: exp.Expr
     if ref.kind == "dataset":
         dataset = compiler.dataset(ref.id)
         version = dataset.current()
-        source: exp.Expr = parquet_source(compiler.storage.resolve(version.parquet_path))
-        columns = {c.name: c for c in version.columns}
+        source = parquet_source(compiler.storage.resolve(version.parquet_path))
+        columns: dict[str, Column] = {c.name: c for c in version.columns}
         row_count: int | None = version.row_count
-        version_key = f"dataset:{dataset.id}:v{version.n}"
+        version_key = f"{dataset.id}@v{version.n}"
     else:
         compiled = compiler.compile(compiler.pipeline(ref.id))
         source, columns, version_key = pipeline_source(compiled, ordered=ordered)
@@ -85,35 +90,48 @@ def relation_for(
 
 def pipeline_source(
     compiled: CompiledPipeline, *, ordered: bool, step_id: str | None = None
-) -> tuple[exp.Expr, dict[str, Column], str]:
+) -> tuple[exp.Query, dict[str, Column], str]:
+    """The pipeline's output after `step_id` (None = final) without the hidden RN column.
+
+    Pipeline columns carry no profile, so null_count and approx_distinct are 0 (unknown).
+    """
     _, fields = compiled.output_cte(step_id)
     body = compiled.body(step_id)
+    inner = "__viz_body"
+    query = exp.select(star_except(RN)).from_(subquery(body, inner))
+    if ordered:
+        query = query.order_by(col(RN, inner))
     columns = {
-        f.name: Column(name=f.name, type=f.type, semantic=f.semantic, null_count=0, approx_distinct=0)
+        f.name: Column(
+            name=f.name, type=f.type, semantic=f.semantic, null_count=0, approx_distinct=0
+        )
         for f in fields
     }
-    return visible(body, ordered_rows=ordered, alias_name="__viz_src"), columns, (
-        f"pipeline:{sha(to_sql(body))}"
+    return query, columns, f"pipeline:{compiled.pipeline.id}:{sha(to_sql(body))[:32]}"
+
+
+def resolve_field(columns: Mapping[str, Column], name: str) -> str:
+    """The relation's spelling of `name` (case-insensitive, like DuckDB)."""
+    if name in columns:
+        return name
+    lowered = name.lower()
+    for actual in columns:
+        if actual.lower() == lowered:
+            return actual
+    raise InvalidSpecError(f"unknown field {name!r}")
+
+
+def filter_condition(
+    columns: Mapping[str, Column], filters: Sequence[Predicate]
+) -> exp.Expr | None:
+    if not filters:
+        return None
+    return exp.and_(
+        *(exp.Paren(this=predicate_sql(p, col(resolve_field(columns, p.field)))) for p in filters)
     )
 
 
 def with_filters(relation: Relation, filters: Sequence[Predicate]) -> Relation:
     """`relation` with `filters` ANDed into its WHERE (field names checked and resolved)."""
-    if not filters:
-        return relation
-    parts: list[exp.Expr] = []
-    if relation.where is not None:
-        parts.append(relation.where)
-    for predicate in filters:
-        column = relation.field(predicate.field)
-        parts.append(exp.Paren(this=predicate_sql(predicate, col(column.name))))
-    return Relation(
-        engine=relation.engine,
-        source=relation.source,
-        where=exp.and_(*parts),
-        columns=relation.columns,
-        row_count=relation.row_count,
-        version_key=relation.version_key,
-        query_key=relation.query_key,
-        generation=relation.generation,
-    )
+    condition = filter_condition(relation.columns, filters)
+    return relation if condition is None else relation.narrow(condition)

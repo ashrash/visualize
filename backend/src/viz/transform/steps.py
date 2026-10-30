@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from sqlglot import exp
 
 from viz.chartdata.sql import (
+    RN,
     agg_sql,
     alias,
     cast,
@@ -60,7 +61,6 @@ from viz.transform.formula import FormulaError, validate_formula
 if TYPE_CHECKING:
     from viz.transform.compiler import Compiler
 
-RN = "__viz_rn"
 RESERVED_PREFIX = "__viz_"
 MAX_PIVOT_COLUMNS = 1000
 _LEFT, _RIGHT = "__viz_l", "__viz_r"
@@ -159,9 +159,7 @@ def _formula(inp: StepInput, text: str) -> exp.Expr:
 def _finite(expr: exp.Expr) -> exp.Expr:
     """DOUBLE value, with NaN/±inf treated as missing (a single NaN poisons avg)."""
     as_double = cast(expr, "DOUBLE")
-    return exp.Case(
-        ifs=[exp.If(this=fn("isfinite", as_double), true=as_double.copy())]
-    )
+    return exp.Case(ifs=[exp.If(this=fn("isfinite", as_double), true=as_double.copy())])
 
 
 _SIMPLE_TYPE = re.compile(r"^[A-Z][A-Z0-9_ ]*(\(\d+(, ?\d+)?\))?$")
@@ -173,7 +171,7 @@ def _type_cast(value: exp.Expr, duck_type: str) -> exp.Expr:
     if _SIMPLE_TYPE.match(duck_type.upper()):
         try:
             return exp.Cast(this=value, to=exp.DataType.build(duck_type, dialect="duckdb"))
-        except Exception:  # noqa: BLE001 - unknown type name: let DuckDB coerce instead
+        except Exception:
             return value
     return value
 
@@ -227,10 +225,14 @@ def select_step(step: SelectStep, inp: StepInput) -> exp.Select:
 
 
 def rename_step(step: RenameStep, inp: StepInput) -> exp.Select:
-    mapping = {inp.resolve(old): _check_name(new, "a new column name") for old, new in step.mapping.items()}
+    mapping = {
+        inp.resolve(old): _check_name(new, "a new column name") for old, new in step.mapping.items()
+    }
     final = [mapping.get(name, name) for name in inp.names]
     _unique(final, "column")
-    items = [alias(col(name), mapping[name]) if name in mapping else col(name) for name in inp.names]
+    items = [
+        alias(col(name), mapping[name]) if name in mapping else col(name) for name in inp.names
+    ]
     return exp.select(*items, col(RN)).from_(inp.source())
 
 
@@ -329,9 +331,7 @@ def drop_missing_step(step: DropMissingStep, inp: StepInput) -> exp.Select:
 def dedupe_step(step: DedupeStep, inp: StepInput) -> exp.Select:
     names = inp.names if step.fields is None else [inp.resolve(f) for f in step.fields]
     _unique(names, "column")
-    first = row_number(
-        [ordered(col(RN), desc=step.keep == "last")], [col(n) for n in names]
-    )
+    first = row_number([ordered(col(RN), desc=step.keep == "last")], [col(n) for n in names])
     query = exp.select(exp.Star()).from_(inp.source())
     return query.qualify(exp.EQ(this=first, expression=lit(1)))
 
@@ -342,9 +342,7 @@ def calc_step(step: CalcStep, inp: StepInput) -> exp.Select:
     lowered = {n.lower(): n for n in inp.names}
     if name.lower() in lowered:
         existing = lowered[name.lower()]
-        items = [
-            alias(expression, name) if n == existing else col(n) for n in inp.names
-        ]
+        items = [alias(expression, name) if n == existing else col(n) for n in inp.names]
         return exp.select(*items, col(RN)).from_(inp.source())
     return exp.select(*_project(inp, append=[(name, expression)])).from_(inp.source())
 
@@ -428,7 +426,9 @@ def union_step(step: UnionStep, inp: StepInput) -> exp.Select:
         branches.append(exp.select(exp.Star(), alias(lit(0), branch)).from_(inp.source()))
         for i, other in enumerate(others, start=1):
             branches.append(
-                exp.select(exp.Star(), alias(lit(i), branch)).from_(subquery(other.body, f"__viz_u{i}"))
+                exp.select(exp.Star(), alias(lit(i), branch)).from_(
+                    subquery(other.body, f"__viz_u{i}")
+                )
             )
     else:
         width = len(inp.columns)
@@ -561,7 +561,7 @@ def normalize_step(step: NormalizeStep, inp: StepInput) -> exp.Select:
     return query.select(*_project(inp, replace))
 
 
-def build_step(step: Step, inp: StepInput) -> exp.Select:  # noqa: PLR0911
+def build_step(step: Step, inp: StepInput) -> exp.Select:
     if isinstance(step, FilterStep):
         return filter_step(step, inp)
     if isinstance(step, SortStep):
