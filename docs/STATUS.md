@@ -64,6 +64,15 @@ items in their final report and the lead updates this file. Status values: `todo
   ~20 ms; chart queries p50 56-85 ms; 6-chart refresh p95 0.24 s during a 10M import; 12
   concurrent queries ok at 5% RAM; describe p50 2.99 s (at budget, no margin). Known (Wave 4):
   sorted cold first page 216 ms, cold deep pages 0.6 s filtered / 1.8 s sorted.
+- 2026-10-30: stats follow-up merged: describe now resolves pipeline sources via `resolve_source`
+  (cache key includes the compiled pipeline SQL hash, so a dataset refresh still invalidates it), a
+  `data_errors()` context turns transform user errors and the 64 KB calc-guard trip into clean 422s
+  instead of 500s, and a missing pipeline returns 404 (was 501). Reviewer: approve, no nits. pytest
+  699 passed/6 skipped. In-app HTTP measurement of describe-with-modes (ungrouped) came in at p50
+  4.1 s / max 4.8 s, over the 3 s budget — higher than qa's own bench (p50 2.99 s) on the same
+  endpoint, likely measurement-sensitive (suspected cause: the app's lower `memory_limit` vs
+  DuckDB's default spilling the modes UNION ALL); tracked as a Wave 4 perf item, not a regression
+  from this diff (the diff touches only source resolution and error mapping, not the describe SQL).
 
 ## MVP.md
 
