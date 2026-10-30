@@ -14,36 +14,47 @@ items in their final report and the lead updates this file. Status values: `todo
   and may replace what's there.
 - Gotchas found during Phase 0 are listed in CLAUDE.md §12.
 
+## Wave 1 log
+
+- 2026-10-30: plans for data-core, transform, stats, platform and ui-charts approved; contracts added to
+  main. Plans live in `docs/plans/<agent>.md`.
+- 2026-10-30: stats seam merged (`stats/relation.py` Relation, `plots/` registry and dispatch).
+- 2026-10-30: platform merged (MVP §10 backend). Reviewer: approve with nits after one fix round.
+  Follow-up nits merged (manifest id/type checks, schemaVersion stamp, 404 on delete race). Open:
+  streaming upload size limit (needs middleware).
+- 2026-10-30: ui-data merged (shell, ui kit, scaled grid, import, project UI, pipeline editor). Phase B
+  UI for data-core/transform endpoints is behind flags in `frontend/src/api/features.ts`.
+
 ## MVP.md
 
 ### 1. Data Sources & Import
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| CSV / TSV import | data-core · ui-data | partial | Upload + import-from-path → Parquet with column profile. No import options UI yet. |
-| Excel import | data-core · ui-data | todo |  |
+| CSV / TSV import | data-core · ui-data | partial | Backend: upload/path → Parquet. UI: import dialog with options; staged wizard + live preview behind `stagedImport` until data-core merges. |
+| Excel import | data-core · ui-data | partial | UI: sheet selection, one dataset per sheet (behind `stagedImport`). Backend: data-core in progress. |
 | JSON import | data-core · ui-data | partial | Backend via DuckDB read_json; not exercised in the UI yet. |
-| Data preview | data-core · ui-data | partial | Virtual grid with server row pages. No sort/filter/resize yet. |
-| Data refresh | data-core · ui-data | todo |  |
+| Data preview | data-core · ui-data | partial | Grid with scaled scrolling to 10M+ rows, resize, go-to-row. Server sort/filter/values UI behind `serverRows`. |
+| Data refresh | data-core · ui-data | partial | UI: dataset menu refresh (behind flag). Backend: data-core in progress. |
 | Large dataset handling | data-core · ui-data | partial | Parquet + DuckDB + paging. No jobs, no perf-budget run yet. |
 
 ### 2. Data Preparation & Transformation
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Data filtering | transform · ui-data | todo |  |
-| Sorting | transform · ui-data | todo |  |
-| Grouping | transform · ui-data | todo |  |
-| Aggregation | transform · ui-data | todo |  |
-| Missing value handling | transform · ui-data | todo |  |
-| Duplicate removal | transform · ui-data | todo |  |
-| Data type conversion | transform · ui-data | todo |  |
-| Column selection | transform · ui-data | todo |  |
-| Calculated columns | transform · ui-data | todo |  |
-| Custom formulas | transform · ui-data | todo |  |
-| Join and merge datasets | transform · ui-data | todo |  |
-| Pivot and unpivot | transform · ui-data | todo |  |
-| Data normalization | transform · ui-data | todo |  |
+| Data filtering | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Sorting | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Grouping | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Aggregation | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Missing value handling | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Duplicate removal | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Data type conversion | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Column selection | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Calculated columns | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Custom formulas | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Join and merge datasets | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Pivot and unpivot | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
+| Data normalization | transform · ui-data | partial | Editor UI for all 15 steps (CodeMirror formulas). Compiler/preview: transform in progress. |
 
 ### 3. Chart & Visualization Types
 
@@ -162,16 +173,16 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Save projects | platform · ui-data | partial | Save with revision check + snapshot. Manual save only. |
-| Open existing projects | platform · ui-data | partial | Reopens the last project. No project picker yet. |
-| Autosave | platform · ui-data | todo |  |
-| Undo and redo | platform · ui-data | partial | zundo history, buttons and Ctrl/Cmd+Z / Shift+Z / Y. |
-| Version history | platform · ui-data | partial | Snapshots + list API. No UI or restore yet. |
+| Save projects | platform · ui-data | done | Atomic revision check (409 → reload dialog), named snapshots, Ctrl/Cmd+S. |
+| Open existing projects | platform · ui-data | done | Project picker: open/create/rename/duplicate/delete, with unsaved-changes guard. |
+| Autosave | platform · ui-data | partial | 2 s debounce, save-state indicator, beforeunload guard, snapshot every N. Follow-up: avoid back-to-back saves on slow links. |
+| Undo and redo | platform · ui-data | partial | zundo with coalesced typing (800 ms), Ctrl/Cmd+Z/Y. Follow-up: stale redo after coalesced edit. |
+| Version history | platform · ui-data | done | List, preview and restore (new revision; history kept). |
 | Duplicate charts | platform · ui-data | todo |  |
 | Duplicate dashboards | platform · ui-data | todo |  |
 | Rename charts | platform · ui-data | todo |  |
-| Organize charts into folders | platform · ui-data | todo |  |
-| Import/export project configuration | platform · ui-data | todo |  |
+| Organize charts into folders | platform · ui-data | partial | Backend done: folder/ItemRef validation on save and import. UI todo (ui-data). |
+| Import/export project configuration | platform · ui-data | done | .vizproj export (optional data) and import with remap/missing report. |
 
 ## Plots.md
 

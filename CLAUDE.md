@@ -353,6 +353,13 @@ Backend paths are relative to `backend/src/viz/`, with tests mirrored under `bac
 - Relations have no `fetchone()`. Use `.fetchall()` or `.limit(1).fetchall()`.
 - A cursor refuses a new query while a result is still open. Get a fresh cursor per query via `engine.cursor()`, and consume the result inside the `with` block.
 - `cur.sql(query, params=[...]).to_arrow_table()` is the efficient path. Arrow output from `cur.execute(...)` makes an extra copy.
+- `USING SAMPLE` is applied **before** `WHERE`. To sample filtered rows, sample a filtered subquery.
+- A single NaN makes `avg` return NaN. Treat NaN and ±inf as missing (`CASE WHEN isfinite(x) THEN x END`). On degenerate input (std with n<2, skewness with n<3, kurtosis with n<4, a constant column), DuckDB returns NULL rather than NaN.
+- `skewness`/`kurtosis` match SciPy with `bias=False` (G1 and excess G2). `quantile_cont` is NumPy `linear` (R type 7); `quantile_disc` is NumPy `inverted_cdf`.
+
+**Metadata DB**
+- Optimistic concurrency needs a conditional write: `UPDATE ... WHERE id = ? AND revision = ?`, with a 409 when no row matches. Reading the revision first and comparing in Python loses edits under concurrent saves.
+- Never use an id taken from an imported file (`.vizproj`, manifests) as a path component or a catalog key. Windows and macOS paths are case-insensitive and normalise `.` and trailing spaces. Mint a new id instead.
 
 **SQLGlot 30**
 - The base expression type is `exp.Expr`; `exp.Expression` is a subclass. Annotate with `exp.Expr`.

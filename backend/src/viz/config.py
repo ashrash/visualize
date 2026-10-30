@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # Local mode reads files in place; hosted deployments turn this off.
     allow_path_import: bool = True
 
+    # Projects: every Nth autosave also writes a snapshot; older autosave snapshots are pruned.
+    autosave_snapshot_every: int = 10
+    autosave_snapshots_keep: int = 20
+    max_vizproj_mb: int = 8_192
+
     @property
     def db_url(self) -> str:
         if self.database_url:
