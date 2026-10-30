@@ -76,6 +76,9 @@ export function AppShell() {
               datasets={datasets}
               selectedId={dataset?.id ?? null}
               onSelect={selectDataset}
+              onDeleted={(id) => {
+                if (dataset?.id === id) selectDataset(null);
+              }}
             />
           </aside>
           <main id="main" className="flex min-h-0 min-w-0 flex-col gap-3 p-4">

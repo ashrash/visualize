@@ -1,4 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Column, Pipeline } from "../../api/types";
 import { PipelineEditor } from "./PipelineEditor";
@@ -16,7 +18,20 @@ function pipelineWith(...ops: Parameters<typeof createStep>[0][]): Pipeline {
   };
 }
 
-afterEach(cleanup);
+const render = (ui: ReactElement) =>
+  rtlRender(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      {ui}
+    </QueryClientProvider>,
+  );
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  localStorage.clear();
+});
 
 describe("PipelineEditor", () => {
   it("lists steps and dispatches toggle, move and delete", () => {
@@ -82,5 +97,55 @@ describe("PipelineEditor", () => {
       />,
     );
     expect(screen.getByRole("note").textContent).toMatch(/Preview/);
+  });
+
+  it("shows server status and errors per step when the pipeline API is on", async () => {
+    localStorage.setItem("viz.features", JSON.stringify({ pipelineApi: true }));
+    const pipeline = pipelineWith("sort", "dedupe");
+    const [a, b] = pipeline.steps ?? [];
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).includes("/inspect")
+          ? json({
+              ok: false,
+              sourceColumns: [],
+              columns: [],
+              sql: null,
+              steps: [
+                {
+                  stepId: a?.id,
+                  status: "error",
+                  columns: [],
+                  materialized: "none",
+                  error: { message: "boom", field: null, start: null, end: null },
+                },
+                {
+                  stepId: b?.id,
+                  status: "blocked",
+                  columns: [],
+                  materialized: "none",
+                  error: null,
+                },
+              ],
+            })
+          : json({ detail: "not mocked" }, 500),
+      ),
+    );
+    render(
+      <PipelineEditor
+        pipeline={pipeline}
+        sourceColumns={columns}
+        datasets={[]}
+        dispatch={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("boom")).toBeTruthy());
+    expect(screen.getByText("Blocked by an earlier step")).toBeTruthy();
   });
 });

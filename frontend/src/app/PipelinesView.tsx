@@ -68,6 +68,7 @@ export default function PipelinesView() {
           pipeline={pipeline}
           sourceColumns={columns}
           datasets={datasets.filter((d) => d.id !== dataset.id)}
+          pipelines={project?.pipelines ?? []}
           dispatch={dispatch}
         />
       ) : (

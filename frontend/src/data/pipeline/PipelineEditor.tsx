@@ -1,6 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { Column, Dataset, Pipeline } from "../../api/types";
+import { featureOn } from "../../api/features";
+import { materializePipeline } from "../../api/pipelines";
+import type { Column, Dataset, Pipeline, StepSchema } from "../../api/types";
 import { Button } from "../../components/ui/button";
 import {
   DropdownMenu,
@@ -8,22 +11,73 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
+import { toast } from "../../components/ui/toast";
+import { followJobById } from "../../state/jobs";
+import { PipelinePreview } from "./PipelinePreview";
 import { StepForm } from "./StepForm";
 import { columnsAt } from "./schema";
 import { createStep, type PipelineAction, STEP_META, STEP_OPS, summarizeStep } from "./stepReducer";
+import { referencedPipelines, usePipelineInspect } from "./usePipelineApi";
 
 export function PipelineEditor({
   pipeline,
   sourceColumns,
   datasets,
+  pipelines = [],
   dispatch,
 }: {
   pipeline: Pipeline;
   sourceColumns: Column[];
   datasets: Dataset[];
+  /** All project pipelines (join/union can reference them); sent with every pipeline request. */
+  pipelines?: Pipeline[];
   dispatch: (action: PipelineAction) => void;
 }) {
   const steps = pipeline.steps ?? [];
+  const api = featureOn("pipelineApi");
+  const inspect = usePipelineInspect(pipeline, pipelines).data ?? null;
+  const schemaOf = (id: string): StepSchema | undefined =>
+    inspect?.steps.find((s) => s.stepId === id);
+  const queryClient = useQueryClient();
+  const [materializing, setMaterializing] = useState(false);
+
+  const materializeNow = async () => {
+    setMaterializing(true);
+    try {
+      const result = await materializePipeline({
+        pipeline,
+        pipelines: referencedPipelines(pipeline, pipelines),
+      });
+      const ids = Object.values(result.jobs);
+      if (ids.length === 0) {
+        toast("Nothing to materialize", { description: "All materialized steps are ready." });
+        return;
+      }
+      let left = ids.length;
+      for (const id of ids) {
+        followJobById(id, (job) => {
+          if (job.status !== "succeeded") {
+            toast("Materialization failed", {
+              variant: "error",
+              description: job.error ?? undefined,
+            });
+          }
+          left -= 1;
+          if (left === 0) {
+            setMaterializing(false);
+            void queryClient.invalidateQueries({ queryKey: ["pipeline-inspect"] });
+          }
+        });
+      }
+      return;
+    } catch (error) {
+      toast("Couldn't start materialization", {
+        variant: "error",
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+    setMaterializing(false);
+  };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
@@ -52,7 +106,7 @@ export function PipelineEditor({
   const selected = steps.find((s) => s.id === selectedId) ?? steps.at(-1);
 
   const add = (op: (typeof STEP_OPS)[number]) => {
-    const step = createStep(op, columnsAt(sourceColumns, steps));
+    const step = createStep(op, columnsAt(sourceColumns, steps, null, inspect));
     dispatch({ type: "add", step });
     setSelectedId(step.id);
   };
@@ -116,6 +170,22 @@ export function PipelineEditor({
                       {index + 1}. {STEP_META[step.op].label}
                     </span>
                     <span className="block truncate text-xs text-muted">{summarizeStep(step)}</span>
+                    {schemaOf(step.id)?.status === "error" ? (
+                      <span className="block text-xs text-danger" data-step-status="error">
+                        {schemaOf(step.id)?.error?.message ?? "This step has an error"}
+                      </span>
+                    ) : null}
+                    {schemaOf(step.id)?.status === "blocked" ? (
+                      <span className="block text-xs text-warning" data-step-status="blocked">
+                        Blocked by an earlier step
+                      </span>
+                    ) : null}
+                    {schemaOf(step.id)?.materialized === "ready" ? (
+                      <span className="block text-xs text-success">Materialized</span>
+                    ) : null}
+                    {schemaOf(step.id)?.materialized === "pending" ? (
+                      <span className="block text-xs text-muted">Materialization pending</span>
+                    ) : null}
                   </button>
                   <Button
                     size="icon"
@@ -178,17 +248,51 @@ export function PipelineEditor({
               // Remount per step so uncontrolled editors (formula) start from this step's text.
               key={selected.id}
               step={selected}
-              columns={columnsAt(sourceColumns, steps, selected.id)}
+              columns={columnsAt(sourceColumns, steps, selected.id, inspect)}
               datasets={datasets}
+              pipeline={pipeline}
+              pipelines={pipelines}
+              stepError={schemaOf(selected.id)?.error ?? null}
               onChange={(step) => dispatch({ type: "replace", step })}
             />
-            <div
-              role="note"
-              className="rounded-md border border-dashed border-line p-3 text-sm text-muted"
-            >
-              {/* TODO(transform): preview rows after this step, e.g. POST /api/pipelines/preview {pipeline, upToStepId, limit}. */}
-              Preview after this step is coming soon.
-            </div>
+            {api && (selected.op === "join" || selected.op === "pivot") ? (
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="accent-accent"
+                    checked={selected.materialize}
+                    onChange={(e) =>
+                      dispatch({
+                        type: "replace",
+                        step: { ...selected, materialize: e.target.checked },
+                      })
+                    }
+                  />
+                  Materialize (write this step to Parquet)
+                </label>
+                {steps.some((s) => s.materialize) ? (
+                  <Button size="sm" onClick={() => void materializeNow()} disabled={materializing}>
+                    {materializing ? "Materializing…" : "Materialize now"}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+            {api ? (
+              <section aria-label="Preview" className="flex flex-col gap-1">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Preview after this step
+                </h4>
+                <PipelinePreview pipeline={pipeline} pipelines={pipelines} stepId={selected.id} />
+              </section>
+            ) : (
+              <div
+                role="note"
+                className="rounded-md border border-dashed border-line p-3 text-sm text-muted"
+              >
+                Preview after this step is coming soon.
+              </div>
+            )}
           </>
         ) : (
           <p className="text-sm text-muted">Select or add a step to edit it.</p>

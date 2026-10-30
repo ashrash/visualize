@@ -1,22 +1,40 @@
-import type { Column, PipelineStep } from "../../api/types";
+import type { Column, PipelineInspectResult, PipelineStep, SchemaField } from "../../api/types";
+
+/** A server schema field as a Column (profile counts are not part of a pipeline schema). */
+export function fieldToColumn(field: SchemaField): Column {
+  return {
+    name: field.name,
+    type: field.type,
+    semantic: field.semantic,
+    nullCount: 0,
+    approxDistinct: 0,
+  };
+}
 
 /**
  * The columns visible to the step at `stepId` (or after the last step when null), starting from
- * the source dataset's columns.
+ * the source dataset's columns. This is the single seam for schema propagation.
  *
- * This is the single seam for schema propagation. It is a best-effort client-side estimate.
- * TODO(transform): replace with the pipeline schema endpoint so types and join/pivot outputs
- * are exact, e.g. `POST /api/pipelines/schema {pipeline, upToStepId} -> Column[]`.
+ * With a server inspect result (transform's `POST /api/pipelines/inspect`) the answer is exact:
+ * each step's output columns come from its StepSchema, and a disabled or failed step leaves the
+ * columns unchanged. Without one (flag off, request pending) a client-side estimate is used.
  */
 export function columnsAt(
   source: Column[],
   steps: PipelineStep[],
   stepId: string | null = null,
+  inspect?: PipelineInspectResult | null,
 ): Column[] {
-  let columns = source;
+  let columns = inspect ? inspect.sourceColumns.map(fieldToColumn) : source;
   for (const step of steps) {
     if (step.id === stepId) break;
-    if (step.enabled) columns = applyStep(columns, step);
+    if (!step.enabled) continue;
+    const schema = inspect?.steps.find((s) => s.stepId === step.id);
+    if (inspect && schema) {
+      if (schema.status === "ok") columns = schema.columns.map(fieldToColumn);
+    } else if (!inspect) {
+      columns = applyStep(columns, step);
+    }
   }
   return columns;
 }

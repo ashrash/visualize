@@ -48,3 +48,15 @@ export const useJobsStore = create<JobsState>((set, get) => ({
     return stop;
   },
 }));
+
+/** Follow a job known only by id (e.g. from POST /api/pipelines/materialize). */
+export function followJobById(jobId: string, onSettled?: (job: Job) => void): () => void {
+  const { merge } = useJobsStore.getState();
+  return followJob(jobId, {
+    onJob: (job) => {
+      merge(job);
+      if (isTerminal(job.status)) onSettled?.(job);
+    },
+    onError: () => undefined,
+  });
+}

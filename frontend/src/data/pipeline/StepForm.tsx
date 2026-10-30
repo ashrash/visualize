@@ -4,12 +4,14 @@ import type {
   Dataset,
   DataTypeName,
   FillStrategy,
+  Pipeline,
   PipelineStep,
   Predicate,
+  StepError,
   StepOf,
 } from "../../api/types";
 import { Field, Input, Select } from "../../components/ui/input";
-import { FormulaEditor } from "./FormulaEditor";
+import { FormulaField } from "./FormulaField";
 import { ColumnChecklist, ColumnSelect, RowList, removeAt, replaceAt } from "./fields";
 import {
   changePredicateOp,
@@ -25,6 +27,11 @@ export interface FormContext {
   columns: Column[];
   /** Other datasets, for join and union. */
   datasets: Dataset[];
+  /** The pipeline being edited and all project pipelines, for server formula checks. */
+  pipeline?: Pipeline;
+  pipelines?: Pipeline[];
+  /** The server's error for this step (from inspect), if any. */
+  stepError?: StepError | null;
 }
 
 type FormProps<Op extends PipelineStep["op"]> = FormContext & {
@@ -165,7 +172,9 @@ function PredicateRow({
   );
 }
 
-function FilterForm({ step, columns, onChange }: FormProps<"filter">) {
+function FilterForm(props: FormProps<"filter">) {
+  const { step, columns, onChange } = props;
+  const ctx: FormContext = props;
   const predicates = step.predicates ?? [];
   return (
     <>
@@ -193,10 +202,12 @@ function FilterForm({ step, columns, onChange }: FormProps<"filter">) {
         hint="Rows must also satisfy this expression, e.g. units > 10 AND region = 'West'"
       >
         {(p) => (
-          <FormulaEditor
+          <FormulaField
             id={p.id}
+            describedBy={p["aria-describedby"]}
+            stepId={step.id}
+            ctx={ctx}
             label="Filter formula"
-            columns={columns}
             value={step.expression ?? ""}
             onChange={(expression) => onChange({ ...step, expression: expression || null })}
           />
@@ -534,7 +545,9 @@ function DedupeForm({ step, columns, onChange }: FormProps<"dedupe">) {
   );
 }
 
-function CalcForm({ step, columns, onChange }: FormProps<"calc">) {
+function CalcForm(props: FormProps<"calc">) {
+  const { step, onChange } = props;
+  const ctx: FormContext = props;
   return (
     <>
       <Field label="New column name">
@@ -551,10 +564,12 @@ function CalcForm({ step, columns, onChange }: FormProps<"calc">) {
         hint="DuckDB expression, e.g. units * unit_price. Type to complete column names."
       >
         {(p) => (
-          <FormulaEditor
+          <FormulaField
             id={p.id}
+            describedBy={p["aria-describedby"]}
+            stepId={step.id}
+            ctx={ctx}
             label="Formula"
-            columns={columns}
             value={step.expression}
             onChange={(expression) => onChange({ ...step, expression })}
           />
