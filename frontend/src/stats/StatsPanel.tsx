@@ -24,7 +24,7 @@ function parsePercentiles(text: string): number[] {
     .filter(Boolean)
     .map(Number)
     .filter((n) => Number.isFinite(n))
-    .map((n) => (n > 1 ? n / 100 : n))
+    .map((n) => n / 100)
     .filter((n) => n >= 0 && n <= 1);
   return [...new Set(values)].sort((a, b) => a - b).slice(0, 20);
 }
@@ -83,12 +83,16 @@ export function StatsPanel() {
   const summaries = summariesOf(describe.data);
 
   const plotThis = (summary: FieldSummary) => {
-    if (!source || !project) return;
-    const spec = plotFromSummary(summary, source);
+    // Use the request's own source and groupBy - the ones the shown results actually came from -
+    // not the live picker state, which may have moved on to a different source since Run.
+    if (!request || !project) return;
+    const spec = plotFromSummary(summary, request.source, request.groupBy);
     update((p) => ({
       ...p,
       datasetIds:
-        kind === "dataset" ? [...new Set([...(p.datasetIds ?? []), sourceId])] : p.datasetIds,
+        request.source.kind === "dataset"
+          ? [...new Set([...(p.datasetIds ?? []), request.source.id])]
+          : p.datasetIds,
       charts: [...(p.charts ?? []), spec],
     }));
     selectChart(spec.id);

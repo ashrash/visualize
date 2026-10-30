@@ -8,13 +8,19 @@ import type { ChartSpec, FieldSummary, SourceRef } from "../api/types";
  * `plots-distribution-relationship` agent) — until that lands, ChartView shows a "not available
  * yet" notice for them rather than failing, so the shortcut is real and will light up on its own.
  */
-export function plotFromSummary(summary: FieldSummary, source: SourceRef): ChartSpec {
-  const grouped = summary.group !== null && summary.group.length > 0;
+export function plotFromSummary(
+  summary: FieldSummary,
+  source: SourceRef,
+  groupBy: string[] = [],
+): ChartSpec {
+  const grouped = summary.group !== null && summary.group.length > 0 && groupBy.length > 0;
   return {
     id: crypto.randomUUID(),
-    name: grouped ? `${summary.field} by group` : `${summary.field} distribution`,
+    name: grouped ? `${summary.field} by ${groupBy[0]}` : `${summary.field} distribution`,
     plotType: grouped ? "box" : "histogram",
     source,
-    encodings: grouped ? { y: [{ field: summary.field }] } : { x: [{ field: summary.field }] },
+    encodings: grouped
+      ? { x: [{ field: groupBy[0] }], y: [{ field: summary.field }] }
+      : { x: [{ field: summary.field }] },
   };
 }

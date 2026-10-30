@@ -37,9 +37,17 @@ describe("plotFromSummary", () => {
   });
 
   it("builds a box plot across groups for a grouped summary", () => {
-    const spec = plotFromSummary(summary({ group: ["east"] }), { kind: "pipeline", id: "p1" });
+    const spec = plotFromSummary(summary({ group: ["east"] }), { kind: "pipeline", id: "p1" }, [
+      "region",
+    ]);
     expect(spec.plotType).toBe("box");
+    expect(spec.encodings?.x).toEqual([{ field: "region" }]);
     expect(spec.encodings?.y).toEqual([{ field: "age" }]);
+  });
+
+  it("falls back to a histogram when grouped but no groupBy field is given", () => {
+    const spec = plotFromSummary(summary({ group: ["east"] }), { kind: "dataset", id: "d1" });
+    expect(spec.plotType).toBe("histogram");
   });
 
   it("gives every chart a fresh id", () => {
