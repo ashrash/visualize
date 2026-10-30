@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import Field, JsonValue
 
 from viz.contracts.base import AggFn, Contract, SourceRef
+from viz.contracts.dataset import ColumnSemantic
 from viz.contracts.predicate import Predicate
 
 
@@ -213,9 +214,25 @@ PLOT_FAMILY: dict[PlotType, PlotFamily] = {
 }
 
 
+class ChannelInfo(Contract):
+    """A channel a plot's server module validates. Server-produced."""
+
+    name: str
+    # None = any column type.
+    accepts: list[ColumnSemantic] | None
+    # 0 = optional.
+    min: int
+    # None = unbounded.
+    max: int | None
+
+
 class PlotInfo(Contract):
     type: PlotType
     family: PlotFamily
+    # From the plot's server module; None when it uses the generic aggregate path.
+    channels: list[ChannelInfo] | None = None
+    # JSON schema of the plot's params model; None when it has no server module.
+    params_schema: dict[str, JsonValue] | None = None
 
 
 class TimeUnit(StrEnum):

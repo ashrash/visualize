@@ -315,6 +315,20 @@ export interface components {
             /** Casts */
             casts: components["schemas"]["Cast"][];
         };
+        /**
+         * ChannelInfo
+         * @description A channel a plot's server module validates. Server-produced.
+         */
+        ChannelInfo: {
+            /** Name */
+            name: string;
+            /** Accepts */
+            accepts: components["schemas"]["ColumnSemantic"][] | null;
+            /** Min */
+            min: number;
+            /** Max */
+            max: number | null;
+        };
         /** ChartDataRequest */
         ChartDataRequest: {
             spec: components["schemas"]["ChartSpec"];
@@ -1074,6 +1088,12 @@ export interface components {
         PlotInfo: {
             type: components["schemas"]["PlotType"];
             family: components["schemas"]["PlotFamily"];
+            /** Channels */
+            channels?: components["schemas"]["ChannelInfo"][] | null;
+            /** Paramsschema */
+            paramsSchema?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
         };
         /**
          * PlotType
@@ -1545,6 +1565,72 @@ export interface components {
             meta: components["schemas"]["ChartDataMeta"];
         };
         /**
+         * ColumnValues
+         * @description Distinct values with counts, for filter dropdowns. Server-produced.
+         */
+        ColumnValues: {
+            /** Field */
+            field: string;
+            /** Values */
+            values: components["schemas"]["ValueCount"][];
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** ColumnValuesRequest */
+        ColumnValuesRequest: {
+            /** Field */
+            field: string;
+            /**
+             * Search
+             * @default null
+             */
+            search: string | null;
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+        };
+        /** DatasetUpdate */
+        DatasetUpdate: {
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+        };
+        /** DescribeRequest */
+        DescribeRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Fields */
+            fields: string[];
+            /** Groupby */
+            groupBy?: string[];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Percentiles */
+            percentiles?: number[];
+            /**
+             * Includeoverall
+             * @default true
+             */
+            includeOverall: boolean;
+            /**
+             * Includemode
+             * @default true
+             */
+            includeMode: boolean;
+            /**
+             * Maxgroups
+             * @default 50
+             */
+            maxGroups: number;
+        };
+        /**
          * ExportFile
          * @description Server-produced.
          */
@@ -1603,6 +1689,85 @@ export interface components {
             delimiter: string | null;
         };
         /**
+         * FieldSummary
+         * @description One field within one group of a descriptive-statistics table. Server-produced.
+         */
+        FieldSummary: {
+            /** Field */
+            field: string;
+            /** Group */
+            group: (string | number | boolean | null)[] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "numeric" | "temporal" | "categorical" | "boolean";
+            /** Count */
+            count: number;
+            /** Missing */
+            missing: number;
+            /** Distinct */
+            distinct: number | null;
+            /** Mean */
+            mean: number | null;
+            /** Std */
+            std: number | null;
+            /** Variance */
+            variance: number | null;
+            /** Sem */
+            sem: number | null;
+            /** Sum */
+            sum: number | null;
+            /** Iqr */
+            iqr: number | null;
+            /** Min */
+            min: number | string | null;
+            /** Max */
+            max: number | string | null;
+            /** Median */
+            median: number | string | null;
+            /** Q1 */
+            q1: number | string | null;
+            /** Q3 */
+            q3: number | string | null;
+            /** Skewness */
+            skewness: number | null;
+            /** Kurtosis */
+            kurtosis: number | null;
+            /** Quantiles */
+            quantiles: components["schemas"]["Quantile"][];
+            /** Modes */
+            modes: (string | number | boolean | null)[];
+            /** Modecount */
+            modeCount: number | null;
+        };
+        /** FormulaCheckRequest */
+        FormulaCheckRequest: {
+            /** Expression */
+            expression: string;
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /**
+             * Beforestepid
+             * @default null
+             */
+            beforeStepId: string | null;
+        };
+        /**
+         * FormulaCheckResult
+         * @description Server-produced.
+         */
+        FormulaCheckResult: {
+            /** Ok */
+            ok: boolean;
+            error: components["schemas"]["StepError"] | null;
+            /** Outputtype */
+            outputType: string | null;
+            /** Fields */
+            fields: string[];
+        };
+        /**
          * FormulaFunction
          * @description Server-produced; feeds formula autocomplete.
          */
@@ -1636,6 +1801,48 @@ export interface components {
             estimatedRows: number | null;
             /** Warnings */
             warnings: string[];
+        };
+        /** ImportPreviewRequest */
+        ImportPreviewRequest: {
+            /**
+             * Stagedid
+             * @default null
+             */
+            stagedId: string | null;
+            /**
+             * Path
+             * @default null
+             */
+            path: string | null;
+            /** @default null */
+            kind: components["schemas"]["SourceKind"] | null;
+            options?: components["schemas"]["ImportOptions"];
+            /**
+             * Limit
+             * @default 1000
+             */
+            limit: number;
+        };
+        /** ImportRequest */
+        ImportRequest: {
+            /**
+             * Stagedid
+             * @default null
+             */
+            stagedId: string | null;
+            /**
+             * Path
+             * @default null
+             */
+            path: string | null;
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+            /** @default null */
+            kind: components["schemas"]["SourceKind"] | null;
+            options?: components["schemas"]["ImportOptions"];
         };
         /**
          * Job
@@ -1692,6 +1899,24 @@ export interface components {
          * @enum {string}
          */
         JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        /** MaterializeRequest */
+        MaterializeRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+        };
+        /**
+         * MaterializeResult
+         * @description Server-produced.
+         */
+        MaterializeResult: {
+            /** Jobs */
+            jobs: {
+                [key: string]: string;
+            };
+            /** Ready */
+            ready: string[];
+        };
         /**
          * OverlayResult
          * @description A server-computed trendline or regression fit, with an optional band. Server-produced.
@@ -1719,6 +1944,33 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
+        /** PipelineInspectRequest */
+        PipelineInspectRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /**
+             * Includesql
+             * @default false
+             */
+            includeSql: boolean;
+        };
+        /**
+         * PipelineInspectResult
+         * @description Server-produced.
+         */
+        PipelineInspectResult: {
+            /** Ok */
+            ok: boolean;
+            /** Sourcecolumns */
+            sourceColumns: components["schemas"]["SchemaField"][];
+            /** Steps */
+            steps: components["schemas"]["StepSchema"][];
+            /** Columns */
+            columns: components["schemas"]["SchemaField"][];
+            /** Sql */
+            sql: string | null;
+        };
         /**
          * PipelinePreviewMeta
          * @description Server-produced; travels as viz.meta in the Arrow schema.
@@ -1738,6 +1990,31 @@ export interface components {
             ms: number;
             /** Warnings */
             warnings: string[];
+        };
+        /** PipelinePreviewRequest */
+        PipelinePreviewRequest: {
+            pipeline: components["schemas"]["Pipeline"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /**
+             * Stepid
+             * @default null
+             */
+            stepId: string | null;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Limit
+             * @default 200
+             */
+            limit: number;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
         };
         /** ProjectDuplicate */
         ProjectDuplicate: {
@@ -1776,11 +2053,28 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /** Quantile */
+        Quantile: {
+            /** P */
+            p: number;
+            /** Value */
+            value: number | string | null;
+        };
         /**
          * Reduction
          * @enum {string}
          */
         Reduction: "none" | "aggregated" | "binned" | "downsampled" | "sampled";
+        /** RefreshRequest */
+        RefreshRequest: {
+            /**
+             * Stagedid
+             * @default null
+             */
+            stagedId: string | null;
+            /** @default null */
+            options: components["schemas"]["ImportOptions"] | null;
+        };
         /** RowsPageMeta */
         RowsPageMeta: {
             /** Offset */
@@ -1794,6 +2088,38 @@ export interface components {
              * @default null
              */
             datasetRows: number | null;
+            /**
+             * Version
+             * @default null
+             */
+            version: number | null;
+        };
+        /** RowsRequest */
+        RowsRequest: {
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Limit
+             * @default 200
+             */
+            limit: number;
+            /** Sort */
+            sort?: components["schemas"]["SortKey"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /**
+             * Search
+             * @default null
+             */
+            search: string | null;
+            /**
+             * Columns
+             * @default null
+             */
+            columns: string[] | null;
             /**
              * Version
              * @default null
@@ -1840,6 +2166,64 @@ export interface components {
             sampled: boolean;
             /** Warnings */
             warnings?: string[];
+            /**
+             * Ntotal
+             * @default null
+             */
+            nTotal: number | null;
+            /**
+             * Nmissing
+             * @default 0
+             */
+            nMissing: number;
+        };
+        /** StepError */
+        StepError: {
+            /** Message */
+            message: string;
+            /**
+             * Field
+             * @default null
+             */
+            field: string | null;
+            /**
+             * Start
+             * @default null
+             */
+            start: number | null;
+            /**
+             * End
+             * @default null
+             */
+            end: number | null;
+        };
+        /**
+         * StepSchema
+         * @description Server-produced.
+         */
+        StepSchema: {
+            /** Stepid */
+            stepId: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "error" | "blocked" | "disabled";
+            /** Columns */
+            columns: components["schemas"]["SchemaField"][];
+            error: components["schemas"]["StepError"] | null;
+            /**
+             * Materialized
+             * @enum {string}
+             */
+            materialized: "none" | "ready" | "pending";
+        };
+        /** ValueCount */
+        ValueCount: {
+            /** Value */
+            value: string | number | boolean | null;
+            /** Count */
+            count: number;
         };
     };
     responses: never;
