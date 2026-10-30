@@ -14,6 +14,14 @@ function ramp(
   return fallback.map((color, i) => token(`${prefix}-${i + 1}`, color));
 }
 
+/**
+ * Font stacks come from CSS as `"Inter", system-ui`. ECharts writes the value into an SVG
+ * attribute without escaping, so double quotes would make exported SVG invalid XML.
+ */
+export function svgSafeFont(fontFamily: string): string {
+  return fontFamily.replace(/"/g, "'");
+}
+
 function isDarkDocument(): boolean {
   const forced = document.documentElement.dataset.theme;
   if (forced === "dark") return true;
@@ -33,7 +41,7 @@ export function readChartTheme(element: Element = document.documentElement): Cha
     text,
     textMuted: token("--viz-text-muted", "#5b6270"),
     border,
-    fontFamily: token("--viz-font-chart", fontSans),
+    fontFamily: svgSafeFont(token("--viz-font-chart", fontSans)),
     mode: isDarkDocument() ? "dark" : "light",
     background: token("--viz-chart-bg", "transparent"),
     grid: token("--viz-chart-grid", border),
@@ -49,6 +57,7 @@ export function readChartTheme(element: Element = document.documentElement): Cha
 export function resolveTheme(theme: ChartTheme): Required<ChartTheme> {
   return {
     ...theme,
+    fontFamily: svgSafeFont(theme.fontFamily),
     mode: theme.mode ?? "light",
     background: theme.background ?? "transparent",
     grid: theme.grid ?? theme.border,

@@ -306,7 +306,7 @@ describe("pie and donut", () => {
   it("donut has a hole and the total in the middle", () => {
     const o = render("donut", {}, pieData);
     expect(o.series[0].radius[0]).toBe("55%");
-    expect(o.series[1].label.formatter).toBe("100");
+    expect(o.graphic.style.text).toBe("100");
   });
 
   it("formats labels by mode", () => {

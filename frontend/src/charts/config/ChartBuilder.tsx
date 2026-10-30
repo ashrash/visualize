@@ -22,7 +22,7 @@ export function ChartBuilder({
   templates,
   onSaveTemplate,
 }: ChartBuilderProps) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const panelId = useId();
   return (
     <section aria-label="Chart settings" className="flex flex-col gap-2">

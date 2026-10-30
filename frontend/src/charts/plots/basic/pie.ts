@@ -58,9 +58,6 @@ function renderPie(
   const labelMode = param(spec, "labelMode", "percent");
   const fmt = makeFormatter(style.numberFormat ?? "auto");
   const total = items.reduce((sum, s) => sum + s.value, 0);
-  const position = style.legend.position;
-  const centerX = position === "left" ? "60%" : position === "right" ? "40%" : "50%";
-  const centerY = position === "top" ? "56%" : position === "bottom" ? "46%" : "52%";
 
   const option: Obj = {
     legend: { data: items.map((s) => s.name) },
@@ -70,7 +67,7 @@ function renderPie(
         type: "pie",
         name: data.meta.fields.y0 ?? "Value",
         radius: [`${inner}%`, "68%"],
-        center: [centerX, centerY],
+        center: ["50%", "50%"],
         data: items,
         itemStyle: { borderColor: theme.background ?? "transparent", borderWidth: 1 },
         label: {
@@ -89,25 +86,21 @@ function renderPie(
       },
     ],
   };
-  // Donut total in the middle: an invisible one-point pie at the same centre with a centred label.
+  // Donut total in the middle of the hole (the pie is centred, so the graphic is too).
   if (donut && param(spec, "showTotal", true) && total > 0) {
-    (option.series as Obj[]).push({
-      type: "pie",
-      radius: [0, 0],
-      center: [centerX, centerY],
+    option.graphic = {
+      type: "text",
+      left: "center",
+      top: "middle",
       silent: true,
-      tooltip: { show: false },
-      data: [{ name: "", value: 1, itemStyle: { opacity: 0 } }],
-      label: {
-        show: true,
-        position: "center",
-        formatter: fmt(total),
-        color: theme.text,
-        fontSize: 18,
-        fontWeight: 600,
+      style: {
+        text: fmt(total),
+        fill: theme.text,
+        font: `600 18px ${theme.fontFamily}`,
+        textAlign: "center",
+        textVerticalAlign: "middle",
       },
-      labelLine: { show: false },
-    });
+    };
   }
   return applyStyle(option, spec, theme, ctx, { defaultTrigger: "item", colorCount: items.length });
 }

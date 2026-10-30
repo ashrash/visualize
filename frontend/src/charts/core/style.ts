@@ -4,7 +4,7 @@ import { paletteColors } from "./palettes";
 import { ciBand } from "./primitives/ciBand";
 import { refLineItem } from "./primitives/refLine";
 import { type Obj, resolveStyle } from "./series";
-import { resolveTheme } from "./theme";
+import { resolveTheme, svgSafeFont } from "./theme";
 import type { AxisStyle, ChartTheme, OverlayResult, RenderContext } from "./types";
 
 export interface ApplyStyleOptions {
@@ -235,7 +235,7 @@ export function applyStyle(
   out.animationDuration = 300;
   out.textStyle = {
     color: t.text,
-    fontFamily: style.fontFamily ?? t.fontFamily,
+    fontFamily: svgSafeFont(style.fontFamily ?? t.fontFamily),
     ...(style.fontSize ? { fontSize: style.fontSize } : {}),
   };
 

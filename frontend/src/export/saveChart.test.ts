@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import type { ECharts } from "echarts/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { dataUrlToBlob, type ExportSink, safeFilename, saveChart } from "./saveChart";
+import { echarts } from "../charts/core/echarts";
+import { getPlot } from "../charts/core/registry";
+import { makeData, makeSpec, makeTheme } from "../charts/core/testing";
+import { svgSafeFont } from "../charts/core/theme";
+import { chartToSvg, dataUrlToBlob, type ExportSink, safeFilename, saveChart } from "./saveChart";
 
 // 1x1 transparent PNG
 const PNG =
@@ -71,6 +75,42 @@ describe("saveChart", () => {
     );
   });
 });
+
+describe("SVG export", () => {
+  it("produces well-formed XML for a real chart, even with a quoted font stack", () => {
+    const source = echarts.init(null, undefined, {
+      renderer: "svg",
+      ssr: true,
+      width: 300,
+      height: 200,
+    });
+    const option = {
+      ...(renderPieOption() as Record<string, unknown>),
+    };
+    source.setOption(option);
+    const svg = chartToSvg(source, {});
+    const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+    expect(doc.querySelector("parsererror")).toBeNull();
+    expect(doc.documentElement.tagName).toBe("svg");
+    expect(svg).toContain("<text");
+    source.dispose();
+  });
+});
+
+function renderPieOption() {
+  const entry = getPlot("pie");
+  if (!entry) throw new Error("pie missing");
+  const theme = makeTheme({ fontFamily: svgSafeFont('"Inter", ui-sans-serif, system-ui') });
+  const data = makeData({ x: ["a", "b"], y0: [1, 2] }, { x: "k", y0: "v" });
+  return entry.render(
+    makeSpec({
+      plotType: "pie",
+      style: { orientation: "vertical", stack: "none", showLabels: true },
+    }),
+    data,
+    theme,
+  );
+}
 
 describe("helpers", () => {
   it("makes safe, non-empty file names", () => {
