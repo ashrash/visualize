@@ -155,7 +155,8 @@ def m4_query(
 ) -> exp.Select:
     """Rows of `source` that are M4 extremes (first/last x, min/max of each y) of a pixel
     column within their series. `source` must have unique (series, x); `x_position` is a
-    DOUBLE expression over `source`'s columns giving x's position."""
+    DOUBLE expression over `source`'s columns giving x's position. Every row also carries
+    `__viz_groups`, the number of rows in `source`."""
     buckets = max(1, int(buckets))
     extent = exp.select(
         alias(fn("min", x_position.copy()), "lo"), alias(fn("max", x_position.copy()), "hi")
@@ -185,13 +186,12 @@ def m4_query(
         alias(fn("max", col(x)), "__viz_p1"),
     ]
     for i, y in enumerate(ys):
-        # (y, x) breaks ties deterministically; the FILTER keeps NULL y out (a row value
-        # with a NULL sorts as the largest).
-        by = exp.Tuple(expressions=[col(y), col(x)])
-        has_y = exp.Where(this=exp.Not(this=exp.Is(this=col(y), expression=exp.Null())))
-        for j, name in enumerate(("arg_min", "arg_max")):
-            pick = exp.Filter(this=fn(name, col(x), by.copy()), expression=has_y.copy())
-            picks.append(alias(pick, f"__viz_p{2 + 2 * i + j}"))
+        # arg_min/arg_max skip NULL y. Ties (equal y in one pixel column) pick an arbitrary
+        # x: the points are within a pixel of each other, and a (y, x) tie-break cost ~60 ms
+        # at 10M groups. Responses are cached per data version, so a chart doesn't flicker.
+        picks.append(alias(fn("arg_min", col(x), col(y)), f"__viz_p{2 + 2 * i}"))
+        picks.append(alias(fn("arg_max", col(x), col(y)), f"__viz_p{3 + 2 * i}"))
+    picks.append(alias(exp.Count(this=exp.Star()), "__viz_cnt"))
     pick_query = (
         exp.select(*keys, *picks)
         .from_(table("__viz_b"))
@@ -208,8 +208,11 @@ def m4_query(
             exp.NullSafeEQ(this=col(series, "__viz_a"), expression=col(series, "__viz_xs")),
         )
     order = [col(series, "__viz_a")] if series else []
+    # How many (series, x) groups there were in all, so a caller that skipped its size probe
+    # can tell whether reducing was needed at all.
+    groups = exp.Subquery(this=exp.select(fn("sum", col("__viz_cnt"))).from_(table("__viz_picks")))
     final = (
-        exp.select(exp.Star())
+        exp.select(exp.Star(), alias(cast(groups, "BIGINT"), "__viz_groups"))
         .from_(table("__viz_a"))
         .join(table("__viz_xs"), on=condition, join_type="semi")
         .order_by(*order, col(x, "__viz_a"))

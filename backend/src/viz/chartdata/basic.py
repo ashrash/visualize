@@ -301,18 +301,37 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
 
     per_measure_cap = max(1, ctx.mark_cap // len(ys))
     continuous = series_plot and ordered_x
-    # The probe (LIMIT cap+1 over the groups) is skipped when the import profile already
-    # says x alone has more distinct values than the cap and nothing can shrink the groups:
-    # no filters, no zoom, no time unit. That saves a full aggregation on the M4 path.
-    over_by_profile = (
-        continuous
-        and x.time_unit is None
-        and relation.where is None
-        and x_column.approx_distinct > per_measure_cap * 1.2
-    )
-    if over_by_profile:
+    y_names = [f"y{i}" for i in range(len(ys))]
+    series_col = "color" if color is not None else None
+    # Points per series: 2 x the viewport width, but all series together stay within the cap.
+    n_out = max(3, min(2 * max(1, ctx.viewport.width_px), per_measure_cap // n_series))
+
+    def m4_sql() -> exp.Select:
+        # rowsMatched comes from the count query on this path, so M4 skips the per-group
+        # count (~10% of the M4 query at 10M groups).
+        lean = [(n, e) for n, e in measures if n not in ("__viz_n", "__viz_rank")]
+        return m4_query(
+            aggregate_query(relation, dimensions, lean),
+            x="x",
+            x_position=numeric_x(col("x"), x_column.semantic),
+            ys=y_names,
+            series=series_col,
+            buckets=max(1, min(ctx.viewport.width_px, n_out)),
+        )
+
+    # When the import profile says x alone has more distinct values than the cap (and there
+    # is no time unit to merge them), go straight to M4 and skip the cap+1 probe, which is a
+    # full extra aggregation. Filters or zoom may leave fewer groups than the profile says:
+    # M4 reports the real group count, and if that fits the cap the exact probe runs instead.
+    m4_table: pa.Table | None = None
+    if continuous and x.time_unit is None and x_column.approx_distinct > per_measure_cap * 1.2:
+        m4_table = ctx.query(m4_sql())
+        groups = int(m4_table.column("__viz_groups")[0].as_py() or 0) if m4_table.num_rows else 0
+        if groups <= per_measure_cap:
+            m4_table = None
+    if m4_table is not None:
         truncated = True
-        table = pa.table({})
+        table = m4_table
     else:
         probe = grouped if sort_in_arrow else over_groups(grouped).order_by(*order)
         table = ctx.query(probe.limit(per_measure_cap + 1))
@@ -327,25 +346,11 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
             keys += [("color", "ascending", "at_end")] if color is not None else []
             table = table.take(pc.sort_indices(table, sort_keys=keys))
     reduction, method = Reduction.AGGREGATED, "group_by"
-    # Points per series: 2 x the viewport width, but all series together stay within the cap.
-    n_out = max(3, min(2 * max(1, ctx.viewport.width_px), per_measure_cap // n_series))
-    series_col = "color" if color is not None else None
-    y_names = [f"y{i}" for i in range(len(ys))]
 
     if truncated:
         if continuous:
-            # rowsMatched comes from the count query here, so M4 skips the per-group count
-            # (~10% of the M4 query at 10M groups).
-            lean = [(n, e) for n, e in measures if n not in ("__viz_n", "__viz_rank")]
-            reduced = m4_query(
-                aggregate_query(relation, dimensions, lean),
-                x="x",
-                x_position=numeric_x(col("x"), x_column.semantic),
-                ys=y_names,
-                series=series_col,
-                buckets=max(1, min(ctx.viewport.width_px, n_out)),
-            )
-            table = ctx.query(reduced)
+            if m4_table is None:
+                table = ctx.query(m4_sql())
             table, _ = minmaxlttb(table, x="x", ys=y_names, series=series_col, n_out=n_out)
             reduction, method = Reduction.DOWNSAMPLED, "m4+minmaxlttb"
             params["nOut"] = n_out

@@ -332,7 +332,10 @@ class Compiler:
 
     def _materialization_key(self, sql: str) -> str:
         """Hash of the prefix SQL plus the version stamps of the datasets it reads."""
-        stamps = sorted(stamp for path, stamp in self._stamps.items() if path in sql)
+        # Match the path as it appears in the SQL: a quoted literal, with any ' doubled.
+        stamps = sorted(
+            stamp for path, stamp in self._stamps.items() if to_sql(exp.Literal.string(path)) in sql
+        )
         return sha("\n".join([sql, *stamps]))[:40]
 
     # --- engine helpers used by step builders --------------------------------------------

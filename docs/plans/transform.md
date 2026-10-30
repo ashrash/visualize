@@ -7,11 +7,11 @@
 - **Plot seam:** stats' design: `viz.plots.get_plot` / `run_plot_stat` taking `PlotRequest`. chartdata's `ChartContext` is internal, and there is no `fallback` field.
 - **Kernels:** stats owns `histogram`/`bin_edges`/`reservoir_sample`. chartdata keeps `aggregate_query`/`over_groups`, `m4_query`, `minmaxlttb`, `bin2d`, `hexbin`, `numeric_x`, `epoch_ms_values` and `x_range_predicate`.
 - **Grouping and ordering:** GROUP BY uses the dimension expressions, never their aliases, because a source column called `x` would win. Ordering happens over a subquery that exposes only the aliases.
-- **M4:** ties are broken by `(y, x)` with `FILTER (y IS NOT NULL)`, so output is deterministic. With no filters, zoom or time unit, the cap+1 probe is skipped when the import profile's `approx_distinct(x)` exceeds the cap.
+- **M4:** plain `arg_min`/`arg_max` (ties within a pixel column are arbitrary; cached responses keep a chart stable). With no time unit, the cap+1 probe is skipped when the import profile's `approx_distinct(x)` exceeds the cap, with or without filters. M4 reports the real group count, and the exact probe runs if the data fits the cap.
 - **Series:** `n_out` per series is `min(2·widthPx, cap / series)`.
 - **Cancellation:** tickets come from one monotonic counter. The endpoint takes the ticket before work starts; a disconnect cancels only that ticket, and only while it is the newest in its slot. `TicketEngine` checks the ticket before every cursor, including plot modules' own queries.
 - **Time:** TIMESTAMPTZ positions use `epoch_ms(x)` directly (no cast). Bounds are absolute instants. Offsets in text are applied to naive TIMESTAMP columns, not dropped.
-- **Formulas:** `replace`/`regexp_replace` take only quoted text of 64 characters or fewer, can't be nested inside each other, and at most 8 may appear per formula.
+- **Formulas:** `replace`/`regexp_replace` take only quoted text of 64 characters or fewer, can't be nested inside each other, and at most 8 may appear per formula. At most 100 column references per formula. Every calc step's text or binary output is guarded at 1 MB with a generated `error()` (not on the allowlist), so growth can't compound across chained steps.
 - **Overlays:** fits use numpy until stats' `ols_curve`/`lowess_curve` land. The raw-point reservoir sample uses `REPEATABLE (42)` on the filtered subquery. LOESS above 5,000 points uses a seeded (42) numpy subsample.
 
 ## 1. Pipeline compiler (`transform/compiler.py`)

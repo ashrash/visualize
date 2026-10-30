@@ -137,25 +137,35 @@ def test_error_bars_warn_for_non_mean_aggregates(upload: Any, chart: Any, make_s
 
 
 @pytest.mark.parametrize("cap", [1000])
-def test_profile_skip_gives_the_same_result_as_the_probe(
+def test_profile_skip_with_filters_falls_back_when_the_data_fits(
     upload: Any, chart: Any, make_spec: Any
 ) -> None:
-    """Should-fix 9: with no filters and more distinct x than the cap (from the import
-    profile), the cap+1 probe is skipped. The result must match the probed path."""
+    """The import profile says x has more distinct values than the cap, so the cap+1 probe
+    is skipped (with or without filters). When filters leave fewer groups than the cap, M4
+    reports that and the exact (unreduced) result is returned instead."""
     ds = upload(series(3000))
     spec = make_spec(ds["id"], "line", encodings={"x": [{"field": "ts"}], "y": [{"field": "v"}]})
-    skipped, meta_a = chart({"spec": spec, "viewport": {"widthPx": 100}})
-    probed, meta_b = chart(
+    big, meta = chart({"spec": spec, "viewport": {"widthPx": 100}})
+    assert meta["method"] == "m4+minmaxlttb" and meta["rowsMatched"] == 3000
+    filtered, meta = chart(
         {
             "spec": spec,
             "viewport": {"widthPx": 100},
-            # An always-true filter disables the skip.
             "filters": [{"op": "is_null", "field": "ts", "isNull": False}],
         }
     )
-    assert meta_a["method"] == meta_b["method"] == "m4+minmaxlttb"
-    assert skipped.to_pylist() == probed.to_pylist()
-    assert meta_a["rowsMatched"] == meta_b["rowsMatched"] == 3000
+    assert meta["method"] == "m4+minmaxlttb" and filtered.to_pylist() == big.to_pylist()
+    # 150 rows pass this filter: fewer than the cap and under 2 x widthPx, so every point.
+    end = (datetime(2024, 1, 1) + timedelta(minutes=149)).isoformat()
+    small, meta = chart(
+        {
+            "spec": spec,
+            "viewport": {"widthPx": 100},
+            "filters": [{"op": "range", "field": "ts", "max": end}],
+        }
+    )
+    assert small.num_rows == 150 and meta["reduction"] == "aggregated"
+    assert meta["rowsMatched"] == 150
 
 
 def test_timestamptz_domain_and_zoom_are_utc(upload: Any, chart: Any, make_spec: Any) -> None:

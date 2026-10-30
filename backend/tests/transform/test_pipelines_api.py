@@ -177,3 +177,29 @@ def test_materialize_writes_parquet_and_later_compiles_read_it(
     assert "derived" in after["sql"]
     table, _ = preview(client, {"pipeline": p})
     assert table.column("total").to_pylist() == [0.0, 1371.5, 215.25]
+
+
+def test_text_length_guard_is_a_422_in_preview_and_chart(
+    client: TestClient, sales_dataset: dict[str, Any]
+) -> None:
+    steps = [
+        {"id": f"s{i}", "op": "calc", "name": "region", "expression": "region || region"}
+        for i in range(20)
+    ]
+    p = pipeline(sales_dataset["id"], steps)
+    response = client.post("/api/pipelines/preview", json={"pipeline": p})
+    assert response.status_code == 422
+    assert "longer than 1 MB" in response.json()["detail"]
+    assert "'s17'" in response.json()["detail"]  # "North" doubles past 1 MB at the 18th step
+    chart = {
+        "spec": {
+            "id": "c",
+            "plotType": "bar",
+            "source": {"kind": "pipeline", "id": "p1"},
+            "encodings": {"x": [{"field": "region"}], "y": [{"agg": "count"}]},
+        },
+        "pipelines": [p],
+    }
+    response = client.post("/api/charts/data", json=chart)
+    assert response.status_code == 422
+    assert "longer than 1 MB" in response.json()["detail"]

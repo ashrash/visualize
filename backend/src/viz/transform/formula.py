@@ -32,6 +32,8 @@ from viz.chartdata.sql import ident
 
 MAX_LENGTH = 4000
 MAX_NODES = 2000
+# Column references per formula: `s || s || ...` grows text by the number of references.
+MAX_COLUMN_REFS = 100
 MAX_DEPTH = 64
 
 Category = Literal["math", "string", "date", "conditional", "null", "type"]
@@ -548,7 +550,10 @@ def validate_formula(text: str, columns: Sequence[str] | Mapping[str, object]) -
         _check_node(node)
         node.comments = None
     _check_growth(tree)
-    for column in list(tree.find_all(exp.Column)):
+    columns_used = list(tree.find_all(exp.Column))
+    if len(columns_used) > MAX_COLUMN_REFS:
+        raise FormulaError(f"a formula can refer to columns at most {MAX_COLUMN_REFS} times")
+    for column in columns_used:
         written = column.name
         actual = by_lower.get(written.lower())
         if actual is None:

@@ -338,15 +338,37 @@ def dedupe_step(step: DedupeStep, inp: StepInput) -> exp.Select:
     return query.qualify(exp.EQ(this=first, expression=lit(1)))
 
 
+# Longest text (or binary) value a calculated column may produce. A calc step can overwrite
+# its own column, so per-formula limits alone don't bound growth across a chain of steps
+# (8 chained replaces reached 10^9 characters); every text result is checked against this.
+MAX_CALC_TEXT_BYTES = 1_048_576
+_CALC = "__viz_calc"
+
+
 def calc_step(step: CalcStep, inp: StepInput) -> exp.Select:
     name = _check_name(step.name, "the column name")
     expression = _formula(inp, step.expression)
+    probe = inp.query_sql(exp.select(alias(expression.copy(), "v")).from_(inp.source()))
+    kind = inp.compiler.describe(probe)[0][1].upper()
+    value: exp.Expr = col(_CALC)
+    if kind.startswith("VARCHAR") or kind == "BLOB":
+        # error() is generated here only; it is not on the formula allowlist.
+        size = fn("strlen" if kind.startswith("VARCHAR") else "octet_length", col(_CALC))
+        message = f"calculated column {name!r} (step {step.id!r}) is longer than 1 MB"
+        too_long = exp.GT(this=size, expression=lit(MAX_CALC_TEXT_BYTES))
+        value = exp.Case(
+            ifs=[exp.If(this=too_long, true=fn("error", lit(message)))], default=col(_CALC)
+        )
+    # The formula is computed once, in an inner projection; the guard reads its column.
+    inner = exp.select(exp.Star(), alias(expression, _CALC)).from_(inp.source())
     lowered = {n.lower(): n for n in inp.names}
     if name.lower() in lowered:
         existing = lowered[name.lower()]
-        items = [alias(expression, name) if n == existing else col(n) for n in inp.names]
-        return exp.select(*items, col(RN)).from_(inp.source())
-    return exp.select(*_project(inp, append=[(name, expression)])).from_(inp.source())
+        items = [alias(value, name) if n == existing else col(n) for n in inp.names]
+        query = exp.select(*items, col(RN))
+    else:
+        query = exp.select(*_project(inp, append=[(name, value)]))
+    return query.from_(subquery(inner, "__viz_c"))
 
 
 def group_aggregate_step(step: GroupAggregateStep, inp: StepInput) -> exp.Select:

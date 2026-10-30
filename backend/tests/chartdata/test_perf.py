@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from viz.chartdata.reduce import warm_up
 from viz.chartdata.service import chart_data
 from viz.contracts import ChartDataRequest, Dataset, DatasetSource, DatasetVersion, SourceKind
 from viz.engine import Engine
@@ -36,6 +37,7 @@ def big(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[Engine, Loca
     storage = LocalStorage(root / "data")
     storage.ensure()
     engine = Engine(temp_dir=storage.temp_dir)
+    warm_up()  # as the app does at startup (first-call pyarrow and tsdownsample costs)
     rel = storage.parquet_rel("big", 1)
     path = storage.resolve(rel)
     path.parent.mkdir(parents=True)
@@ -129,13 +131,18 @@ def test_monthly_line_p50_within_budget(big: Any) -> None:
 def test_raw_timestamp_line_m4_within_budget(big: Any) -> None:
     # 10M distinct x values, unfiltered: the import profile says x alone is over the cap, so
     # the probe is skipped; GROUP BY + M4 in SQL, then MinMaxLTTB in Python.
-    from viz.chartdata.reduce import warm_up
-
-    warm_up()  # the app does this at startup
     body = _spec(
         "line", {"x": [{"field": "ts"}], "y": [{"field": "price"}]}, viewport={"widthPx": 1200}
     )
     assert _time(big, body, runs=7, unfiltered=True) <= 300
+
+
+def test_raw_timestamp_line_m4_filtered_within_budget(big: Any) -> None:
+    # The same with a filter (a cross-filter on another field): the probe is still skipped.
+    body = _spec(
+        "line", {"x": [{"field": "ts"}], "y": [{"field": "price"}]}, viewport={"widthPx": 1200}
+    )
+    assert _time(big, body, runs=7) <= 300
 
 
 def test_pipeline_source_aggregated(big: Any) -> None:

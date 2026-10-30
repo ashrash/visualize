@@ -178,7 +178,10 @@ def _run_plot_module(ctx: ChartContext, started: float) -> ChartResult:
     rows_matched = output.rows_matched
     if rows_matched is None:
         ctx.check_current()
-        rows_matched = relation.count()
+        try:
+            rows_matched = relation.count()
+        except runtime.USER_ERRORS as exc:  # e.g. a calc step's text-length guard
+            raise InvalidSpecError(runtime.clean_error(exc)) from exc
     chart = ChartOutput(
         table=output.table,
         reduction=output.reduction,

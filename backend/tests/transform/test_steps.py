@@ -572,6 +572,26 @@ def test_in_filter_with_numbers_on_a_text_column(world: Any) -> None:
     assert [r["n"] for r in rows] == ["a", "b"]
 
 
+def test_materialization_key_with_a_quote_in_the_data_dir(
+    world: Any, pipe: Any, tmp_path: Any
+) -> None:
+    """The version stamp must be found even when the path is escaped in the SQL ('')."""
+    from datetime import timedelta
+
+    from viz.storage import LocalStorage
+
+    storage = LocalStorage(tmp_path / "o'brien data")
+    storage.ensure()
+    quoted = type(world)(world.engine, storage)
+    quoted.dataset("t", "SELECT 1 AS a")
+    pipeline = pipe([{"op": "select", "fields": ["a"], "materialize": True}])
+    first = quoted.compile(pipeline).pending[0].key
+    version = quoted.datasets["t"].current()
+    later = version.model_copy(update={"imported_at": version.imported_at + timedelta(seconds=1)})
+    quoted.datasets["t"] = quoted.datasets["t"].model_copy(update={"versions": [later]})
+    assert quoted.compile(pipeline).pending[0].key != first
+
+
 def test_materialization_key_changes_with_the_import(world: Any, pipe: Any) -> None:
     """Re-importing a file at the same path (same id and version) must not reuse a stale
     materialized prefix: the key includes the version's import time and row count."""
@@ -585,3 +605,65 @@ def test_materialization_key_changes_with_the_import(world: Any, pipe: Any) -> N
     later = version.model_copy(update={"imported_at": version.imported_at + timedelta(seconds=1)})
     world.datasets["t"] = world.datasets["t"].model_copy(update={"versions": [later]})
     assert world.compile(pipeline).pending[0].key != first
+
+
+@pytest.mark.parametrize(
+    ("expression", "steps", "crossing"),
+    [
+        # Review B4 residual: a calc step overwriting its own column compounds growth.
+        # Ids start at s0: 20 x 10^5 bytes > 1 MiB at the 5th step (s4).
+        ("replace(s, 'a', 'aaaaaaaaaa')", 8, 4),
+        # 20 x 2^16 bytes > 1 MiB at the 16th step (s15).
+        ("s || s", 26, 15),
+    ],
+)
+def test_chained_calc_growth_stops_at_one_megabyte(
+    world: Any, pipe: Any, expression: str, steps: int, crossing: int
+) -> None:
+    import time
+
+    import duckdb
+
+    world.dataset("t", "SELECT 'aaaaaaaaaaaaaaaaaaaa' AS s")
+    pipeline = pipe(
+        [{"id": f"s{i}", "op": "calc", "name": "s", "expression": expression} for i in range(steps)]
+    )
+    compiled = world.compile(pipeline)
+    assert compiled.ok  # binding is fine; the guard fires when the data is read
+    started = time.perf_counter()
+    with pytest.raises(duckdb.InvalidInputException, match=rf"step 's{crossing}'.*1 MB"):
+        world.rows(compiled)
+    assert time.perf_counter() - started < 5
+
+
+def test_calc_text_guard_allows_large_legitimate_text(world: Any) -> None:
+    world.dataset("t", "SELECT repeat('a', 900000) AS s, 1.5 AS n")
+    compiled, rows = world.run(
+        [
+            {"op": "calc", "name": "t", "expression": "s || 'b'"},
+            {"op": "calc", "name": "m", "expression": "n * 2"},
+            {"op": "calc", "name": "flag", "expression": "length(t) > 5"},
+        ]
+    )
+    assert len(rows[0]["t"]) == 900_001 and rows[0]["m"] == 3.0 and rows[0]["flag"] is True
+    types = {c.name: c.type for c in compiled.steps[-1].columns}
+    # The guard keeps each calc column's natural type: the same as DuckDB gives unguarded.
+    with world.engine.cursor() as cur:
+        plain = cur.sql(
+            "SELECT s || 'b' AS t, n * 2 AS m, length(s || 'b') > 5 AS flag"
+            " FROM (SELECT repeat('a', 900000) AS s, 1.5 AS n)"
+        )
+        expected = dict(zip(plain.columns, (str(t) for t in plain.types), strict=True))
+    assert {k: types[k] for k in expected} == expected
+
+
+def test_formula_column_reference_cap(world: Any, pipe: Any) -> None:
+    world.dataset("t", "SELECT 'a' AS s")
+    compiled = world.compile(
+        pipe([{"op": "calc", "name": "x", "expression": f"concat({', '.join(['s'] * 101)})"}])
+    )
+    assert "at most 100" in compiled.steps[0].error.message
+    _, rows = world.run(
+        [{"op": "calc", "name": "x", "expression": f"concat({', '.join(['s'] * 100)})"}]
+    )
+    assert rows[0]["x"] == "a" * 100

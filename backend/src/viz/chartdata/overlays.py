@@ -45,6 +45,7 @@ from viz.stats.regression import FitCurve, lowess_curve, ols_curve
 from viz.stats.relation import Relation
 from viz.stats.sampling import MODEL_CAP, reservoir_sample
 from viz.storage import LocalStorage
+from viz.transform import runtime
 from viz.transform.source import resolve_field, resolve_source
 
 GRID_POINTS = 200
@@ -129,7 +130,10 @@ def _raw_points(relation: Relation, request: ChartDataRequest, series: int) -> P
         raise InvalidSpecError("a trendline needs a numeric y field")
     if x_col.semantic not in (ColumnSemantic.QUANTITATIVE, ColumnSemantic.TEMPORAL):
         raise InvalidSpecError("a trendline needs a numeric or date x field")
-    sample = reservoir_sample(relation, [x_col.name, y_col.name], cap=MODEL_CAP)
+    try:
+        sample = reservoir_sample(relation, [x_col.name, y_col.name], cap=MODEL_CAP)
+    except runtime.USER_ERRORS as exc:  # e.g. a calc step's text-length guard
+        raise InvalidSpecError(runtime.clean_error(exc)) from exc
     x = _floats(sample.table.column(x_col.name))
     y = _floats(sample.table.column(y_col.name))
     x, y = _clean(x, y)
