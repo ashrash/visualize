@@ -8,6 +8,7 @@ import { definePlot } from "../../core/types";
 import type { MapResolution } from "./assets/maps";
 import { backdropMapName, geoBackdrop, prepareBackdrop } from "./backdrop";
 import "./echarts";
+import { escapeHtml } from "./htmlSafe";
 
 const SECTIONS: StyleSection[] = ["title", "legend", "tooltip", "palette"];
 
@@ -116,8 +117,10 @@ export const bubbleMap = definePlot({
       symbolSize: (val: [number, number, number]) => toSymbolSize(val[2]),
       itemStyle: { color: palette[i % palette.length], opacity: 0.75 },
       tooltip: {
+        // `key` (a color-group value) and `valueLabel` both come from user data; escape
+        // before building tooltip HTML (ECharts inserts a formatter's return via innerHTML).
         formatter: (p: { value: [number, number, number] }) =>
-          `${key ?? valueLabel}<br/>${valueLabel}: ${fmt(p.value[2])}`,
+          `${escapeHtml(key ?? valueLabel)}<br/>${escapeHtml(valueLabel)}: ${escapeHtml(fmt(p.value[2]))}`,
       },
     }));
     const option: Obj = {

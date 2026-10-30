@@ -116,6 +116,21 @@ def test_choropleth_counts_rows_when_no_value_is_bound(engine: Engine, tmp_path:
     assert out.fields["y0"] == "Count"
 
 
+def test_choropleth_returns_every_region_even_above_mark_cap(
+    engine: Engine, tmp_path: Path
+) -> None:
+    # The number of distinct regions is bounded by the data (never above the region column's
+    # cardinality), so choropleth does no truncation of its own: the generic post-cap guard in
+    # chartdata (`_finish_table`) is what enforces `mark_cap`, same as every other plot module.
+    regions = [f"R{i}" for i in range(20)]
+    table = pa.table({"region": regions, "value": [1.0] * 20})
+    rel = relation_of(engine, table, tmp_path / "choropleth_many.parquet")
+    spec = _spec(PlotType.CHOROPLETH, region=["region"], value=["value"])
+    out = _run(spec, rel, mark_cap=5)
+    assert isinstance(out, TableOutput)
+    assert out.table.num_rows == 20
+
+
 # -- bubble map ---------------------------------------------------------------------------------
 
 
@@ -145,6 +160,24 @@ def test_bubble_map_without_size_counts_points(engine: Engine, tmp_path: Path) -
     assert isinstance(out, TableOutput)
     rows = {(r["lat"], r["lon"]): r["y0"] for r in out.table.to_pylist()}
     assert rows == {(1.0, 1.0): 2.0, (2.0, 2.0): 1.0}
+
+
+def test_bubble_map_falls_back_to_grid_binning_over_the_cap(engine: Engine, tmp_path: Path) -> None:
+    # Every point sits at a distinct (lat, lon), so GROUP BY is a no-op and the raw group-by
+    # path would hand back one row per point: with n well above mark_cap, that must not happen
+    # (it would silently drop whole regions once the generic cap truncation cuts it down).
+    n = 400
+    table = pa.table({"lat": [i * 0.01 for i in range(n)], "lon": [i * 0.01 for i in range(n)]})
+    rel = relation_of(engine, table, tmp_path / "bubble_dense.parquet")
+    spec = _spec(PlotType.BUBBLE_MAP, lat=["lat"], lon=["lon"])
+    out = _run(spec, rel, mark_cap=50)
+    assert isinstance(out, TableOutput)
+    assert out.reduction == Reduction.BINNED
+    assert out.method == "geo_bin2d"
+    assert out.table.num_rows <= 50
+    # Every original point is accounted for in the binned counts.
+    assert sum(out.table.column("y0").to_pylist()) == n
+    assert any("grid" in w.lower() for w in out.warnings)
 
 
 # -- dot density --------------------------------------------------------------------------------
@@ -223,6 +256,29 @@ def test_geo_heatmap_weights_by_value(engine: Engine, tmp_path: Path) -> None:
     assert out.table.column("y0").to_pylist() == [7.0]
 
 
+def test_geo_heatmap_distinct_count_is_really_distinct(engine: Engine, tmp_path: Path) -> None:
+    # Regression: the weighted measure used to go through a hand-rolled SQL-function table
+    # that mapped count_distinct to plain `count`, so a repeated value was over-counted.
+    table = pa.table({"lat": [0.0, 0.0, 0.0], "lon": [0.0, 0.0, 0.0], "value": [1.0, 1.0, 2.0]})
+    rel = relation_of(engine, table, tmp_path / "heatmap_distinct.parquet")
+    spec = ChartSpec.model_validate(
+        {
+            "id": "c1",
+            "plotType": PlotType.GEO_HEATMAP.value,
+            "source": SourceRef(kind="dataset", id="d1").model_dump(),
+            "encodings": {
+                "lat": [Encoding(field="lat").model_dump(by_alias=True)],
+                "lon": [Encoding(field="lon").model_dump(by_alias=True)],
+                "value": [Encoding(field="value", agg="count_distinct").model_dump(by_alias=True)],
+            },
+            "params": {"binsLon": 2, "binsLat": 2},
+        }
+    )
+    out = _run(spec, rel)
+    assert isinstance(out, TableOutput)
+    assert out.table.column("y0").to_pylist() == [2.0]
+
+
 def test_geo_heatmap_empty_input(engine: Engine, tmp_path: Path) -> None:
     table = pa.table({"lat": pa.array([], pa.float64()), "lon": pa.array([], pa.float64())})
     rel = relation_of(engine, table, tmp_path / "heatmap_empty.parquet")
@@ -281,6 +337,94 @@ def test_cartogram_runs_through_a_given_executor(engine: Engine, tmp_path: Path)
     assert len(calls) == 1  # the heavy layout ran through the executor, not inline
 
 
+def test_cartogram_drops_rows_with_non_finite_coordinates(engine: Engine, tmp_path: Path) -> None:
+    # A region whose every row has a non-finite lat/lon used to make avg() return NULL, and
+    # the pure-Python layout (not NaN-aware) then raised TypeError: an unhandled 500.
+    table = pa.table(
+        {
+            "region": ["US", "US", "ZZ", "ZZ"],
+            "lat": [10.0, 12.0, float("nan"), None],
+            "lon": [-100.0, -98.0, float("inf"), None],
+            "value": [5.0, 5.0, 9.0, 9.0],
+        }
+    )
+    rel = relation_of(engine, table, tmp_path / "cartogram_nan.parquet")
+    spec = _spec(PlotType.CARTOGRAM, region=["region"], value=["value"], lat=["lat"], lon=["lon"])
+    out = _run(spec, rel)
+    assert isinstance(out, TableOutput)
+    regions = out.table.column("region").to_pylist()
+    assert regions == ["US"]  # ZZ had no finite coordinate anywhere and is dropped, not crashed
+    assert math.isfinite(out.table.column("lat").to_pylist()[0])
+    assert math.isfinite(out.table.column("lon").to_pylist()[0])
+
+
+def test_cartogram_caps_region_count_and_warns(engine: Engine, tmp_path: Path) -> None:
+    n = 10
+    table = pa.table(
+        {
+            "region": [f"R{i}" for i in range(n)],
+            "lat": [float(i) for i in range(n)],
+            "lon": [float(i) for i in range(n)],
+            # Distinct values so the top-N-by-|value| cap has an unambiguous answer.
+            "value": [float(i + 1) for i in range(n)],
+        }
+    )
+    rel = relation_of(engine, table, tmp_path / "cartogram_many.parquet")
+    spec = _spec(PlotType.CARTOGRAM, region=["region"], value=["value"], lat=["lat"], lon=["lon"])
+    out = _run(spec, rel, mark_cap=4)
+    assert isinstance(out, TableOutput)
+    assert out.table.num_rows == 4
+    # The largest-value regions (R9, R8, R7, R6) are kept.
+    assert set(out.table.column("region").to_pylist()) == {"R9", "R8", "R7", "R6"}
+    assert any("largest" in w.lower() for w in out.warnings)
+
+
+def test_cartogram_maps_a_worker_timeout_to_query_interrupted(
+    engine: Engine, tmp_path: Path
+) -> None:
+    import concurrent.futures
+
+    from viz.errors import QueryInterruptedError
+
+    class TimingOutExecutor:
+        def submit(self, fn, *args):
+            class _Future:
+                def result(self, timeout=None):
+                    raise concurrent.futures.TimeoutError
+
+            return _Future()
+
+    table = pa.table(
+        {"region": ["US", "CA"], "lat": [10.0, 50.0], "lon": [-100.0, -90.0], "value": [5.0, 2.0]}
+    )
+    rel = relation_of(engine, table, tmp_path / "cartogram_timeout.parquet")
+    spec = _spec(PlotType.CARTOGRAM, region=["region"], value=["value"], lat=["lat"], lon=["lon"])
+    with pytest.raises(QueryInterruptedError):
+        _run(spec, rel, executor=TimingOutExecutor())
+
+
+def test_cartogram_maps_a_broken_pool_to_engine_busy(engine: Engine, tmp_path: Path) -> None:
+    from concurrent.futures.process import BrokenProcessPool
+
+    from viz.errors import EngineBusyError
+
+    class CrashingExecutor:
+        def submit(self, fn, *args):
+            class _Future:
+                def result(self, timeout=None):
+                    raise BrokenProcessPool("worker died")
+
+            return _Future()
+
+    table = pa.table(
+        {"region": ["US", "CA"], "lat": [10.0, 50.0], "lon": [-100.0, -90.0], "value": [5.0, 2.0]}
+    )
+    rel = relation_of(engine, table, tmp_path / "cartogram_broken.parquet")
+    spec = _spec(PlotType.CARTOGRAM, region=["region"], value=["value"], lat=["lat"], lon=["lon"])
+    with pytest.raises(EngineBusyError):
+        _run(spec, rel, executor=CrashingExecutor())
+
+
 def test_cartogram_empty_input(engine: Engine, tmp_path: Path) -> None:
     table = pa.table(
         {
@@ -331,3 +475,31 @@ def test_dorling_layout_handles_a_single_point() -> None:
 
 def test_dorling_layout_handles_no_points() -> None:
     assert dorling_layout([], [], [], iterations=10, padding=0.02) == ([], [], [])
+
+
+def test_dorling_layout_has_no_overlaps_at_moderate_scale() -> None:
+    # n=2 (the old test coverage) can't show whether the force balance actually converges: at
+    # n~100, the previous push-divided-by-(n-1) implementation left the large majority of
+    # pairs still overlapping even after 1000 iterations. Benchmarked fix: zero overlapping
+    # pairs at n in {100, 177, 250} using the default iteration count.
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    n = 120
+    lons = (rng.random(n) * 360 - 180).tolist()
+    lats = (rng.random(n) * 140 - 70).tolist()
+    values = (rng.random(n) ** 2 * 1000 + 1).tolist()
+    padding = 0.04
+    new_lon, new_lat, radius = dorling_layout(lons, lats, values, iterations=400, padding=padding)
+
+    lat0 = math.radians(sum(lats) / n)
+    cos_lat0 = max(0.15, math.cos(lat0))
+    x = [lo * cos_lat0 for lo in new_lon]
+    y = new_lat
+    overlapping = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            dist = math.hypot(x[i] - x[j], y[i] - y[j])
+            if dist < (radius[i] + radius[j]) * (1 + padding) - 1e-6:
+                overlapping += 1
+    assert overlapping == 0

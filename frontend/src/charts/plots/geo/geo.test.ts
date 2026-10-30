@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { ChartSpec } from "../../../api/types";
 import { makeData, makeSpec, makeTheme } from "../../core/testing";
 import type { PlotEntry } from "../../core/types";
+import { loadMap, matchRegion } from "./assets/maps";
 import entries from "./index";
 
 const byKey = (key: string): PlotEntry => {
@@ -99,6 +100,25 @@ describe("choropleth", () => {
       { name: "lon", type: "DOUBLE", semantic: "geo", nullCount: 0, approxDistinct: 10 },
     ]);
     expect(regionScore ?? 0).toBeGreaterThan(latLonScore ?? 1);
+  });
+});
+
+describe("region matching (Natural Earth's -99 sentinel)", () => {
+  it("never matches the literal missing-value sentinel to a real country", async () => {
+    const index = await loadMap("country", "110m");
+    // France, Norway and several disputed territories carry Natural Earth's "-99" missing-
+    // value sentinel in one or more raw ISO fields (verified against the bundled asset). A
+    // dataset using the same literal text as its own missing-value marker must not get
+    // colored in as whichever of those happened to be indexed last.
+    expect(matchRegion(index, "-99")).toBeNull();
+  });
+
+  it("still matches countries whose raw ISO3/ISO2 needed a fallback", async () => {
+    const index = await loadMap("country", "110m");
+    expect(matchRegion(index, "France")).toBe("FRA");
+    expect(matchRegion(index, "Norway")).toBe("NOR");
+    expect(matchRegion(index, "FR")).toBe("FRA");
+    expect(matchRegion(index, "TW")).toBe("TWN"); // not Taiwan's raw ISO2 "CN-TW"
   });
 });
 
@@ -208,16 +228,38 @@ describe("cartogram", () => {
     await byKey("cartogram").prepare?.(s);
   });
 
-  it("draws one scatter point per region, sized by the server-computed radius", () => {
+  it("draws one custom-series point per region on the geo coordinate system", () => {
     const o = byKey("cartogram").render(s, data, theme) as Opt;
     expect(o.series).toHaveLength(1);
+    expect(o.series[0].type).toBe("custom");
     expect(o.series[0].coordinateSystem).toBe("geo");
     expect(o.series[0].data).toHaveLength(2);
     expect(o.series[0].data[0].name).toBe("USA"); // matched to the bundled map
     expect(o.series[0].data[1].name).toBe("ZZZ"); // unmatched: falls back to the raw value
-    const big = o.series[0].symbolSize(o.series[0].data[0].value);
-    const small = o.series[0].symbolSize(o.series[0].data[1].value);
-    expect(big).toBeGreaterThan(small);
+  });
+
+  it("sizes each circle in screen space via api.coord, proportional to the server radius", () => {
+    const o = byKey("cartogram").render(s, data, theme) as Opt;
+    const series = o.series[0];
+    // A stub of the renderItem API: coord does a simple, known linear projection so the
+    // resulting pixel radius can be checked algebraically, and value reads back the series
+    // data's own `value` array for whichever item is being rendered.
+    const stubApi = (dataIndex: number) => ({
+      value: (i: number) => series.data[dataIndex].value[i],
+      coord: ([lon, lat]: [number, number]) => [lon * 10, lat * 10],
+      style: (extra: Record<string, unknown>) => extra,
+    });
+    const circleOf = (dataIndex: number) => {
+      const group = series.renderItem({ dataIndex }, stubApi(dataIndex));
+      return group.children.find((c: Opt) => c.type === "circle");
+    };
+    const bigCircle = circleOf(0); // radius 5
+    const smallCircle = circleOf(1); // radius 1
+    expect(bigCircle.shape.r).toBeGreaterThan(smallCircle.shape.r);
+    // The circle's center is wherever api.coord places [lon, lat] right now (so panning or
+    // zooming the map moves and rescales it), not a value baked in at render time.
+    expect(bigCircle.shape.cx).toBe(-100 * 10);
+    expect(bigCircle.shape.cy).toBe(40 * 10);
   });
 
   it("reports regions that don't match the backdrop map", () => {

@@ -3,14 +3,20 @@
  *
  * The GeoJSON here is derived from Natural Earth (public domain, naturalearthdata.com)
  * admin-0 (countries) and admin-1 (US states) layers at 1:110m and 1:50m, simplified and
- * stripped to {name, alt, iso2} properties by .tmp_geo/build_assets.py (see the geo plot
- * family's final report for provenance and sizes); no basemap tiles ship in the MVP.
+ * stripped to {name, alt, iso2} properties by `./build_assets.py` (run it again to pick up a
+ * newer Natural Earth release or a resolution/coverage change); no basemap tiles ship in the
+ * MVP.
  *
  * Each file is dynamically imported (code-split, never in the main bundle) and registered
  * with ECharts under its own map name, so it is fetched only the first time a geo chart that
  * needs it renders. A chart's `params.level`/`params.resolution` pick which one.
  */
 import { echarts } from "../echarts";
+
+// Natural Earth's missing-value sentinel (see build_assets.py's MISSING constant): the build
+// script already drops it, but a defensive second check here means a region column whose own
+// missing-value sentinel happens to be the literal text "-99" still won't match anything.
+const MISSING = "-99";
 
 export type MapLevel = "country" | "us_state";
 export type MapResolution = "110m" | "50m";
@@ -78,19 +84,41 @@ export function loadMap(level: MapLevel, resolution: MapResolution): Promise<Map
     // registerMap's type expects the full GeoJSON.GeoJSON shape; our trimmed features satisfy
     // it at runtime (ECharts reads only `type`, `properties` and `geometry`).
     echarts.registerMap(mapName, geojson as unknown as Parameters<typeof echarts.registerMap>[1]);
-    const byKey = new Map<string, string>();
     const canonicalNames = new Set<string>();
+    // The feature's own code (`name`, e.g. an ISO3) is authoritative and set directly: the
+    // build script guarantees it is unique. Every other candidate key (a normalized display
+    // name, an ISO2 code, an alternate name) is only a *claim*: two different regions can
+    // normalize to, or historically share, the same abbreviation (seen in the 50m admin-1
+    // layer) or ISO2 code. A key more than one region wants is ambiguous and is left out of
+    // the index entirely, rather than resolved by whichever region happened to load last,
+    // which would silently mismatch one of them.
+    const byKey = new Map<string, string>();
+    const claims = new Map<string, Set<string>>();
+    const claim = (key: string, name: string) => {
+      if (!key || key === MISSING.toLowerCase() || key === MISSING) return;
+      const owners = claims.get(key) ?? new Set<string>();
+      owners.add(name);
+      claims.set(key, owners);
+    };
     for (const feature of geojson.features) {
       const { name, alt, iso2 } = feature.properties;
       canonicalNames.add(name);
       byKey.set(name.toUpperCase(), name);
-      byKey.set(normalizeName(name), name);
-      if (iso2) byKey.set(iso2.toUpperCase(), name);
-      for (const a of alt) byKey.set(normalizeName(a), name);
+      claim(normalizeName(name), name);
+      if (iso2) claim(iso2.toUpperCase(), name);
+      for (const a of alt) claim(normalizeName(a), name);
+    }
+    for (const [claimKey, owners] of claims) {
+      if (owners.size === 1 && !byKey.has(claimKey)) byKey.set(claimKey, [...owners][0] as string);
     }
     return { mapName, byKey, canonicalNames };
   });
   cache.set(key, promise);
+  // A failed fetch (offline, a corrupted deploy, ...) must not be cached forever: drop it so
+  // the next prepare() tries again instead of leaving every future chart permanently blank.
+  promise.catch(() => {
+    if (cache.get(key) === promise) cache.delete(key);
+  });
   return promise;
 }
 
@@ -98,7 +126,7 @@ export function loadMap(level: MapLevel, resolution: MapResolution): Promise<Map
 export function matchRegion(index: MapIndex, raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
   const text = String(raw).trim();
-  if (!text) return null;
+  if (!text || text === MISSING) return null;
   return index.byKey.get(text.toUpperCase()) ?? index.byKey.get(normalizeName(text)) ?? null;
 }
 

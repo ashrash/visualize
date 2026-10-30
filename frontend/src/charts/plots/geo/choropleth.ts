@@ -13,6 +13,7 @@ import {
   readyMap,
 } from "./assets/maps";
 import "./echarts";
+import { escapeHtml } from "./htmlSafe";
 
 const SECTIONS: StyleSection[] = ["title", "tooltip", "palette"];
 
@@ -135,8 +136,12 @@ export const choropleth = definePlot({
           itemStyle: { borderColor: theme.border, areaColor: theme.grid },
           emphasis: { itemStyle: { areaColor: theme.textMuted } },
           tooltip: {
+            // p.name and valueLabel both originate from user data (an unmatched region's raw
+            // value, or an encoding/column label); escape before building tooltip HTML.
             formatter: (p: { name: string; value: number | null }) =>
-              `${p.name}<br/>${valueLabel}: ${p.value === null || p.value === undefined ? "no data" : fmt(p.value)}`,
+              `${escapeHtml(p.name)}<br/>${escapeHtml(valueLabel)}: ${
+                p.value === null || p.value === undefined ? "no data" : escapeHtml(fmt(p.value))
+              }`,
           },
         },
       ],

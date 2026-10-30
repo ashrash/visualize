@@ -9,6 +9,17 @@ import type { MapResolution } from "./assets/maps";
 import { matchRegion, readyMap } from "./assets/maps";
 import { backdropMapName, geoBackdrop, prepareBackdrop } from "./backdrop";
 import "./echarts";
+import { escapeHtml } from "./htmlSafe";
+
+/** The slice of ECharts' custom-series `renderItem` API this renderer actually uses. */
+interface RenderItemParams {
+  dataIndex: number;
+}
+interface RenderItemApi {
+  value(dimIndex: number): number;
+  coord(point: [number, number]): number[];
+  style(extra?: Record<string, unknown>): Record<string, unknown>;
+}
 
 const SECTIONS: StyleSection[] = ["title", "tooltip", "palette"];
 
@@ -109,33 +120,70 @@ export const cartogram = definePlot({
     const index = readyMap("country", resolution);
     const fmt = makeFormatter("auto", ctx?.locale);
     const valueLabel = data.meta.fields.y0 ?? "Value";
-    const finite = values.filter((v) => Number.isFinite(v));
-    const maxAbs = finite.reduce((m, v) => Math.max(m, Math.abs(v)), 0) || 1;
     const palette = paletteColors(spec.style?.palette, theme, 1);
     const color = palette[0] ?? theme.palette[0] ?? "#0072b2";
     const points = regions.map((r, i) => {
       const label = (index && matchRegion(index, r)) ?? String(r ?? "");
-      return {
-        name: label,
-        value: [lons[i], lats[i], values[i], radii[i]],
-      };
+      return { name: label, value: [lons[i], lats[i], values[i], radii[i]] as number[] };
     });
+    // The server computes `radius` in its own projected-plane units (longitude pre-scaled by
+    // cos(mean latitude) so the plane is locally square); converting it to a longitude delta
+    // with the same mean-latitude approximation and reading the pixel distance back out of
+    // `api.coord` ties the drawn circle to the geo component's actual current projection and
+    // zoom, so panning/zooming the map scales the circles correctly instead of leaving them a
+    // fixed pixel size (which also made on-screen area not track the server's `value`).
+    const meanLat = lats.length ? lats.reduce((a, b) => a + b, 0) / lats.length : 0;
+    const cosLat0 = Math.max(0.15, Math.cos((meanLat * Math.PI) / 180));
     const option: Obj = {
       geo: geoBackdrop(mapName, theme),
       series: [
         {
-          type: "scatter",
+          type: "custom",
           coordinateSystem: "geo",
           data: points,
-          // The backend computes a geographic radius; it is rescaled to pixels relative to the
-          // largest circle so the layout reads well regardless of zoom level.
-          symbolSize: (val: [number, number, number, number]) =>
-            8 + 34 * Math.sqrt(Math.abs(val[2]) / maxAbs),
-          itemStyle: { color, opacity: 0.7, borderColor: theme.background, borderWidth: 1 },
-          label: { show: true, formatter: (p: { name: string }) => p.name, color: theme.text },
+          renderItem: (params: RenderItemParams, api: RenderItemApi) => {
+            const lon = api.value(0);
+            const lat = api.value(1);
+            const radiusDeg = api.value(3);
+            const center = api.coord([lon, lat]);
+            const edge = api.coord([lon + radiusDeg / cosLat0, lat]);
+            const r = Math.max(2, Math.abs((edge[0] ?? 0) - (center[0] ?? 0)));
+            const point = points[params.dataIndex];
+            return {
+              type: "group",
+              children: [
+                {
+                  type: "circle",
+                  shape: { cx: center[0], cy: center[1], r },
+                  style: api.style({
+                    fill: color,
+                    opacity: 0.7,
+                    stroke: theme.background,
+                    lineWidth: 1,
+                  }),
+                },
+                {
+                  type: "text",
+                  silent: true,
+                  style: {
+                    text: point?.name ?? "",
+                    x: center[0],
+                    y: center[1],
+                    fill: theme.text,
+                    fontSize: 11,
+                    align: "center",
+                    verticalAlign: "middle",
+                  },
+                },
+              ],
+            };
+          },
+          itemStyle: { color },
           tooltip: {
-            formatter: (p: { name: string; value: [number, number, number, number] }) =>
-              `${p.name}<br/>${valueLabel}: ${fmt(p.value[2])}`,
+            // p.name (a region label) and valueLabel both come from user data; escape before
+            // building tooltip HTML (ECharts inserts a formatter's return via innerHTML).
+            formatter: (p: { name: string; value: number[] }) =>
+              `${escapeHtml(p.name)}<br/>${escapeHtml(valueLabel)}: ${escapeHtml(fmt(p.value[2]))}`,
           },
         },
       ],

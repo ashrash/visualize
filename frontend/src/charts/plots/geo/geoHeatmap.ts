@@ -8,6 +8,7 @@ import { definePlot } from "../../core/types";
 import type { MapResolution } from "./assets/maps";
 import { backdropMapName, geoBackdrop, prepareBackdrop } from "./backdrop";
 import "./echarts";
+import { escapeHtml } from "./htmlSafe";
 
 const SECTIONS: StyleSection[] = ["title", "tooltip", "palette"];
 
@@ -100,8 +101,10 @@ export const geoHeatmap = definePlot({
           pointSize: 14,
           blurSize: 20,
           tooltip: {
+            // valueLabel comes from user data (an encoding/column label); escape before
+            // building tooltip HTML (ECharts inserts a formatter's return via innerHTML).
             formatter: (p: { value: [number, number, number] }) =>
-              `${valueLabel}: ${fmt(p.value[2])}`,
+              `${escapeHtml(valueLabel)}: ${escapeHtml(fmt(p.value[2]))}`,
           },
         },
       ],
