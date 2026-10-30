@@ -8,6 +8,7 @@ import pyarrow as pa
 from sqlalchemy.orm import Session
 from sqlglot import exp
 
+from viz.chartdata.arrow import browser_table
 from viz.chartdata.sql import RN, alias, col, ordered, predicate_sql, star_except, table, to_sql
 from viz.contracts import (
     FormulaCheckRequest,
@@ -120,7 +121,7 @@ def preview(
         ms=round((time.perf_counter() - started) * 1000, 2),
         warnings=warnings,
     )
-    return data, meta
+    return browser_table(data), meta
 
 
 def _cast_warnings(engine: Engine, compiled: CompiledPipeline, step_id: str | None) -> list[str]:

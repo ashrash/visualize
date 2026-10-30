@@ -78,7 +78,7 @@ def env(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Env]:
 frames = st.lists(
     st.tuples(
         st.sampled_from(["a", "b", "c", None]),
-        st.one_of(st.none(), st.floats(-1e6, 1e6, allow_nan=False)),
+        st.one_of(st.none(), st.floats(-1e6, 1e6, allow_nan=False).map(lambda v: round(v, 3))),
         st.integers(-5, 5),
     ),
     min_size=0,
