@@ -1,0 +1,196 @@
+source,target,value,layer,quarter
+Organic,Home,386,channel_to_page,2024Q1
+Organic,Pricing,222,channel_to_page,2024Q1
+Organic,Blog,189,channel_to_page,2024Q1
+Organic,Docs,75,channel_to_page,2024Q1
+Organic,Product,245,channel_to_page,2024Q1
+Paid search,Home,651,channel_to_page,2024Q1
+Paid search,Pricing,472,channel_to_page,2024Q1
+Paid search,Blog,719,channel_to_page,2024Q1
+Paid search,Docs,237,channel_to_page,2024Q1
+Paid search,Product,191,channel_to_page,2024Q1
+Email,Home,282,channel_to_page,2024Q1
+Email,Pricing,151,channel_to_page,2024Q1
+Email,Blog,169,channel_to_page,2024Q1
+Email,Docs,262,channel_to_page,2024Q1
+Email,Product,708,channel_to_page,2024Q1
+Social,Home,236,channel_to_page,2024Q1
+Social,Pricing,247,channel_to_page,2024Q1
+Social,Blog,77,channel_to_page,2024Q1
+Social,Docs,96,channel_to_page,2024Q1
+Social,Product,206,channel_to_page,2024Q1
+Referral,Home,590,channel_to_page,2024Q1
+Referral,Pricing,462,channel_to_page,2024Q1
+Referral,Blog,113,channel_to_page,2024Q1
+Referral,Docs,252,channel_to_page,2024Q1
+Referral,Product,78,channel_to_page,2024Q1
+Direct,Home,156,channel_to_page,2024Q1
+Direct,Pricing,670,channel_to_page,2024Q1
+Direct,Blog,62,channel_to_page,2024Q1
+Direct,Product,66,channel_to_page,2024Q1
+Home,Signup,604,page_to_outcome,2024Q1
+Home,Trial,877,page_to_outcome,2024Q1
+Home,Purchase,437,page_to_outcome,2024Q1
+Home,Bounce,383,page_to_outcome,2024Q1
+Pricing,Signup,695,page_to_outcome,2024Q1
+Pricing,Trial,571,page_to_outcome,2024Q1
+Pricing,Purchase,457,page_to_outcome,2024Q1
+Pricing,Bounce,289,page_to_outcome,2024Q1
+Blog,Signup,60,page_to_outcome,2024Q1
+Blog,Trial,317,page_to_outcome,2024Q1
+Blog,Purchase,452,page_to_outcome,2024Q1
+Blog,Bounce,77,page_to_outcome,2024Q1
+Docs,Signup,1834,page_to_outcome,2024Q1
+Docs,Trial,85,page_to_outcome,2024Q1
+Docs,Purchase,520,page_to_outcome,2024Q1
+Docs,Bounce,529,page_to_outcome,2024Q1
+Product,Signup,275,page_to_outcome,2024Q1
+Product,Trial,98,page_to_outcome,2024Q1
+Product,Purchase,52,page_to_outcome,2024Q1
+Product,Bounce,311,page_to_outcome,2024Q1
+Organic,Home,1204,channel_to_page,2024Q2
+Organic,Pricing,721,channel_to_page,2024Q2
+Organic,Blog,265,channel_to_page,2024Q2
+Organic,Docs,190,channel_to_page,2024Q2
+Organic,Product,299,channel_to_page,2024Q2
+Paid search,Home,1465,channel_to_page,2024Q2
+Paid search,Pricing,174,channel_to_page,2024Q2
+Paid search,Blog,169,channel_to_page,2024Q2
+Paid search,Docs,384,channel_to_page,2024Q2
+Paid search,Product,154,channel_to_page,2024Q2
+Email,Home,470,channel_to_page,2024Q2
+Email,Pricing,412,channel_to_page,2024Q2
+Email,Blog,158,channel_to_page,2024Q2
+Email,Docs,51,channel_to_page,2024Q2
+Email,Product,115,channel_to_page,2024Q2
+Social,Home,189,channel_to_page,2024Q2
+Social,Pricing,135,channel_to_page,2024Q2
+Social,Blog,313,channel_to_page,2024Q2
+Social,Docs,61,channel_to_page,2024Q2
+Social,Product,60,channel_to_page,2024Q2
+Referral,Home,203,channel_to_page,2024Q2
+Referral,Pricing,238,channel_to_page,2024Q2
+Referral,Blog,175,channel_to_page,2024Q2
+Referral,Docs,124,channel_to_page,2024Q2
+Referral,Product,190,channel_to_page,2024Q2
+Direct,Home,170,channel_to_page,2024Q2
+Direct,Blog,379,channel_to_page,2024Q2
+Direct,Docs,211,channel_to_page,2024Q2
+Direct,Product,72,channel_to_page,2024Q2
+Home,Signup,90,page_to_outcome,2024Q2
+Home,Trial,52,page_to_outcome,2024Q2
+Home,Purchase,195,page_to_outcome,2024Q2
+Home,Bounce,138,page_to_outcome,2024Q2
+Pricing,Signup,135,page_to_outcome,2024Q2
+Pricing,Trial,308,page_to_outcome,2024Q2
+Pricing,Purchase,495,page_to_outcome,2024Q2
+Pricing,Bounce,299,page_to_outcome,2024Q2
+Blog,Signup,480,page_to_outcome,2024Q2
+Blog,Trial,418,page_to_outcome,2024Q2
+Blog,Purchase,144,page_to_outcome,2024Q2
+Blog,Bounce,327,page_to_outcome,2024Q2
+Docs,Signup,533,page_to_outcome,2024Q2
+Docs,Trial,338,page_to_outcome,2024Q2
+Docs,Purchase,157,page_to_outcome,2024Q2
+Product,Signup,293,page_to_outcome,2024Q2
+Product,Trial,539,page_to_outcome,2024Q2
+Product,Purchase,210,page_to_outcome,2024Q2
+Product,Bounce,183,page_to_outcome,2024Q2
+Organic,Home,306,channel_to_page,2024Q3
+Organic,Pricing,206,channel_to_page,2024Q3
+Organic,Blog,436,channel_to_page,2024Q3
+Organic,Docs,788,channel_to_page,2024Q3
+Organic,Product,439,channel_to_page,2024Q3
+Paid search,Home,361,channel_to_page,2024Q3
+Paid search,Pricing,269,channel_to_page,2024Q3
+Paid search,Blog,346,channel_to_page,2024Q3
+Paid search,Docs,92,channel_to_page,2024Q3
+Paid search,Product,107,channel_to_page,2024Q3
+Email,Home,562,channel_to_page,2024Q3
+Email,Pricing,79,channel_to_page,2024Q3
+Email,Blog,203,channel_to_page,2024Q3
+Email,Docs,64,channel_to_page,2024Q3
+Email,Product,190,channel_to_page,2024Q3
+Social,Home,105,channel_to_page,2024Q3
+Social,Pricing,720,channel_to_page,2024Q3
+Social,Blog,194,channel_to_page,2024Q3
+Social,Docs,83,channel_to_page,2024Q3
+Social,Product,153,channel_to_page,2024Q3
+Referral,Home,816,channel_to_page,2024Q3
+Referral,Pricing,128,channel_to_page,2024Q3
+Referral,Docs,109,channel_to_page,2024Q3
+Referral,Product,122,channel_to_page,2024Q3
+Direct,Home,376,channel_to_page,2024Q3
+Direct,Pricing,346,channel_to_page,2024Q3
+Direct,Blog,316,channel_to_page,2024Q3
+Direct,Docs,228,channel_to_page,2024Q3
+Home,Signup,1351,page_to_outcome,2024Q3
+Home,Trial,1084,page_to_outcome,2024Q3
+Home,Purchase,539,page_to_outcome,2024Q3
+Home,Bounce,289,page_to_outcome,2024Q3
+Pricing,Signup,1101,page_to_outcome,2024Q3
+Pricing,Trial,219,page_to_outcome,2024Q3
+Pricing,Purchase,329,page_to_outcome,2024Q3
+Pricing,Bounce,287,page_to_outcome,2024Q3
+Blog,Signup,514,page_to_outcome,2024Q3
+Blog,Trial,605,page_to_outcome,2024Q3
+Blog,Purchase,816,page_to_outcome,2024Q3
+Blog,Bounce,947,page_to_outcome,2024Q3
+Docs,Signup,232,page_to_outcome,2024Q3
+Docs,Trial,776,page_to_outcome,2024Q3
+Docs,Purchase,181,page_to_outcome,2024Q3
+Docs,Bounce,333,page_to_outcome,2024Q3
+Product,Signup,244,page_to_outcome,2024Q3
+Product,Trial,224,page_to_outcome,2024Q3
+Product,Purchase,145,page_to_outcome,2024Q3
+Product,Bounce,154,page_to_outcome,2024Q3
+Organic,Home,1572,channel_to_page,2024Q4
+Organic,Pricing,247,channel_to_page,2024Q4
+Organic,Blog,1183,channel_to_page,2024Q4
+Organic,Docs,419,channel_to_page,2024Q4
+Organic,Product,429,channel_to_page,2024Q4
+Paid search,Home,580,channel_to_page,2024Q4
+Paid search,Pricing,61,channel_to_page,2024Q4
+Paid search,Blog,313,channel_to_page,2024Q4
+Paid search,Docs,526,channel_to_page,2024Q4
+Paid search,Product,122,channel_to_page,2024Q4
+Email,Home,87,channel_to_page,2024Q4
+Email,Pricing,133,channel_to_page,2024Q4
+Email,Blog,761,channel_to_page,2024Q4
+Email,Docs,451,channel_to_page,2024Q4
+Email,Product,74,channel_to_page,2024Q4
+Social,Home,665,channel_to_page,2024Q4
+Social,Pricing,461,channel_to_page,2024Q4
+Social,Blog,246,channel_to_page,2024Q4
+Social,Docs,287,channel_to_page,2024Q4
+Social,Product,66,channel_to_page,2024Q4
+Referral,Home,182,channel_to_page,2024Q4
+Referral,Pricing,259,channel_to_page,2024Q4
+Referral,Blog,489,channel_to_page,2024Q4
+Referral,Docs,163,channel_to_page,2024Q4
+Referral,Product,217,channel_to_page,2024Q4
+Direct,Home,258,channel_to_page,2024Q4
+Direct,Pricing,299,channel_to_page,2024Q4
+Direct,Blog,235,channel_to_page,2024Q4
+Direct,Docs,91,channel_to_page,2024Q4
+Direct,Product,171,channel_to_page,2024Q4
+Home,Signup,1471,page_to_outcome,2024Q4
+Home,Trial,113,page_to_outcome,2024Q4
+Home,Purchase,703,page_to_outcome,2024Q4
+Home,Bounce,118,page_to_outcome,2024Q4
+Pricing,Signup,460,page_to_outcome,2024Q4
+Pricing,Trial,727,page_to_outcome,2024Q4
+Pricing,Purchase,524,page_to_outcome,2024Q4
+Pricing,Bounce,400,page_to_outcome,2024Q4
+Blog,Signup,734,page_to_outcome,2024Q4
+Blog,Trial,236,page_to_outcome,2024Q4
+Blog,Purchase,622,page_to_outcome,2024Q4
+Blog,Bounce,153,page_to_outcome,2024Q4
+Docs,Signup,540,page_to_outcome,2024Q4
+Docs,Trial,558,page_to_outcome,2024Q4
+Docs,Purchase,73,page_to_outcome,2024Q4
+Docs,Bounce,106,page_to_outcome,2024Q4
+Product,Signup,462,page_to_outcome,2024Q4
+Product,Trial,298,page_to_outcome,2024Q4
+Product,Purchase,392,page_to_outcome,2024Q4
+Product,Bounce,342,page_to_outcome,2024Q4

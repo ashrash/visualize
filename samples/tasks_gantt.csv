@@ -1,0 +1,22 @@
+task_id,task,phase,owner,start,end,percent_complete
+1,Stakeholder interviews,Discovery,Kwame,2025-02-04,2025-02-18,100
+2,Requirements,Discovery,Mateo,2025-02-05,2025-02-12,100
+3,Data audit,Discovery,Mateo,2025-02-06,2025-02-12,100
+4,Architecture,Design,Priya,2025-02-21,2025-03-06,100
+5,UX wireframes,Design,Priya,2025-02-18,2025-03-03,100
+6,API contract,Design,Liam,2025-02-21,2025-02-28,100
+7,Security review,Design,Aiko,2025-02-20,2025-03-01,100
+8,Ingest pipeline,Build,Aiko,2025-03-06,2025-03-20,100
+9,Query engine,Build,Priya,2025-03-08,2025-03-23,100
+10,Chart library,Build,Mateo,2025-03-08,2025-03-19,100
+11,Dashboard layout,Build,Kwame,2025-03-09,2025-03-16,100
+12,Auth,Build,Liam,2025-03-09,2025-03-13,100
+13,Exports,Build,Mateo,2025-03-09,2025-03-14,100
+14,Unit tests,Test,Aiko,2025-03-23,2025-04-01,100
+15,Performance tests,Test,Kwame,2025-03-23,2025-04-03,100
+16,Accessibility audit,Test,Aiko,2025-03-27,2025-04-02,100
+17,UAT,Test,Aiko,2025-03-23,2025-04-02,100
+18,Docs,Launch,Sofia,2025-04-06,2025-04-12,100
+19,Training,Launch,Kwame,2025-04-06,2025-04-20,100
+20,Go-live,Launch,Kwame,2025-04-06,2025-04-21,100
+21,Hypercare,Launch,Aiko,2025-04-07,2025-04-12,100

@@ -1,0 +1,401 @@
+Commande,Date,Région,Ville,Produit,Quantité,Prix (€)
+CMD-0001,11/11/2024,Île-de-France,Lyon,Thé vert,19,7.52
+CMD-0002,14/04/2024,Provence-Alpes-Côte d'Azur,Paris,Pain d'épices,12,9.86
+CMD-0003,17/10/2024,Île-de-France,Créteil,Pain d'épices,21,13.75
+CMD-0004,02/03/2024,Île-de-France,Besançon,Châtaignes,23,6.76
+CMD-0005,16/07/2024,Occitanie,Lille,Fromage de chèvre,7,4.87
+CMD-0006,26/06/2024,Auvergne-Rhône-Alpes,Créteil,Fromage de chèvre,6,15.78
+CMD-0007,17/10/2024,Provence-Alpes-Côte d'Azur,Paris,Crème brûlée,14,13.51
+CMD-0008,23/12/2024,Provence-Alpes-Côte d'Azur,Créteil,Châtaignes,4,10.73
+CMD-0009,15/09/2024,Occitanie,Marseille,Fromage de chèvre,8,12.36
+CMD-0010,23/03/2024,Auvergne-Rhône-Alpes,Rennes,Fromage de chèvre,24,11.18
+CMD-0011,10/11/2024,Île-de-France,Marseille,Café moulu,7,14.45
+CMD-0012,24/10/2024,Auvergne-Rhône-Alpes,Rennes,Crème brûlée,11,5.68
+CMD-0013,16/04/2024,Bretagne,Lille,Thé vert,18,27.16
+CMD-0014,28/08/2024,Occitanie,Lille,Châtaignes,4,7.9
+CMD-0015,28/03/2024,Bretagne,Paris,Châtaignes,18,12.27
+CMD-0016,16/01/2024,Hauts-de-France,Toulouse,Thé vert,17,13.1
+CMD-0017,22/05/2024,Occitanie,Rennes,Crème brûlée,21,10.4
+CMD-0018,14/10/2024,Provence-Alpes-Côte d'Azur,Bordeaux,Pain d'épices,4,11.35
+CMD-0019,12/01/2024,Île-de-France,Besançon,Thé vert,22,21.97
+CMD-0020,13/10/2024,Hauts-de-France,Lille,Pain d'épices,13,6.35
+CMD-0021,28/07/2024,Occitanie,Lyon,Thé vert,24,8.28
+CMD-0022,28/08/2024,Bretagne,Créteil,Crème brûlée,3,4.32
+CMD-0023,19/02/2024,Occitanie,Lille,Thé vert,10,6.74
+CMD-0024,16/12/2024,Occitanie,Rennes,Café moulu,22,12.23
+CMD-0025,02/11/2024,Hauts-de-France,Marseille,Pain d'épices,3,8.68
+CMD-0026,30/03/2024,Île-de-France,Lyon,Pain d'épices,13,22.12
+CMD-0027,31/07/2024,Auvergne-Rhône-Alpes,Lyon,Châtaignes,15,10.61
+CMD-0028,19/11/2024,Bretagne,Lyon,Châtaignes,11,9.61
+CMD-0029,23/12/2024,Bretagne,Besançon,Châtaignes,23,3.74
+CMD-0030,15/04/2024,Occitanie,Paris,Fromage de chèvre,21,15.38
+CMD-0031,21/05/2024,Île-de-France,Paris,Fromage de chèvre,5,18.88
+CMD-0032,07/04/2024,Provence-Alpes-Côte d'Azur,Lyon,Crème brûlée,6,29.12
+CMD-0033,30/06/2024,Hauts-de-France,Lille,Café moulu,12,8.93
+CMD-0034,13/09/2024,Bretagne,Rennes,Fromage de chèvre,1,14.47
+CMD-0035,23/06/2024,Auvergne-Rhône-Alpes,Besançon,Fromage de chèvre,8,7.99
+CMD-0036,04/10/2024,Bretagne,Bordeaux,Fromage de chèvre,5,13.34
+CMD-0037,11/10/2024,Provence-Alpes-Côte d'Azur,Toulouse,Crème brûlée,7,20.05
+CMD-0038,10/09/2024,Île-de-France,Marseille,Pain d'épices,15,11.18
+CMD-0039,10/11/2024,Occitanie,Besançon,Thé vert,6,3.54
+CMD-0040,22/04/2024,Île-de-France,Créteil,Châtaignes,5,4.77
+CMD-0041,04/09/2024,Provence-Alpes-Côte d'Azur,Bordeaux,Pain d'épices,21,7.72
+CMD-0042,21/05/2024,Hauts-de-France,Rennes,Châtaignes,17,18.24
+CMD-0043,02/03/2024,Hauts-de-France,Lille,Fromage de chèvre,2,17.97
+CMD-0044,11/01/2024,Bretagne,Toulouse,Crème brûlée,8,12.24
+CMD-0045,19/06/2024,Île-de-France,Créteil,Crème brûlée,6,20.85
+CMD-0046,12/10/2024,Bretagne,Besançon,Crème brûlée,5,13.21
+CMD-0047,16/05/2024,Occitanie,Rennes,Thé vert,4,8.78
+CMD-0048,24/03/2024,Hauts-de-France,Rennes,Fromage de chèvre,19,7.5
+CMD-0049,25/11/2024,Île-de-France,Marseille,Thé vert,7,6.15
+CMD-0050,10/01/2024,Provence-Alpes-Côte d'Azur,Paris,Crème brûlée,18,9.24
+CMD-0051,23/03/2024,Provence-Alpes-Côte d'Azur,Rennes,Thé vert,11,7.44
+CMD-0052,19/11/2024,Bretagne,Lille,Crème brûlée,15,12.73
+CMD-0053,30/07/2024,Île-de-France,Lille,Châtaignes,12,6.9
+CMD-0054,03/05/2024,Île-de-France,Bordeaux,Châtaignes,15,7.5
+CMD-0055,23/05/2024,Bretagne,Paris,Thé vert,10,16.86
+CMD-0056,28/03/2024,Provence-Alpes-Côte d'Azur,Créteil,Pain d'épices,24,12.01
+CMD-0057,16/02/2024,Provence-Alpes-Côte d'Azur,Créteil,Fromage de chèvre,3,15.04
+CMD-0058,05/11/2024,Bretagne,Toulouse,Pain d'épices,16,8.27
+CMD-0059,25/04/2024,Île-de-France,Lyon,Pain d'épices,4,4.44
+CMD-0060,23/01/2024,Occitanie,Créteil,Pain d'épices,17,27.92
+CMD-0061,17/10/2024,Auvergne-Rhône-Alpes,Besançon,Pain d'épices,10,21.85
+CMD-0062,17/08/2024,Provence-Alpes-Côte d'Azur,Créteil,Pain d'épices,11,6.19
+CMD-0063,20/06/2024,Bretagne,Rennes,Crème brûlée,2,7.62
+CMD-0064,02/08/2024,Auvergne-Rhône-Alpes,Bordeaux,Châtaignes,8,16.4
+CMD-0065,06/07/2024,Provence-Alpes-Côte d'Azur,Toulouse,Fromage de chèvre,19,8.44
+CMD-0066,08/11/2024,Île-de-France,Lyon,Crème brûlée,16,17.51
+CMD-0067,31/03/2024,Auvergne-Rhône-Alpes,Marseille,Pain d'épices,9,8.02
+CMD-0068,24/01/2024,Bretagne,Rennes,Pain d'épices,12,10.87
+CMD-0069,04/02/2024,Bretagne,Lyon,Pain d'épices,21,4.68
+CMD-0070,20/06/2024,Bretagne,Rennes,Châtaignes,20,13.89
+CMD-0071,06/10/2024,Provence-Alpes-Côte d'Azur,Nîmes,Pain d'épices,12,23.55
+CMD-0072,22/09/2024,Île-de-France,Nîmes,Châtaignes,10,8.97
+CMD-0073,01/12/2024,Bretagne,Rennes,Café moulu,10,8.07
+CMD-0074,06/01/2024,Hauts-de-France,Toulouse,Pain d'épices,6,7.16
+CMD-0075,01/12/2024,Occitanie,Lille,Crème brûlée,16,13.14
+CMD-0076,16/03/2024,Bretagne,Lille,Pain d'épices,2,12.7
+CMD-0077,12/05/2024,Occitanie,Nîmes,Pain d'épices,15,9.65
+CMD-0078,10/02/2024,Hauts-de-France,Créteil,Crème brûlée,23,12.08
+CMD-0079,25/05/2024,Auvergne-Rhône-Alpes,Lyon,Châtaignes,16,7.49
+CMD-0080,03/07/2024,Auvergne-Rhône-Alpes,Besançon,Thé vert,14,13.4
+CMD-0081,30/08/2024,Auvergne-Rhône-Alpes,Toulouse,Café moulu,4,5.95
+CMD-0082,23/11/2024,Auvergne-Rhône-Alpes,Besançon,Crème brûlée,6,11.02
+CMD-0083,22/11/2024,Provence-Alpes-Côte d'Azur,Besançon,Crème brûlée,1,18.98
+CMD-0084,17/09/2024,Bretagne,Créteil,Châtaignes,6,9.16
+CMD-0085,14/02/2024,Auvergne-Rhône-Alpes,Toulouse,Thé vert,1,8.5
+CMD-0086,17/08/2024,Occitanie,Lyon,Café moulu,20,7.58
+CMD-0087,25/04/2024,Occitanie,Lyon,Café moulu,15,8.63
+CMD-0088,01/03/2024,Provence-Alpes-Côte d'Azur,Besançon,Fromage de chèvre,13,3.8
+CMD-0089,22/02/2024,Occitanie,Paris,Crème brûlée,6,10.54
+CMD-0090,29/03/2024,Auvergne-Rhône-Alpes,Besançon,Café moulu,19,14.41
+CMD-0091,31/01/2024,Auvergne-Rhône-Alpes,Toulouse,Café moulu,2,6.13
+CMD-0092,16/09/2024,Bretagne,Lille,Fromage de chèvre,11,12.05
+CMD-0093,08/06/2024,Provence-Alpes-Côte d'Azur,Lille,Café moulu,15,8.34
+CMD-0094,18/01/2024,Hauts-de-France,Lyon,Châtaignes,2,16.35
+CMD-0095,08/12/2024,Hauts-de-France,Lyon,Crème brûlée,12,14.71
+CMD-0096,08/10/2024,Provence-Alpes-Côte d'Azur,Marseille,Thé vert,12,16.39
+CMD-0097,28/08/2024,Hauts-de-France,Paris,Châtaignes,23,11.42
+CMD-0098,24/09/2024,Île-de-France,Bordeaux,Châtaignes,15,14.86
+CMD-0099,22/09/2024,Hauts-de-France,Marseille,Pain d'épices,1,21.54
+CMD-0100,29/04/2024,Hauts-de-France,Lille,Fromage de chèvre,16,9.2
+CMD-0101,24/08/2024,Occitanie,Rennes,Pain d'épices,22,7.62
+CMD-0102,15/02/2024,Provence-Alpes-Côte d'Azur,Lyon,Châtaignes,6,14.74
+CMD-0103,22/01/2024,Auvergne-Rhône-Alpes,Bordeaux,Café moulu,22,8.52
+CMD-0104,20/07/2024,Occitanie,Nîmes,Fromage de chèvre,10,8.15
+CMD-0105,11/04/2024,Occitanie,Paris,Crème brûlée,8,13.73
+CMD-0106,05/10/2024,Provence-Alpes-Côte d'Azur,Toulouse,Châtaignes,11,10.99
+CMD-0107,18/06/2024,Provence-Alpes-Côte d'Azur,Créteil,Crème brûlée,9,10.52
+CMD-0108,12/12/2024,Provence-Alpes-Côte d'Azur,Créteil,Châtaignes,16,6.99
+CMD-0109,23/05/2024,Auvergne-Rhône-Alpes,Nîmes,Pain d'épices,11,15.67
+CMD-0110,29/08/2024,Auvergne-Rhône-Alpes,Paris,Châtaignes,21,18.94
+CMD-0111,21/03/2024,Bretagne,Marseille,Crème brûlée,17,15.96
+CMD-0112,06/09/2024,Île-de-France,Créteil,Thé vert,21,24.05
+CMD-0113,05/02/2024,Hauts-de-France,Nîmes,Fromage de chèvre,20,9.63
+CMD-0114,05/07/2024,Provence-Alpes-Côte d'Azur,Marseille,Châtaignes,8,5.67
+CMD-0115,18/03/2024,Île-de-France,Lyon,Fromage de chèvre,4,5.9
+CMD-0116,22/09/2024,Hauts-de-France,Marseille,Pain d'épices,11,21.01
+CMD-0117,05/08/2024,Hauts-de-France,Nîmes,Fromage de chèvre,16,12.57
+CMD-0118,28/10/2024,Auvergne-Rhône-Alpes,Marseille,Crème brûlée,12,10.12
+CMD-0119,01/03/2024,Provence-Alpes-Côte d'Azur,Rennes,Fromage de chèvre,8,22.16
+CMD-0120,10/08/2024,Bretagne,Créteil,Châtaignes,24,4.44
+CMD-0121,24/09/2024,Occitanie,Lyon,Café moulu,1,33.16
+CMD-0122,05/11/2024,Auvergne-Rhône-Alpes,Lille,Fromage de chèvre,11,14.08
+CMD-0123,28/11/2024,Île-de-France,Besançon,Pain d'épices,14,9.12
+CMD-0124,25/08/2024,Hauts-de-France,Nîmes,Châtaignes,22,8
+CMD-0125,22/12/2024,Provence-Alpes-Côte d'Azur,Lyon,Crème brûlée,9,14.81
+CMD-0126,23/02/2024,Hauts-de-France,Besançon,Thé vert,3,12.42
+CMD-0127,05/08/2024,Île-de-France,Besançon,Pain d'épices,16,3.82
+CMD-0128,28/01/2024,Occitanie,Nîmes,Pain d'épices,3,7.53
+CMD-0129,05/11/2024,Île-de-France,Paris,Fromage de chèvre,6,10.44
+CMD-0130,01/02/2024,Île-de-France,Bordeaux,Crème brûlée,14,6.11
+CMD-0131,23/06/2024,Bretagne,Marseille,Pain d'épices,12,13.53
+CMD-0132,20/01/2024,Auvergne-Rhône-Alpes,Nîmes,Châtaignes,10,20.83
+CMD-0133,06/05/2024,Provence-Alpes-Côte d'Azur,Bordeaux,Café moulu,3,13.36
+CMD-0134,12/05/2024,Provence-Alpes-Côte d'Azur,Toulouse,Crème brûlée,2,12.88
+CMD-0135,18/08/2024,Île-de-France,Lille,Café moulu,4,11.02
+CMD-0136,03/08/2024,Provence-Alpes-Côte d'Azur,Besançon,Pain d'épices,4,9.09
+CMD-0137,06/10/2024,Île-de-France,Lyon,Crème brûlée,3,9.56
+CMD-0138,21/04/2024,Hauts-de-France,Toulouse,Pain d'épices,4,14.53
+CMD-0139,11/01/2024,Occitanie,Bordeaux,Thé vert,22,16.4
+CMD-0140,09/08/2024,Auvergne-Rhône-Alpes,Nîmes,Thé vert,22,7.89
+CMD-0141,11/08/2024,Île-de-France,Rennes,Crème brûlée,3,8.12
+CMD-0142,14/09/2024,Auvergne-Rhône-Alpes,Créteil,Fromage de chèvre,7,12.38
+CMD-0143,10/09/2024,Provence-Alpes-Côte d'Azur,Rennes,Fromage de chèvre,18,9.43
+CMD-0144,02/04/2024,Provence-Alpes-Côte d'Azur,Marseille,Pain d'épices,15,13.95
+CMD-0145,16/01/2024,Île-de-France,Créteil,Fromage de chèvre,20,7.58
+CMD-0146,09/10/2024,Occitanie,Marseille,Pain d'épices,24,12.84
+CMD-0147,07/11/2024,Provence-Alpes-Côte d'Azur,Lille,Crème brûlée,19,15.74
+CMD-0148,05/05/2024,Bretagne,Créteil,Châtaignes,22,7.12
+CMD-0149,15/12/2024,Provence-Alpes-Côte d'Azur,Bordeaux,Thé vert,8,29.28
+CMD-0150,10/03/2024,Île-de-France,Bordeaux,Crème brûlée,11,11.08
+CMD-0151,15/05/2024,Bretagne,Bordeaux,Café moulu,1,25.06
+CMD-0152,25/03/2024,Occitanie,Créteil,Fromage de chèvre,21,17.2
+CMD-0153,02/10/2024,Bretagne,Lyon,Thé vert,17,15.74
+CMD-0154,08/09/2024,Île-de-France,Marseille,Crème brûlée,1,10.1
+CMD-0155,12/05/2024,Bretagne,Lyon,Fromage de chèvre,24,15.95
+CMD-0156,12/02/2024,Occitanie,Besançon,Châtaignes,11,6.8
+CMD-0157,29/07/2024,Provence-Alpes-Côte d'Azur,Bordeaux,Pain d'épices,16,17
+CMD-0158,02/08/2024,Provence-Alpes-Côte d'Azur,Lyon,Crème brûlée,1,19.5
+CMD-0159,24/07/2024,Provence-Alpes-Côte d'Azur,Paris,Café moulu,15,12.31
+CMD-0160,18/10/2024,Auvergne-Rhône-Alpes,Marseille,Fromage de chèvre,24,3.6
+CMD-0161,06/08/2024,Bretagne,Besançon,Thé vert,17,5.24
+CMD-0162,15/11/2024,Provence-Alpes-Côte d'Azur,Marseille,Pain d'épices,5,6.46
+CMD-0163,03/03/2024,Hauts-de-France,Bordeaux,Crème brûlée,19,3.76
+CMD-0164,06/01/2024,Occitanie,Marseille,Café moulu,23,5.86
+CMD-0165,24/07/2024,Provence-Alpes-Côte d'Azur,Toulouse,Fromage de chèvre,24,19.87
+CMD-0166,06/09/2024,Hauts-de-France,Lille,Pain d'épices,9,14.1
+CMD-0167,23/03/2024,Bretagne,Rennes,Fromage de chèvre,15,21.37
+CMD-0168,23/09/2024,Provence-Alpes-Côte d'Azur,Besançon,Crème brûlée,12,9.86
+CMD-0169,15/12/2024,Bretagne,Rennes,Thé vert,1,13.28
+CMD-0170,29/07/2024,Bretagne,Bordeaux,Châtaignes,2,15.89
+CMD-0171,15/12/2024,Occitanie,Paris,Châtaignes,1,12.84
+CMD-0172,23/03/2024,Provence-Alpes-Côte d'Azur,Créteil,Café moulu,18,16.4
+CMD-0173,09/04/2024,Provence-Alpes-Côte d'Azur,Paris,Café moulu,15,12.53
+CMD-0174,25/06/2024,Auvergne-Rhône-Alpes,Bordeaux,Châtaignes,10,6.98
+CMD-0175,05/05/2024,Provence-Alpes-Côte d'Azur,Créteil,Châtaignes,1,9.47
+CMD-0176,19/05/2024,Provence-Alpes-Côte d'Azur,Lyon,Pain d'épices,18,12.64
+CMD-0177,07/06/2024,Auvergne-Rhône-Alpes,Bordeaux,Pain d'épices,6,9.39
+CMD-0178,04/08/2024,Auvergne-Rhône-Alpes,Nîmes,Pain d'épices,20,17.73
+CMD-0179,23/07/2024,Auvergne-Rhône-Alpes,Lille,Thé vert,13,14.69
+CMD-0180,15/02/2024,Provence-Alpes-Côte d'Azur,Toulouse,Pain d'épices,21,8.48
+CMD-0181,25/01/2024,Île-de-France,Paris,Pain d'épices,8,12.85
+CMD-0182,28/03/2024,Hauts-de-France,Lille,Châtaignes,18,9.24
+CMD-0183,03/08/2024,Auvergne-Rhône-Alpes,Nîmes,Café moulu,14,9.98
+CMD-0184,31/03/2024,Occitanie,Marseille,Thé vert,11,6.43
+CMD-0185,22/07/2024,Provence-Alpes-Côte d'Azur,Lille,Pain d'épices,9,11.38
+CMD-0186,05/02/2024,Auvergne-Rhône-Alpes,Marseille,Café moulu,5,21.45
+CMD-0187,18/09/2024,Bretagne,Lille,Thé vert,8,13.13
+CMD-0188,16/12/2024,Île-de-France,Lyon,Fromage de chèvre,18,5.77
+CMD-0189,06/11/2024,Île-de-France,Créteil,Pain d'épices,24,11.97
+CMD-0190,18/02/2024,Auvergne-Rhône-Alpes,Paris,Châtaignes,24,6.79
+CMD-0191,15/04/2024,Hauts-de-France,Bordeaux,Crème brûlée,15,3.52
+CMD-0192,03/09/2024,Auvergne-Rhône-Alpes,Lyon,Fromage de chèvre,16,5.72
+CMD-0193,23/04/2024,Provence-Alpes-Côte d'Azur,Lyon,Pain d'épices,9,10.18
+CMD-0194,29/10/2024,Occitanie,Créteil,Café moulu,13,20.64
+CMD-0195,29/03/2024,Bretagne,Créteil,Châtaignes,17,14.21
+CMD-0196,28/04/2024,Hauts-de-France,Paris,Thé vert,22,11.52
+CMD-0197,31/01/2024,Bretagne,Lyon,Pain d'épices,4,10.98
+CMD-0198,04/09/2024,Hauts-de-France,Rennes,Crème brûlée,7,15.85
+CMD-0199,30/11/2024,Bretagne,Nîmes,Châtaignes,10,15.26
+CMD-0200,27/12/2024,Occitanie,Marseille,Pain d'épices,3,8.31
+CMD-0201,23/08/2024,Bretagne,Lyon,Thé vert,14,13.35
+CMD-0202,18/12/2024,Île-de-France,Nîmes,Pain d'épices,7,17.67
+CMD-0203,31/03/2024,Hauts-de-France,Rennes,Pain d'épices,12,24.78
+CMD-0204,05/09/2024,Bretagne,Lille,Café moulu,3,12.29
+CMD-0205,20/07/2024,Auvergne-Rhône-Alpes,Créteil,Châtaignes,9,12.58
+CMD-0206,14/05/2024,Auvergne-Rhône-Alpes,Rennes,Thé vert,21,17.53
+CMD-0207,05/07/2024,Bretagne,Créteil,Thé vert,19,6.3
+CMD-0208,08/08/2024,Île-de-France,Créteil,Café moulu,11,14.99
+CMD-0209,10/04/2024,Occitanie,Toulouse,Café moulu,19,13.77
+CMD-0210,08/12/2024,Bretagne,Bordeaux,Pain d'épices,24,4.72
+CMD-0211,16/10/2024,Île-de-France,Besançon,Pain d'épices,24,8.83
+CMD-0212,05/08/2024,Hauts-de-France,Marseille,Châtaignes,11,7.42
+CMD-0213,15/01/2024,Occitanie,Toulouse,Thé vert,13,16.7
+CMD-0214,05/09/2024,Occitanie,Marseille,Châtaignes,14,7.6
+CMD-0215,16/10/2024,Auvergne-Rhône-Alpes,Créteil,Café moulu,9,19.57
+CMD-0216,18/06/2024,Hauts-de-France,Rennes,Café moulu,5,10.93
+CMD-0217,22/02/2024,Occitanie,Besançon,Châtaignes,3,27.78
+CMD-0218,17/06/2024,Île-de-France,Marseille,Café moulu,3,19.85
+CMD-0219,18/05/2024,Hauts-de-France,Rennes,Crème brûlée,19,7.51
+CMD-0220,18/08/2024,Provence-Alpes-Côte d'Azur,Rennes,Châtaignes,2,10.01
+CMD-0221,26/03/2024,Occitanie,Nîmes,Pain d'épices,21,14.71
+CMD-0222,13/05/2024,Provence-Alpes-Côte d'Azur,Besançon,Fromage de chèvre,13,13.09
+CMD-0223,25/09/2024,Hauts-de-France,Lille,Châtaignes,14,17.74
+CMD-0224,06/06/2024,Auvergne-Rhône-Alpes,Lyon,Châtaignes,22,11.54
+CMD-0225,15/03/2024,Hauts-de-France,Nîmes,Fromage de chèvre,24,6.99
+CMD-0226,28/08/2024,Bretagne,Lyon,Café moulu,20,13.71
+CMD-0227,19/05/2024,Île-de-France,Lille,Fromage de chèvre,11,11.42
+CMD-0228,26/06/2024,Île-de-France,Marseille,Fromage de chèvre,6,21.61
+CMD-0229,04/04/2024,Île-de-France,Créteil,Café moulu,17,9.41
+CMD-0230,30/01/2024,Provence-Alpes-Côte d'Azur,Paris,Fromage de chèvre,20,13.96
+CMD-0231,21/12/2024,Occitanie,Lyon,Crème brûlée,16,12.12
+CMD-0232,11/03/2024,Hauts-de-France,Créteil,Café moulu,21,12.54
+CMD-0233,28/11/2024,Hauts-de-France,Bordeaux,Crème brûlée,5,11.3
+CMD-0234,15/06/2024,Hauts-de-France,Besançon,Châtaignes,15,21.5
+CMD-0235,02/06/2024,Occitanie,Besançon,Fromage de chèvre,3,8.85
+CMD-0236,30/01/2024,Provence-Alpes-Côte d'Azur,Créteil,Café moulu,20,14.93
+CMD-0237,28/07/2024,Île-de-France,Nîmes,Fromage de chèvre,2,16.56
+CMD-0238,24/06/2024,Auvergne-Rhône-Alpes,Marseille,Pain d'épices,22,11.53
+CMD-0239,05/11/2024,Auvergne-Rhône-Alpes,Besançon,Pain d'épices,22,9.94
+CMD-0240,11/10/2024,Île-de-France,Lyon,Fromage de chèvre,10,9.55
+CMD-0241,16/04/2024,Provence-Alpes-Côte d'Azur,Besançon,Crème brûlée,21,8.09
+CMD-0242,30/06/2024,Provence-Alpes-Côte d'Azur,Paris,Pain d'épices,11,15.11
+CMD-0243,28/05/2024,Auvergne-Rhône-Alpes,Besançon,Fromage de chèvre,5,12.87
+CMD-0244,25/08/2024,Île-de-France,Créteil,Fromage de chèvre,14,23.11
+CMD-0245,02/07/2024,Bretagne,Lille,Thé vert,5,15.44
+CMD-0246,09/06/2024,Occitanie,Toulouse,Café moulu,14,12.16
+CMD-0247,19/03/2024,Hauts-de-France,Toulouse,Café moulu,9,10.6
+CMD-0248,10/03/2024,Provence-Alpes-Côte d'Azur,Lille,Thé vert,9,8.05
+CMD-0249,12/08/2024,Auvergne-Rhône-Alpes,Lille,Crème brûlée,20,12.22
+CMD-0250,28/03/2024,Occitanie,Rennes,Châtaignes,5,16.63
+CMD-0251,09/10/2024,Auvergne-Rhône-Alpes,Marseille,Pain d'épices,24,7.47
+CMD-0252,02/04/2024,Hauts-de-France,Besançon,Pain d'épices,17,16.26
+CMD-0253,10/09/2024,Provence-Alpes-Côte d'Azur,Paris,Crème brûlée,15,10.6
+CMD-0254,11/03/2024,Auvergne-Rhône-Alpes,Paris,Crème brûlée,17,19.65
+CMD-0255,08/07/2024,Île-de-France,Créteil,Crème brûlée,20,11.94
+CMD-0256,12/06/2024,Occitanie,Marseille,Thé vert,16,13.49
+CMD-0257,23/06/2024,Auvergne-Rhône-Alpes,Nîmes,Pain d'épices,19,9.29
+CMD-0258,03/04/2024,Île-de-France,Besançon,Pain d'épices,17,15.57
+CMD-0259,12/05/2024,Provence-Alpes-Côte d'Azur,Paris,Thé vert,2,11.04
+CMD-0260,05/09/2024,Auvergne-Rhône-Alpes,Rennes,Thé vert,4,15.14
+CMD-0261,23/10/2024,Auvergne-Rhône-Alpes,Bordeaux,Crème brûlée,11,8.2
+CMD-0262,02/06/2024,Hauts-de-France,Bordeaux,Thé vert,16,3.71
+CMD-0263,01/09/2024,Auvergne-Rhône-Alpes,Créteil,Châtaignes,17,8.07
+CMD-0264,14/07/2024,Hauts-de-France,Nîmes,Fromage de chèvre,22,12.81
+CMD-0265,19/05/2024,Auvergne-Rhône-Alpes,Besançon,Châtaignes,18,6.73
+CMD-0266,06/04/2024,Provence-Alpes-Côte d'Azur,Créteil,Thé vert,14,12.8
+CMD-0267,08/03/2024,Provence-Alpes-Côte d'Azur,Toulouse,Pain d'épices,14,13.38
+CMD-0268,06/02/2024,Bretagne,Créteil,Café moulu,19,13.68
+CMD-0269,02/12/2024,Île-de-France,Bordeaux,Châtaignes,10,8.53
+CMD-0270,14/02/2024,Auvergne-Rhône-Alpes,Lille,Pain d'épices,13,15.4
+CMD-0271,25/10/2024,Bretagne,Lyon,Café moulu,8,11.8
+CMD-0272,31/08/2024,Provence-Alpes-Côte d'Azur,Lyon,Pain d'épices,24,23.11
+CMD-0273,28/05/2024,Bretagne,Lille,Thé vert,9,12.37
+CMD-0274,27/02/2024,Bretagne,Marseille,Châtaignes,24,4.62
+CMD-0275,15/05/2024,Auvergne-Rhône-Alpes,Nîmes,Châtaignes,15,9.49
+CMD-0276,04/12/2024,Occitanie,Besançon,Crème brûlée,7,16.45
+CMD-0277,30/04/2024,Bretagne,Bordeaux,Châtaignes,4,13.52
+CMD-0278,15/09/2024,Occitanie,Lille,Châtaignes,4,5.8
+CMD-0279,18/02/2024,Île-de-France,Nîmes,Crème brûlée,19,7.35
+CMD-0280,28/04/2024,Provence-Alpes-Côte d'Azur,Créteil,Café moulu,4,13.77
+CMD-0281,04/03/2024,Bretagne,Lille,Café moulu,14,13.24
+CMD-0282,01/11/2024,Provence-Alpes-Côte d'Azur,Marseille,Thé vert,20,18.4
+CMD-0283,10/07/2024,Hauts-de-France,Toulouse,Châtaignes,2,8.01
+CMD-0284,26/06/2024,Auvergne-Rhône-Alpes,Bordeaux,Crème brûlée,11,7.61
+CMD-0285,05/03/2024,Auvergne-Rhône-Alpes,Lille,Fromage de chèvre,1,10.37
+CMD-0286,26/10/2024,Provence-Alpes-Côte d'Azur,Marseille,Crème brûlée,5,13.92
+CMD-0287,25/01/2024,Occitanie,Bordeaux,Crème brûlée,19,18.59
+CMD-0288,29/03/2024,Provence-Alpes-Côte d'Azur,Marseille,Fromage de chèvre,14,11.51
+CMD-0289,01/07/2024,Auvergne-Rhône-Alpes,Marseille,Crème brûlée,17,7.07
+CMD-0290,04/10/2024,Auvergne-Rhône-Alpes,Rennes,Châtaignes,22,8.79
+CMD-0291,01/04/2024,Hauts-de-France,Créteil,Crème brûlée,22,4.96
+CMD-0292,04/10/2024,Occitanie,Lyon,Crème brûlée,23,10.43
+CMD-0293,11/11/2024,Bretagne,Paris,Crème brûlée,7,10.17
+CMD-0294,06/05/2024,Île-de-France,Créteil,Café moulu,5,7.41
+CMD-0295,19/03/2024,Provence-Alpes-Côte d'Azur,Paris,Café moulu,22,8.5
+CMD-0296,28/05/2024,Occitanie,Besançon,Thé vert,9,16.35
+CMD-0297,14/02/2024,Auvergne-Rhône-Alpes,Lille,Thé vert,1,6.88
+CMD-0298,22/09/2024,Bretagne,Paris,Thé vert,16,21.16
+CMD-0299,16/11/2024,Occitanie,Lyon,Fromage de chèvre,10,8.52
+CMD-0300,23/08/2024,Hauts-de-France,Nîmes,Châtaignes,5,17.81
+CMD-0301,19/08/2024,Provence-Alpes-Côte d'Azur,Paris,Fromage de chèvre,3,12.96
+CMD-0302,08/11/2024,Bretagne,Marseille,Café moulu,14,10.15
+CMD-0303,12/09/2024,Occitanie,Marseille,Crème brûlée,4,8.75
+CMD-0304,09/03/2024,Île-de-France,Nîmes,Crème brûlée,4,13.84
+CMD-0305,13/04/2024,Auvergne-Rhône-Alpes,Toulouse,Thé vert,13,4.37
+CMD-0306,17/01/2024,Île-de-France,Lyon,Pain d'épices,21,7.45
+CMD-0307,06/10/2024,Occitanie,Nîmes,Châtaignes,1,13.43
+CMD-0308,15/01/2024,Île-de-France,Lyon,Fromage de chèvre,13,25.17
+CMD-0309,13/05/2024,Bretagne,Créteil,Pain d'épices,22,12.25
+CMD-0310,23/05/2024,Bretagne,Paris,Fromage de chèvre,22,17.14
+CMD-0311,09/09/2024,Occitanie,Nîmes,Café moulu,5,12.01
+CMD-0312,28/03/2024,Provence-Alpes-Côte d'Azur,Besançon,Thé vert,11,12.11
+CMD-0313,10/05/2024,Auvergne-Rhône-Alpes,Marseille,Fromage de chèvre,21,6.57
+CMD-0314,11/05/2024,Occitanie,Créteil,Fromage de chèvre,22,5.25
+CMD-0315,13/08/2024,Hauts-de-France,Toulouse,Pain d'épices,4,8.4
+CMD-0316,18/06/2024,Occitanie,Nîmes,Pain d'épices,18,10.07
+CMD-0317,09/09/2024,Bretagne,Marseille,Fromage de chèvre,5,14.28
+CMD-0318,28/03/2024,Hauts-de-France,Bordeaux,Crème brûlée,20,6.6
+CMD-0319,11/03/2024,Occitanie,Besançon,Pain d'épices,4,11.42
+CMD-0320,06/09/2024,Hauts-de-France,Créteil,Café moulu,17,9.06
+CMD-0321,21/11/2024,Hauts-de-France,Marseille,Thé vert,6,21.15
+CMD-0322,12/06/2024,Auvergne-Rhône-Alpes,Lyon,Café moulu,4,9.59
+CMD-0323,01/02/2024,Bretagne,Rennes,Pain d'épices,5,17.76
+CMD-0324,26/01/2024,Hauts-de-France,Bordeaux,Châtaignes,5,9.85
+CMD-0325,19/04/2024,Auvergne-Rhône-Alpes,Créteil,Fromage de chèvre,12,9.3
+CMD-0326,01/10/2024,Provence-Alpes-Côte d'Azur,Lille,Café moulu,9,17.97
+CMD-0327,22/01/2024,Hauts-de-France,Lyon,Thé vert,11,9.55
+CMD-0328,20/03/2024,Occitanie,Créteil,Pain d'épices,24,7.16
+CMD-0329,13/01/2024,Provence-Alpes-Côte d'Azur,Paris,Café moulu,8,10.39
+CMD-0330,18/07/2024,Bretagne,Créteil,Café moulu,16,19.2
+CMD-0331,20/08/2024,Provence-Alpes-Côte d'Azur,Lyon,Crème brûlée,17,4.43
+CMD-0332,24/04/2024,Île-de-France,Toulouse,Thé vert,1,14.12
+CMD-0333,24/03/2024,Auvergne-Rhône-Alpes,Lille,Thé vert,16,23.53
+CMD-0334,22/04/2024,Provence-Alpes-Côte d'Azur,Nîmes,Crème brûlée,22,11.89
+CMD-0335,06/06/2024,Île-de-France,Lille,Fromage de chèvre,19,9.69
+CMD-0336,13/01/2024,Provence-Alpes-Côte d'Azur,Bordeaux,Châtaignes,13,10.29
+CMD-0337,13/12/2024,Occitanie,Bordeaux,Fromage de chèvre,10,8.6
+CMD-0338,26/07/2024,Provence-Alpes-Côte d'Azur,Toulouse,Fromage de chèvre,11,14
+CMD-0339,03/04/2024,Bretagne,Lyon,Fromage de chèvre,8,17.29
+CMD-0340,16/06/2024,Occitanie,Lille,Pain d'épices,24,7.12
+CMD-0341,03/02/2024,Provence-Alpes-Côte d'Azur,Nîmes,Crème brûlée,1,21.01
+CMD-0342,06/01/2024,Bretagne,Nîmes,Châtaignes,2,10.34
+CMD-0343,12/06/2024,Bretagne,Lille,Crème brûlée,12,16.89
+CMD-0344,15/09/2024,Provence-Alpes-Côte d'Azur,Bordeaux,Fromage de chèvre,14,12.11
+CMD-0345,08/11/2024,Hauts-de-France,Bordeaux,Thé vert,2,15.47
+CMD-0346,12/04/2024,Auvergne-Rhône-Alpes,Besançon,Café moulu,17,7.52
+CMD-0347,26/12/2024,Bretagne,Lyon,Thé vert,21,10.9
+CMD-0348,12/03/2024,Hauts-de-France,Nîmes,Café moulu,1,10.63
+CMD-0349,12/12/2024,Île-de-France,Toulouse,Fromage de chèvre,10,12.46
+CMD-0350,02/04/2024,Bretagne,Besançon,Fromage de chèvre,17,12.54
+CMD-0351,08/10/2024,Auvergne-Rhône-Alpes,Besançon,Thé vert,6,26.17
+CMD-0352,05/01/2024,Hauts-de-France,Nîmes,Châtaignes,11,17.25
+CMD-0353,12/01/2024,Bretagne,Lyon,Châtaignes,4,12.76
+CMD-0354,10/09/2024,Bretagne,Besançon,Thé vert,15,15.68
+CMD-0355,25/07/2024,Bretagne,Marseille,Châtaignes,10,7.44
+CMD-0356,22/11/2024,Provence-Alpes-Côte d'Azur,Créteil,Crème brûlée,13,10.27
+CMD-0357,05/07/2024,Occitanie,Bordeaux,Châtaignes,13,18.67
+CMD-0358,26/04/2024,Hauts-de-France,Paris,Pain d'épices,20,17.43
+CMD-0359,25/08/2024,Occitanie,Marseille,Fromage de chèvre,12,9.12
+CMD-0360,31/07/2024,Île-de-France,Bordeaux,Crème brûlée,7,10.23
+CMD-0361,18/08/2024,Occitanie,Besançon,Thé vert,14,13.66
+CMD-0362,03/07/2024,Île-de-France,Lille,Crème brûlée,1,14.96
+CMD-0363,19/08/2024,Hauts-de-France,Bordeaux,Café moulu,14,25.08
+CMD-0364,26/05/2024,Provence-Alpes-Côte d'Azur,Paris,Crème brûlée,24,8.83
+CMD-0365,28/01/2024,Auvergne-Rhône-Alpes,Lyon,Thé vert,10,9.02
+CMD-0366,26/05/2024,Île-de-France,Besançon,Fromage de chèvre,7,13.81
+CMD-0367,09/03/2024,Occitanie,Nîmes,Fromage de chèvre,11,25.51
+CMD-0368,25/10/2024,Provence-Alpes-Côte d'Azur,Lyon,Pain d'épices,23,19.62
+CMD-0369,08/07/2024,Île-de-France,Lyon,Fromage de chèvre,6,16.32
+CMD-0370,18/02/2024,Auvergne-Rhône-Alpes,Toulouse,Châtaignes,24,15.15
+CMD-0371,23/05/2024,Provence-Alpes-Côte d'Azur,Lille,Crème brûlée,10,11.12
+CMD-0372,05/04/2024,Occitanie,Besançon,Pain d'épices,17,12.27
+CMD-0373,02/05/2024,Occitanie,Créteil,Café moulu,3,10.93
+CMD-0374,26/05/2024,Occitanie,Rennes,Café moulu,13,18.55
+CMD-0375,21/02/2024,Île-de-France,Créteil,Châtaignes,21,8.96
+CMD-0376,23/02/2024,Occitanie,Marseille,Pain d'épices,6,16.58
+CMD-0377,18/07/2024,Occitanie,Toulouse,Fromage de chèvre,18,7.65
+CMD-0378,04/11/2024,Hauts-de-France,Paris,Pain d'épices,2,7.61
+CMD-0379,30/01/2024,Auvergne-Rhône-Alpes,Rennes,Crème brûlée,5,4.38
+CMD-0380,07/03/2024,Occitanie,Bordeaux,Fromage de chèvre,7,8.21
+CMD-0381,15/01/2024,Bretagne,Paris,Café moulu,5,14
+CMD-0382,23/07/2024,Bretagne,Lyon,Pain d'épices,15,14.54
+CMD-0383,21/08/2024,Île-de-France,Rennes,Fromage de chèvre,6,6.41
+CMD-0384,29/08/2024,Occitanie,Marseille,Pain d'épices,21,8.01
+CMD-0385,13/04/2024,Occitanie,Marseille,Café moulu,13,8.47
+CMD-0386,31/05/2024,Provence-Alpes-Côte d'Azur,Lyon,Crème brûlée,1,13.18
+CMD-0387,31/01/2024,Provence-Alpes-Côte d'Azur,Créteil,Châtaignes,6,12.33
+CMD-0388,18/02/2024,Hauts-de-France,Lyon,Café moulu,5,10.36
+CMD-0389,26/03/2024,Provence-Alpes-Côte d'Azur,Bordeaux,Pain d'épices,20,6.05
+CMD-0390,28/12/2024,Hauts-de-France,Bordeaux,Café moulu,12,7.73
+CMD-0391,14/12/2024,Hauts-de-France,Rennes,Pain d'épices,22,7.5
+CMD-0392,24/11/2024,Île-de-France,Lyon,Fromage de chèvre,18,18.2
+CMD-0393,24/10/2024,Bretagne,Créteil,Pain d'épices,13,12.88
+CMD-0394,10/01/2024,Île-de-France,Rennes,Thé vert,2,6.69
+CMD-0395,25/05/2024,Provence-Alpes-Côte d'Azur,Marseille,Café moulu,8,10.65
+CMD-0396,10/04/2024,Hauts-de-France,Lyon,Châtaignes,13,6.66
+CMD-0397,27/03/2024,Bretagne,Rennes,Café moulu,12,6.8
+CMD-0398,29/07/2024,Auvergne-Rhône-Alpes,Rennes,Châtaignes,12,8.86
+CMD-0399,02/06/2024,Auvergne-Rhône-Alpes,Lille,Châtaignes,24,13.75
+CMD-0400,05/12/2024,Provence-Alpes-Côte d'Azur,Rennes,Fromage de chèvre,24,5.68
