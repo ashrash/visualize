@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 from collections import Counter
@@ -118,17 +119,33 @@ def test_groups_match_pandas(table_relation: Any, data: pa.Table) -> None:
     _check_numeric(_one(result, "x"), _clean(data.column("x")), 400)
 
 
-def test_combined_pass_equals_separate_passes(table_relation: Any, data: pa.Table) -> None:
+def _approx_floats(value: Any) -> Any:
+    """Floats as pytest.approx (rel 1e-12), recursively: different query plans (a grouping
+    sets pass vs separate passes) may round sums differently in the last bits."""
+    if isinstance(value, float):
+        return pytest.approx(value, rel=1e-12)
+    if isinstance(value, dict):
+        return {k: _approx_floats(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_approx_floats(v) for v in value]
+    return value
+
+
+@pytest.mark.parametrize("include_mode", [True, False])
+def test_combined_pass_equals_separate_passes(
+    table_relation: Any, data: pa.Table, include_mode: bool
+) -> None:
     rel = table_relation(data)
-    combined = describe(rel, _request(["x", "k", "d", "s"], group_by=["g"]))
-    groups_only = describe(
-        rel, _request(["x", "k", "d", "s"], group_by=["g"], include_overall=False)
-    )
-    overall = describe(rel, _request(["x", "k", "d", "s"]))
+    fields = ["x", "k", "d", "s"]
+    common = {"include_mode": include_mode}
+    combined = describe(rel, _request(fields, group_by=["g"], **common))
+    groups_only = describe(rel, _request(fields, group_by=["g"], include_overall=False, **common))
+    overall = describe(rel, _request(fields, **common))
     expected = [s for s in _summaries(groups_only)] + _summaries(overall)
     got = _summaries(combined)
     key = lambda s: (s.field, json.dumps(s.group))  # noqa: E731
-    assert sorted(got, key=key) == sorted(expected, key=key)
+    got_dumps = [s.model_dump() for s in sorted(got, key=key)]
+    assert got_dumps == [_approx_floats(s.model_dump()) for s in sorted(expected, key=key)]
 
 
 def test_temporal_boolean_and_categorical(table_relation: Any, data: pa.Table) -> None:
@@ -469,6 +486,86 @@ def test_fuzz_modes_against_counter(
         summary = _one(result, "v", key)
         distinct, top, shown, _ = _expected_modes(part)
         assert (summary.distinct, summary.mode_count, summary.modes) == (distinct, top, shown)
+
+
+def _with_distinct(rel: Any, **approx: int) -> Any:
+    """`rel` with the profile's approx_distinct set for some columns (tests build 0)."""
+    columns = dict(rel.columns)
+    for name, value in approx.items():
+        columns[name] = columns[name].model_copy(update={"approx_distinct": value})
+    return dataclasses.replace(rel, columns=columns)
+
+
+def _temporal_quantiles(result: Any, field: str) -> dict[str, list[Any]]:
+    return {
+        json.dumps(s.group): [s.q1, s.median, s.q3, *(q.value for q in s.quantiles)]
+        for s in _summaries(result)
+        if s.field == field
+    }
+
+
+AWKWARD_PERCENTILES = [0.0, 1e-9, 0.1, 0.3, 1 / 3, 0.7, 0.999, 1.0]
+
+
+@settings(
+    max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    st.lists(
+        st.tuples(
+            st.one_of(st.none(), st.integers(min_value=0, max_value=40)),
+            st.sampled_from(["a", "b", None]),
+        ),
+        min_size=0,
+        max_size=80,
+    ),
+    st.lists(st.sampled_from(AWKWARD_PERCENTILES), min_size=1, max_size=4),
+)
+def test_fuzz_date_quantiles_from_counts_equal_quantile_disc(
+    table_relation: Any, rows: list[tuple[int | None, str | None]], percentiles: list[float]
+) -> None:
+    """With modes on, DATE quantiles come from the value counts; off, from quantile_disc."""
+    days = [None if v is None else dt.date(2024, 1, 1) + dt.timedelta(days=v) for v, _ in rows]
+    rel = table_relation({"d": pa.array(days, type=pa.date32()), "g": [g for _, g in rows]})
+    assert descriptive._quantiles_from_counts(rel, "d", "temporal")
+    request = {"group_by": ["g"], "percentiles": percentiles}
+    counted = describe(rel, _request(["d"], include_mode=True, **request))
+    disc = describe(rel, _request(["d"], include_mode=False, **request))
+    assert _temporal_quantiles(counted, "d") == _temporal_quantiles(disc, "d")
+
+
+@pytest.mark.parametrize("zoned", [False, True])
+def test_timestamp_quantiles_from_counts(make_relation: Any, zoned: bool) -> None:
+    """A profiled low-cardinality timestamp takes the counts path; same values as before."""
+    kind = "TIMESTAMPTZ" if zoned else "TIMESTAMP"
+    rel = make_relation(
+        f"SELECT ('2024-03-01 10:00:00+00'::TIMESTAMPTZ + to_minutes((i * 7919) % 97))::{kind} "
+        "AS t, ['x', 'y', 'z'][1 + i % 3] AS g FROM range(1000) r(i)"
+    )
+    assert not descriptive._quantiles_from_counts(rel, "t", "temporal")  # not profiled
+    profiled = _with_distinct(rel, t=97)
+    assert descriptive._quantiles_from_counts(profiled, "t", "temporal")
+    request = {"group_by": ["g"], "percentiles": AWKWARD_PERCENTILES}
+    counted = describe(profiled, _request(["t"], **request))
+    disc = describe(profiled, _request(["t"], include_mode=False, **request))
+    assert _temporal_quantiles(counted, "t") == _temporal_quantiles(disc, "t")
+    assert all(v.endswith("+00:00") == zoned for v in _temporal_quantiles(counted, "t")["null"])
+
+
+def test_quantiles_from_counts_gate(table_relation: Any) -> None:
+    rel = table_relation(
+        {
+            "d": [dt.date(2024, 1, 1)],
+            "t": [dt.datetime(2024, 1, 1, 9, 30)],
+            "v": [1.0],
+        }
+    )
+    gate = descriptive._quantiles_from_counts
+    assert gate(rel, "d", "temporal")  # unprofiled DATE: few distinct values in practice
+    assert not gate(rel, "t", "temporal")  # unprofiled timestamp: maybe one per row
+    assert gate(_with_distinct(rel, t=100_000), "t", "temporal")
+    assert not gate(_with_distinct(rel, d=100_001), "d", "temporal")
+    assert not gate(rel, "v", "numeric")
 
 
 def test_modes_of_high_cardinality_doubles(table_relation: Any) -> None:
