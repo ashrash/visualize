@@ -869,7 +869,11 @@ def acf_plot(req: PlotRequest) -> TableOutput:
 )
 def pacf_plot(req: PlotRequest) -> TableOutput:
     def run(values: np.ndarray, lags: int, alpha: float) -> tuple[np.ndarray, np.ndarray]:
-        result = sm_pacf(values, nlags=lags, alpha=alpha, result_object=False)
+        # ywm (Yule-Walker, biased/"mle"), not pacf's own ywadjusted default: ywadjusted's
+        # small-sample correction can push |PACF| above 1 on trending or random-walk data
+        # (observed >1 on 40% of n=50 cumulative-sum series), which plot_pacf avoids by
+        # defaulting to ywm for exactly this reason.
+        result = sm_pacf(values, nlags=lags, alpha=alpha, method="ywm", result_object=False)
         assert isinstance(result, tuple)
         return result
 

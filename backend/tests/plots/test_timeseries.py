@@ -453,7 +453,7 @@ def test_pacf_matches_statsmodels(engine: Engine, tmp_path: Path) -> None:
         PlotType.PACF, rel, {"lags": 10, "ciLevel": 0.95}, x=[{"field": "t"}], y=[{"field": "v"}]
     )
     expected_vals, expected_ci = sm_pacf(
-        np.asarray(values), nlags=10, alpha=0.05, result_object=False
+        np.asarray(values), nlags=10, alpha=0.05, method="ywm", result_object=False
     )
     np.testing.assert_allclose(out.table.column("y0").to_pylist(), expected_vals)
     np.testing.assert_allclose(
@@ -462,6 +462,31 @@ def test_pacf_matches_statsmodels(engine: Engine, tmp_path: Path) -> None:
     np.testing.assert_allclose(
         out.table.column("y0_hi").to_pylist(), expected_ci[:, 1] - expected_vals
     )
+
+
+def test_pacf_stays_bounded_on_trending_data(engine: Engine, tmp_path: Path) -> None:
+    # pacf's own default method (ywadjusted) can push |PACF| above 1 on a random-walk/trending
+    # series - observed on ~40% of seeds at n=50 in review, worst case 48. plot_acf's own default
+    # (ywm) stays within [-1, 1]. A random walk is exactly the shape a user's cumulative/level
+    # time series tends to have, so this isn't a contrived edge case.
+    for seed in range(20):
+        rng = np.random.default_rng(seed)
+        values = list(np.cumsum(rng.normal(size=60)))
+        rel = relation_of(
+            engine,
+            _regular_daily(values),
+            tmp_path / f"pacf-bound-{seed}.parquet",
+            {"t": ColumnSemantic.TEMPORAL, "v": ColumnSemantic.QUANTITATIVE},
+        )
+        out = run(
+            PlotType.PACF,
+            rel,
+            {"lags": 15, "ciLevel": 0.95},
+            x=[{"field": "t"}],
+            y=[{"field": "v"}],
+        )
+        pacf_values = out.table.column("y0").to_pylist()
+        assert all(abs(v) <= 1.0 for v in pacf_values), (seed, pacf_values)
 
 
 def test_acf_fills_gaps_and_warns(engine: Engine, tmp_path: Path) -> None:
