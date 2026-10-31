@@ -796,6 +796,22 @@ green (needs the user to check, since `gh` isn't authenticated here); real macOS
 verification specifically (CI covers automated tests; a manual `uv run viz serve` smoke pass on an
 actual Mac is still unconfirmed); and the pre-existing `Plots.md`/`Next.md` uncommitted-edit
 question, still awaiting the user.
+- 2026-10-31: Two e2e findings from the user's own CI/local runs of the full `npm run e2e` suite:
+  - **`import-formats.spec.ts`'s "import products.json through the dialog" timed out on one macOS
+    CI run** (60s, both the attempt and its retry), but passed in ~1.3s on a separate local run via
+    the identical UI path, and `samples.spec.ts`'s API-level import of the same file passes
+    reliably in both runs. Not reproduced or root-caused — treated as a one-off CI resource-
+    contention flake (2 parallel workers on a shared runner), not chased further unless it recurs.
+  - **A dark-theme `color-contrast` axe violation on `data-grid`** (`#radix-_r_0_ > .font-medium`)
+    failed consistently (attempt + retry) in one local run, but did not reproduce in 6 further runs
+    (1 solo + 5 parallel) on a different machine. Investigated the only `font-medium` element
+    actually visible on that screen (`DatasetList.tsx`'s selected-dataset row, which relied on
+    inherited text color rather than an explicit token) and gave it `text-fg` explicitly — correct
+    regardless of whether it was the actual culprit, since relying on inheritance for a state-
+    dependent style is fragile on its own, but not confirmed as the root cause (the contrast math
+    for every `font-medium`/`text-muted` combination found elsewhere checked out fine, well above
+    4.5:1). Revisit with the actual axe report JSON (`test-results/artifacts/a11y-axe-dark-theme-
+    data-screen-with-the-grid/`) if it recurs.
 
 ## MVP.md
 
