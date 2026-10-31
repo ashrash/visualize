@@ -12,12 +12,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response
 
 from viz.api.deps import DbDep
-from viz.auth import User, current_user
+from viz.auth import User, current_user, share_access
 from viz.projects import share as service
 from viz.projects.share import ShareCreate, SharedView, ShareLink
 
 router = APIRouter(tags=["share"])
-public_router = APIRouter(tags=["share"])
+# Intentionally public: `share_access` names that at the call site. Add routes here only if the
+# token is the credential.
+public_router = APIRouter(tags=["share"], dependencies=[Depends(share_access)])
 
 UserDep = Annotated[User, Depends(current_user)]
 

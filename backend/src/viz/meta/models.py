@@ -66,13 +66,13 @@ class ShareTokenRow(Base):
 
     __tablename__ = "share_tokens"
 
-    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    token: Mapped[str] = mapped_column(String(255), primary_key=True)
     project_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     kind: Mapped[str] = mapped_column(String(16))
-    item_id: Mapped[str] = mapped_column(String(64))
-    created_by: Mapped[str] = mapped_column(String(64))
+    item_id: Mapped[str] = mapped_column(String(255))
+    created_by: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

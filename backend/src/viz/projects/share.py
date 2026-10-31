@@ -19,13 +19,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from viz.contracts import ChartSpec, Dashboard, Pipeline, Project
-from viz.contracts.base import Contract
+from viz.contracts.base import Contract, SourceRef
+from viz.contracts.dashboard import DashboardFilter
 from viz.contracts.project import Theme
-from viz.errors import InvalidSpecError, NotFoundError
+from viz.errors import NotFoundError, VizError
 from viz.meta.models import ProjectRow, ShareTokenRow, as_utc, utcnow
 from viz.projects.service import get_project
 
 ShareKind = Literal["dashboard", "chart"]
+# "project" is the whole-project report: every chart, no dashboard.
+ViewKind = Literal["dashboard", "chart", "project"]
 MAX_EXPIRY_DAYS = 3650
 
 
@@ -53,7 +56,7 @@ class ShareLink(Contract):
 class SharedView(Contract):
     """Everything the share/embed/report views need; chart data is fetched separately."""
 
-    kind: ShareKind
+    kind: ViewKind
     project_id: str
     project_name: str
     # Set when kind == "dashboard".
@@ -64,6 +67,8 @@ class SharedView(Contract):
     pipelines: list[Pipeline]
     dataset_ids: list[str]
     themes: list[Theme]
+    # Project-wide filters; viewers must see the same filtered data as the owner.
+    global_filters: list[DashboardFilter]
     generated_at: datetime
 
 
@@ -125,63 +130,108 @@ def revoke_share(db: Session, token: str) -> None:
         db.commit()
 
 
-def build_view(project: Project, kind: ShareKind, item_id: str) -> SharedView:
-    """Bundle one dashboard or chart with the specs needed to draw it."""
-    charts_by_id = {c.id: c for c in project.charts}
-    dashboard: Dashboard | None = None
-    if kind == "dashboard":
-        dashboard = next((d for d in project.dashboards if d.id == item_id), None)
-        if dashboard is None:
-            raise NotFoundError("shared item no longer exists")
-        ids: list[str] = []
-        for tab in dashboard.tabs:
-            for item in tab.items:
-                if item.widget.kind == "chart" and item.widget.chart_id not in ids:
-                    ids.append(item.widget.chart_id)
-        charts = [charts_by_id[i] for i in ids if i in charts_by_id]
-    else:
-        if item_id not in charts_by_id:
-            raise NotFoundError("shared item no longer exists")
-        charts = [charts_by_id[item_id]]
+def _reachable(
+    project: Project, charts: list[ChartSpec], extra: list[SourceRef]
+) -> tuple[list[Pipeline], list[str]]:
+    """Pipelines and dataset ids reachable from the given charts, following sources, joins
+    and unions transitively. Nothing else in the project is exposed."""
+    pipelines_by_id = {p.id: p for p in project.pipelines}
+    pipeline_ids: list[str] = []
+    dataset_ids: list[str] = []
+    stack: list[SourceRef] = [c.source for c in charts] + extra
+    while stack:
+        ref = stack.pop()
+        if ref.kind == "dataset":
+            if ref.id not in dataset_ids:
+                dataset_ids.append(ref.id)
+            continue
+        pipeline = pipelines_by_id.get(ref.id)
+        if pipeline is None or ref.id in pipeline_ids:
+            continue
+        pipeline_ids.append(ref.id)
+        stack.append(pipeline.source)
+        for step in pipeline.steps:
+            if step.op == "join":
+                stack.append(step.right)
+            elif step.op == "union":
+                stack.extend(step.others)
+    pipelines = [p for p in project.pipelines if p.id in pipeline_ids]
+    return pipelines, dataset_ids
+
+
+def _view(
+    project: Project,
+    kind: ViewKind,
+    dashboard: Dashboard | None,
+    charts: list[ChartSpec],
+    extra_sources: list[SourceRef],
+) -> SharedView:
+    pipelines, dataset_ids = _reachable(project, charts, extra_sources)
     return SharedView(
         kind=kind,
         project_id=project.id,
         project_name=project.name,
         dashboard=dashboard,
         charts=charts,
-        pipelines=project.pipelines,
-        dataset_ids=project.dataset_ids,
+        pipelines=pipelines,
+        dataset_ids=dataset_ids,
         themes=project.themes,
+        global_filters=project.global_filters,
         generated_at=utcnow(),
     )
 
 
+# TODO(platform): a token only gates the specs. A viewer then draws charts through the normal
+# /api/charts/data route, which works only because the local auth stub is a no-op. Hosted mode
+# needs a token-scoped data route (e.g. /api/share/{token}/charts/{chartId}/data) that checks the
+# chart belongs to the shared item, so a public token never grants general dataset access.
+def build_view(project: Project, kind: ShareKind, item_id: str) -> SharedView:
+    """Bundle one dashboard or chart with the specs needed to draw it."""
+    charts_by_id = {c.id: c for c in project.charts}
+    if kind == "chart":
+        if item_id not in charts_by_id:
+            raise NotFoundError("shared item no longer exists")
+        return _view(project, "chart", None, [charts_by_id[item_id]], [])
+    dashboard = next((d for d in project.dashboards if d.id == item_id), None)
+    if dashboard is None:
+        raise NotFoundError("shared item no longer exists")
+    ids: list[str] = []
+    kpi_sources: list[SourceRef] = []
+    for tab in dashboard.tabs:
+        for item in tab.items:
+            widget = item.widget
+            if widget.kind == "chart" and widget.chart_id not in ids:
+                ids.append(widget.chart_id)
+            elif widget.kind == "kpi":
+                kpi_sources.append(widget.source)
+    charts = [charts_by_id[i] for i in ids if i in charts_by_id]
+    return _view(project, "dashboard", dashboard, charts, kpi_sources)
+
+
 def resolve_share(db: Session, token: str) -> SharedView:
-    """Resolve a token. Unknown, revoked and expired tokens all look the same: 404."""
+    """Resolve a token. Every failure, internal ones included, looks the same: 404."""
     row = db.get(ShareTokenRow, token)
     if row is None or row.revoked_at is not None:
         raise NotFoundError("share link not found")
     if row.expires_at is not None and as_utc(row.expires_at) <= utcnow():
         raise NotFoundError("share link not found")
-    project = get_project(db, row.project_id)
-    return build_view(project, row.kind, row.item_id)  # type: ignore[arg-type]
+    try:
+        project = get_project(db, row.project_id)
+        return build_view(project, row.kind, row.item_id)  # type: ignore[arg-type]
+    except VizError as exc:
+        raise NotFoundError("share link not found") from exc
 
 
 def report_view(db: Session, project_id: str, dashboard_id: str | None) -> SharedView:
-    """Report bundle for a dashboard, or for every chart of the project when no id is given."""
+    """Report bundle for a dashboard, or for the whole project (possibly empty) without an id."""
     project = get_project(db, project_id)
     if dashboard_id is not None:
         return build_view(project, "dashboard", dashboard_id)
-    if not project.charts:
-        raise InvalidSpecError("project has no charts to report on")
-    return SharedView(
-        kind="chart",
-        project_id=project.id,
-        project_name=project.name,
-        dashboard=None,
-        charts=project.charts,
-        pipelines=project.pipelines,
-        dataset_ids=project.dataset_ids,
-        themes=project.themes,
-        generated_at=utcnow(),
-    )
+    dashboard_sources = [
+        item.widget.source
+        for d in project.dashboards
+        for tab in d.tabs
+        for item in tab.items
+        if item.widget.kind == "kpi"
+    ]
+    return _view(project, "project", None, project.charts, dashboard_sources)
