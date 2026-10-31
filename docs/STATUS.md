@@ -262,6 +262,27 @@ tracked below for Wave 4, not blockers.
   the lead (`method="ywm"`, matching `plot_acf`'s own default for the same reason) with a 20-seed
   bounded-output regression test. pytest 1010 passed/6 skipped, ruff/mypy clean, vitest 457
   passed/1 skipped, biome/build clean.
+- 2026-10-31: `plots-distribution-relationship` merged (Plots.md §2-3, 17 of 18; contour is
+  `partial`, see below): histogram, density, box, violin, strip, swarm, Q-Q, ECDF, frequency
+  polygon, scatter, bubble, pair plot, correlation heatmap, correlogram, hexbin, contour,
+  regression, residual. Three review rounds. Round 1 found 2 blockers (stored XSS in
+  correlation/correlogram/violin tooltips; residual and contour silently returning a biased
+  subset above the mark cap while misreporting `reduction: none`) and a long should-fix list,
+  all fixed — including rewriting contour to bin server-side via the existing `bin2d` kernel
+  (exact over the full filtered data, reports `BINNED`) instead of client-side sampling, and
+  box's SQL rewritten to a single-pass grouped-quantile CTE. **Contour is a server-exact binned
+  density heatmap, not true isoline contouring — marked `partial`, not `done`.** Round 2 found
+  that round 1's violin fix (switching off `@echarts-x/custom-violin`, whose KDE sweep is
+  hard-coded to [0,10], for a custom `renderItem` tracing the server's own KDE) introduced a
+  regression: category-axis coordinates came back NaN from stringifying a numeric ordinal before
+  the `api.coord` lookup — fixed and verified via a real ECharts SSR run. Round 3 found one more
+  regression in the same area (a crash on any group column containing a null, since the row-
+  budget clamp used `np.unique`, which can't compare `None` to `str`) — fixed directly by the
+  lead, along with a related pre-existing bug in the same code the reviewer flagged: violin and
+  strip/swarm built category-axis values from the raw column, so a numeric ordinal column or a
+  null group either rendered off-canvas or silently merged into the wrong category; both now
+  label every x value as a string first. pytest 1054 passed/6 skipped, ruff/mypy clean, vitest
+  495 passed/1 skipped, biome/build clean.
 
 ## MVP.md
 
@@ -434,24 +455,24 @@ Tracked per plot under Plots.md below.
 | 1 | Area Chart | `area` | ui-charts | done |
 | 1 | Pie Chart | `pie` | ui-charts | done |
 | 1 | Donut Chart | `donut` | ui-charts | done |
-| 2 | Histogram | `histogram` | plots-distribution-relationship | todo |
-| 2 | Density Plot | `density` | plots-distribution-relationship | todo |
-| 2 | Box Plot | `box` | plots-distribution-relationship | todo |
-| 2 | Violin Plot | `violin` | plots-distribution-relationship | todo |
-| 2 | Strip Plot | `strip` | plots-distribution-relationship | todo |
-| 2 | Swarm Plot | `swarm` | plots-distribution-relationship | todo |
-| 2 | Q-Q Plot | `qq` | plots-distribution-relationship | todo |
-| 2 | ECDF Plot | `ecdf` | plots-distribution-relationship | todo |
-| 2 | Frequency Polygon | `frequency_polygon` | plots-distribution-relationship | todo |
-| 3 | Scatter Plot | `scatter` | plots-distribution-relationship | todo |
-| 3 | Bubble Chart | `bubble` | plots-distribution-relationship | todo |
-| 3 | Pair Plot | `pair` | plots-distribution-relationship | todo |
-| 3 | Correlation Heatmap | `correlation_heatmap` | plots-distribution-relationship | todo |
-| 3 | Correlogram | `correlogram` | plots-distribution-relationship | todo |
-| 3 | Hexbin Plot | `hexbin` | plots-distribution-relationship | todo |
-| 3 | Contour Plot | `contour` | plots-distribution-relationship | todo |
-| 3 | Regression Plot | `regression` | plots-distribution-relationship | todo |
-| 3 | Residual Plot | `residual` | plots-distribution-relationship | todo |
+| 2 | Histogram | `histogram` | plots-distribution-relationship | done |
+| 2 | Density Plot | `density` | plots-distribution-relationship | done |
+| 2 | Box Plot | `box` | plots-distribution-relationship | done |
+| 2 | Violin Plot | `violin` | plots-distribution-relationship | done |
+| 2 | Strip Plot | `strip` | plots-distribution-relationship | done |
+| 2 | Swarm Plot | `swarm` | plots-distribution-relationship | done |
+| 2 | Q-Q Plot | `qq` | plots-distribution-relationship | done |
+| 2 | ECDF Plot | `ecdf` | plots-distribution-relationship | done |
+| 2 | Frequency Polygon | `frequency_polygon` | plots-distribution-relationship | done |
+| 3 | Scatter Plot | `scatter` | plots-distribution-relationship | done |
+| 3 | Bubble Chart | `bubble` | plots-distribution-relationship | done |
+| 3 | Pair Plot | `pair` | plots-distribution-relationship | done |
+| 3 | Correlation Heatmap | `correlation_heatmap` | plots-distribution-relationship | done |
+| 3 | Correlogram | `correlogram` | plots-distribution-relationship | done |
+| 3 | Hexbin Plot | `hexbin` | plots-distribution-relationship | done |
+| 3 | Contour Plot | `contour` | plots-distribution-relationship | partial |
+| 3 | Regression Plot | `regression` | plots-distribution-relationship | done |
+| 3 | Residual Plot | `residual` | plots-distribution-relationship | done |
 | 4 | Time Series Line Plot | `timeseries_line` | plots-timeseries | done |
 | 4 | Seasonal Plot | `seasonal` | plots-timeseries | done |
 | 4 | Lag Plot | `lag` | plots-timeseries | done |
