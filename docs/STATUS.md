@@ -748,6 +748,28 @@ page figure (improved but not fully closed, tracked above). Still open for Wave 
 final confirmed state of `frontend/e2e/` (reconciliation is in; no outstanding report expected
 unless something regressed), a consolidated quiet-machine re-measurement of everything above, and
 the pre-existing `Plots.md`/`Next.md` uncommitted-edit question still awaiting the user.
+- 2026-10-31: **The repo got a real GitHub remote** (`github.com/ashrash/visualize`, user-created;
+  the lead connected it over SSH and pushed `main`), so `.github/workflows/ci.yml` ran for the
+  first time ever, on both Windows and macOS runners. This immediately caught 3 CI-only flakes
+  the whole local-dev-machine review process never would have, since they're all timing
+  assumptions calibrated against a fast, uncontended dev machine rather than logic bugs:
+  - `test_stale_request_never_supersedes_a_newer_one` and
+    `test_conditional_cancel_only_hits_the_latest_generation`
+    (`backend/tests/engine/test_engine_review.py`) each run a 300M-row scan meant to legitimately
+    finish (not `SLOW_SQL`'s intentionally-never-finishing one), but shared the file's `eng`
+    fixture's `query_timeout_s=5.0` — on a slower/oversubscribed CI runner the scan itself took
+    longer than 5s, so the engine's own timeout fired and masqueraded as the behavior under test.
+    Each now builds its own `Engine` with `query_timeout_s=60.0`, matching a pattern already used
+    elsewhere in the same file.
+  - `test_factor_analysis_is_quick_even_without_convergence`
+    (`backend/tests/plots/test_multivariate.py`) asserted a Heywood-case EM loop stops within 3s;
+    it took 5.83s on a macOS runner. The point was catching a reintroduced unbounded iteration
+    loop, not a tight perf budget, so the bound is now 20s.
+  - Fixed, pushed, full local suite re-confirmed green (1237 passed; the Plots.md/Next.md failure
+    above is the only remaining one, unrelated). **Still waiting on**: confirmation that the actual
+    CI run on the pushed commit is green on both OSes (the lead can't check Actions status directly
+    — `gh` isn't authenticated in this environment, only git-over-SSH — so this needs the user to
+    either check `github.com/ashrash/visualize/actions` or run `gh auth login`).
 
 ## MVP.md
 
