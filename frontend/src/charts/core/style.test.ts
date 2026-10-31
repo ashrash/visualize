@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ChartSpec } from "../../api/types";
-import { applyStyle, dropNonPositive, dropNonPositiveX, hasSeveralGrids } from "./style";
+import {
+  applyStyle,
+  dropNonPositive,
+  dropNonPositiveX,
+  hasSeveralGrids,
+  niceTickLabels,
+} from "./style";
 import { makeSpec, makeTheme } from "./testing";
 
 // biome-ignore lint/suspicious/noExplicitAny: tests probe deep into the ECharts option
@@ -255,5 +261,90 @@ describe("applyStyle details", () => {
     const stacks = new Set(out.series.map((s: Opt) => s.stack).filter(Boolean));
     expect(stacks.size).toBe(2);
     expect(out.series.filter((s: Opt) => s.stackStrategy === "all")).toHaveLength(4);
+  });
+});
+
+describe("log x axis with non-x first dimensions", () => {
+  const run = (series: Opt[]) =>
+    applyStyle(
+      { xAxis: { type: "log" }, yAxis: { type: "category", data: ["a", "b"] }, series },
+      makeSpec(),
+      theme,
+    ) as Opt;
+
+  it("leaves custom series alone: their first dim may be a category index", () => {
+    const data = [
+      [0, 1, 4],
+      [1, 2, 8],
+    ];
+    const out = run([{ type: "custom", name: "ci", encode: { x: [1, 2], y: 0 }, data }]);
+    expect(out.series[0].data).toEqual(data);
+  });
+
+  it("honours encode.x on other series types", () => {
+    const out = run([
+      {
+        type: "scatter",
+        name: "p",
+        encode: { x: 1, y: 0 },
+        data: [
+          [0, 5],
+          [1, -3],
+          [2, 7],
+        ],
+      },
+    ]);
+    expect(out.series[0].data).toEqual([
+      [0, 5],
+      [2, 7],
+    ]);
+  });
+
+  it("dropNonPositiveX takes explicit x dims", () => {
+    expect(
+      dropNonPositiveX(
+        [
+          [0, 5],
+          [1, 0],
+        ],
+        [1],
+      ),
+    ).toEqual([[0, 5]]);
+  });
+});
+
+describe("niceTickLabels", () => {
+  it("gives the labels a linear axis draws, not the raw data maximum", () => {
+    expect(niceTickLabels([0, 1607.42])).toEqual(["0", "500", "1000", "1500", "2000"]);
+    expect(niceTickLabels([0, 44.53])).toEqual(["0", "10", "20", "30", "40", "50"]);
+  });
+
+  it("uses the formatter when one is given", () => {
+    expect(niceTickLabels([0, 1], { format: (v) => `${Number(v) * 100}%` })).toContain("100%");
+  });
+
+  it("lists powers of the base on a log axis", () => {
+    expect(niceTickLabels([3, 4200], { log: true })).toEqual(["1", "10", "100", "1000", "10000"]);
+  });
+
+  it("handles an empty or degenerate extent", () => {
+    expect(niceTickLabels([5, 5]).length).toBeGreaterThan(0);
+  });
+});
+
+describe("y axis title gap", () => {
+  it("is sized from the tick labels, so an unrounded maximum does not push the title away", () => {
+    const build = (v: number) =>
+      applyStyle(
+        {
+          xAxis: { type: "category", data: ["a", "b"] },
+          yAxis: { type: "value" },
+          series: [{ type: "bar", name: "v", data: [v / 3, v] }],
+        },
+        makeSpec(style({ yAxes: [{ grid: true, title: "Total" }] })),
+        theme,
+      ) as Opt;
+    expect(build(1607.42).yAxis.nameGap).toBe(build(1600).yAxis.nameGap);
+    expect(build(44.53).yAxis.nameGap).toBe(build(40).yAxis.nameGap);
   });
 });

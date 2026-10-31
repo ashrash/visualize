@@ -620,7 +620,7 @@ exports[`econometric registry entries > event_study renders the same option in l
     },
     "inverse": false,
     "name": "Effect",
-    "nameGap": 40,
+    "nameGap": 36,
     "nameLocation": "middle",
     "nameRotate": 90,
     "nameTextStyle": {
@@ -860,7 +860,7 @@ exports[`econometric registry entries > event_study renders the same option in l
     },
     "inverse": false,
     "name": "Effect",
-    "nameGap": 40,
+    "nameGap": 36,
     "nameLocation": "middle",
     "nameRotate": 90,
     "nameTextStyle": {
