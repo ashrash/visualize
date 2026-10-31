@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { runStatTest, STAT_TEST_LABELS, type StatTestKind } from "../api/stats";
 import type { Column, Pipeline, SourceRef } from "../api/types";
 import { Button } from "../components/ui/button";
@@ -84,13 +84,31 @@ export function TestsPanel({
   const set = <K extends keyof TestForm>(key: K, value: TestForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
   const [ranKind, setRanKind] = useState<StatTestKind>("correlation");
+  // A fresh id per run, so the result view's error boundary actually remounts for a new result
+  // even when it has the same method and n as a prior run (e.g. the same test rerun on different
+  // columns) - keying on method+n alone could leave a later, valid result stuck showing the
+  // generic fallback from an earlier run's renderer crash.
+  const [runId, setRunId] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // A run left in flight when this panel unmounts (the source changed, or the user navigated
+  // away) would otherwise keep a server-side regression or bootstrap running for no one.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const built = source ? buildCall(form, source, pipelines, columns) : null;
   const reason = built === null ? "Choose a dataset first." : built.ok ? null : built.reason;
 
   const run = useMutation({
-    mutationFn: (call: Parameters<typeof runStatTest>[0]) => runStatTest(call),
-    onMutate: (call) => setRanKind(call.kind),
+    mutationFn: (call: Parameters<typeof runStatTest>[0]) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      return runStatTest(call, controller.signal);
+    },
+    onMutate: (call) => {
+      setRanKind(call.kind);
+      setRunId((n) => n + 1);
+    },
   });
 
   const { kind, variant } = form;
@@ -479,7 +497,7 @@ export function TestsPanel({
             {run.error.message}
           </p>
         ) : run.data ? (
-          <TestResultView kind={ranKind} result={run.data} />
+          <TestResultView kind={ranKind} result={run.data} runId={runId} />
         ) : (
           <p className="text-sm text-muted">Pick a test and its fields, then Run.</p>
         )}

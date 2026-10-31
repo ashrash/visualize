@@ -174,12 +174,22 @@ function Regression({ v }: { v: RegressionValues }) {
   );
 }
 
+// v.estimate is the mean for a one-sample test, A - B for a two-sample test, and the mean of
+// the differences for a paired test (contracts/stats.py's TTestValues.estimate) - label it
+// accordingly instead of always calling it a "difference".
+const ESTIMATE_LABEL: Record<TTestValues["kind"], string> = {
+  one_sample: "Mean",
+  welch: "Mean difference (A − B)",
+  student: "Mean difference (A − B)",
+  paired: "Mean of differences",
+};
+
 function TTest({ v }: { v: TTestValues }) {
   return (
     <div className="flex flex-col gap-3">
       <Headline
         items={[
-          ["Mean difference", num(v.estimate)],
+          [ESTIMATE_LABEL[v.kind], num(v.estimate)],
           [`${Math.round(v.ciLevel * 100)}% CI`, interval(v.ciLow, v.ciHigh)],
           ["t", `${num(v.statistic, 3)} (df ${num(v.df, 2)})`],
           ["p-value", pval(v.pValue)],
@@ -406,8 +416,19 @@ class Fallback extends Component<{ result: StatResult; children: ReactNode }, { 
   }
 }
 
-/** Per-test result view with the shared method / n / warnings frame around it. */
-export function TestResultView({ kind, result }: { kind: StatTestKind; result: StatResult }) {
+/** Per-test result view with the shared method / n / warnings frame around it. `runId` identifies
+ * this particular run (not just its method+n, which two different runs can share), so the error
+ * boundary below remounts for every new result instead of staying stuck in fallback mode after an
+ * earlier run's renderer crash. */
+export function TestResultView({
+  kind,
+  result,
+  runId,
+}: {
+  kind: StatTestKind;
+  result: StatResult;
+  runId: number;
+}) {
   const warnings = result.warnings ?? [];
   const total = result.nTotal ?? result.n;
   return (
@@ -417,7 +438,7 @@ export function TestResultView({ kind, result }: { kind: StatTestKind; result: S
         {result.sampled ? ` (sampled from ${total.toLocaleString()})` : ""}
         {result.nMissing > 0 ? ` · ${result.nMissing.toLocaleString()} rows dropped (missing)` : ""}
       </p>
-      <Fallback result={result} key={result.method + result.n}>
+      <Fallback result={result} key={runId}>
         <Body kind={kind} result={result} />
       </Fallback>
       {warnings.length > 0 ? (
