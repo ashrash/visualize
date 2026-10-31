@@ -319,8 +319,12 @@ def test_errors(upload: Any, client: Any, make_spec: Any) -> None:
             "/api/charts/data", json={"spec": make_spec(ds["id"], encodings=encodings)}
         )
         assert response.status_code == 422, (encodings, response.text)
+    # TODO(lead): pick an always-unimplemented stand-in (e.g. scoped_registry with nothing
+    # registered) once every Plots.md family has a server module; "violin" is now implemented
+    # (Wave 2, plots-distribution-relationship), and "sankey" is only a placeholder until
+    # plots-composition-specialized lands.
     response = client.post(
         "/api/charts/data",
-        json={"spec": make_spec(ds["id"], "violin", encodings={"x": [{"field": "region"}]})},
+        json={"spec": make_spec(ds["id"], "sankey", encodings={"x": [{"field": "region"}]})},
     )
     assert response.status_code == 501

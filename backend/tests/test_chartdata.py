@@ -74,7 +74,10 @@ def test_unknown_field_and_unimplemented_plot(
     assert response.status_code == 422
     assert "nope" in response.json()["detail"]
 
-    body = _bar(sales_dataset["id"], plotType="violin")
+    # TODO(lead): "violin" is now implemented (Wave 2, plots-distribution-relationship);
+    # "sankey" stands in until plots-composition-specialized lands. Pick an always-unimplemented
+    # stand-in once every Plots.md family has a server module.
+    body = _bar(sales_dataset["id"], plotType="sankey")
     assert client.post("/api/charts/data", json=body).status_code == 501
 
 
