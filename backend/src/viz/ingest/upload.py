@@ -180,7 +180,9 @@ async def receive_upload(
         disk_name = safe_file_name(stage_name if stage_name is not None else file_name)
         target = folder / disk_name
         target.parent.mkdir(parents=True, exist_ok=True)
-        result["path"], result["name"] = target, target.name
+        # Report the client's (sanitized) name, not the on-disk name, so `Upload.file_name` means
+        # the same thing whether or not a caller overrode where the bytes are staged.
+        result["path"], result["name"] = target, safe_file_name(file_name)
         out.append(target.open("wb"))
 
     def on_part_data(data: bytes, start: int, end: int) -> None:

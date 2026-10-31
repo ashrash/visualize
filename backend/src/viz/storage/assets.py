@@ -13,11 +13,13 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from viz.contracts.assets import ImageContentType
 from viz.errors import NotFoundError, UnsupportedFormatError
 from viz.storage.local import LocalStorage
 
-# Sniffed content type -> stored extension.
-EXTENSIONS: dict[str, str] = {
+# Sniffed content type -> stored extension. Typed by `ImageContentType` so adding a sniffed type
+# here without adding it to that Literal is a mypy error, not a 500 on `ImageAsset(...)`.
+EXTENSIONS: dict[ImageContentType, str] = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
     "image/gif": ".gif",
@@ -49,11 +51,11 @@ _SVG = re.compile(
 class StoredAsset:
     id: str
     path: Path
-    content_type: str
+    content_type: ImageContentType
     size_bytes: int
 
 
-def sniff_image_type(head: bytes) -> str | None:
+def sniff_image_type(head: bytes) -> ImageContentType | None:
     """The image content type from a file's first bytes, or None if it isn't an allowed image."""
     if head.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"

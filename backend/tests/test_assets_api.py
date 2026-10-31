@@ -71,8 +71,11 @@ def test_sniff_image_type(head: bytes, expected: str | None) -> None:
 
 
 def test_svg_sniff_does_not_backtrack_catastrophically() -> None:
-    """A run of unclosed-looking comments must not make the regex hang (ReDoS)."""
-    head = b"<!---->" * 200 + b"X"
+    """A run of unclosed-looking comments must not make the regex hang (ReDoS).
+
+    k=28 is deliberately small: a regressed (exponentially backtracking) regex already takes
+    several seconds here, so this fails fast instead of hanging the test run for hours."""
+    head = b"<!---->" * 28 + b"X"
     start = time.monotonic()
     result = sniff_image_type(head)
     elapsed = time.monotonic() - start
