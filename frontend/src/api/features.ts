@@ -7,17 +7,10 @@
 export interface Features {
   /** platform: rename, duplicate, delete, restore, version preview, .vizproj import/export. */
   platformProjects: boolean;
-  /**
-   * stats (Wave 2): correlation, regression, t-tests, ANOVA, chi-square, distribution fitting,
-   * outliers and confidence intervals. TODO(stats): flip on once the `stats` agent's Wave 2
-   * endpoints merge; see frontend/src/api/stats.ts for the provisional request/response shapes.
-   */
-  statsTests: boolean;
 }
 
 const DEFAULTS: Features = {
   platformProjects: true,
-  statsTests: false,
 };
 
 /** Only known flags with boolean values are accepted from localStorage; anything else is ignored. */

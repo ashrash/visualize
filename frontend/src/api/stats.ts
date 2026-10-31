@@ -1,10 +1,20 @@
 import { api, unwrap } from "./client";
-import { postJson } from "./http";
-import type { DescribeRequest, Pipeline, Predicate, SourceRef, StatResult } from "./types";
+import type {
+  AnovaRequest,
+  ChiSquareRequest,
+  ConfidenceIntervalRequest,
+  CorrelationRequest,
+  DescribeRequest,
+  DistributionFitRequest,
+  OutlierRequest,
+  RankTestRequest,
+  RegressionRequest,
+  StatResult,
+  TTestRequest,
+} from "./types";
 
-// stats endpoints (MVP §5). `/api/stats/describe` is real and merged (stats Wave 1). The rest
-// (correlation, regression, hypothesis tests, distribution fitting, outliers, CIs) are the
-// `stats` agent's Wave 2 work, built concurrently in a separate worktree and not yet on `main`.
+// stats endpoints (MVP §5). Every one returns a `StatResult` whose `values` bag is typed
+// per-endpoint by the generated `*Values` schemas (see `valuesOf`).
 
 /** POST /api/stats/describe -> StatResult; `values.summaries` is a list of FieldSummary. */
 export async function describeFields(
@@ -14,68 +24,71 @@ export async function describeFields(
   return unwrap(await api.POST("/api/stats/describe", { body, signal }));
 }
 
-// ---- TODO(stats): Wave 2 tests (not merged yet; gated behind features().statsTests) ----
-//
-// The shapes below are hand-typed, not generated from schema.d.ts, because the lead has not
-// published the Wave 2 stats contracts yet (no `/api/stats/{correlation,regression,...}` in
-// openapi.json). They follow the StatResult conventions already established on `main` in
-// backend/src/viz/stats/results.py (read there before changing this file):
-//   - `values` keys are camelCase; curves are column-oriented ({x, y, lower, upper});
-//     intervals use estimate/ciLow/ciHigh/ciLevel; tests use statistic/pValue/df; groups are
-//     [{key, n, ...}]; probabilities are in [0, 1].
-//   - every StatResult carries n, sampled, warnings, nTotal, nMissing (see StatResult in
-//     backend/src/viz/contracts/stats.py / api/types.ts — that part IS the real contract).
-// Endpoint paths are a provisional guess (`/api/stats/<test>`, one request shape per test, same
-// request envelope as DescribeRequest: source + pipelines + filters). Replace this whole block,
-// including the request/response types, once the `stats` agent's branch merges and `gen:api`
-// emits real types — do not keep hand-typing guesses alongside generated ones.
-
-/** The Wave 2 statistical tests MVP §5 asks for, beyond describe. */
+/** The statistical tests beyond describe, one per `/api/stats/<path>` endpoint. */
 export type StatTestKind =
   | "correlation"
-  | "simple_regression"
-  | "multiple_regression"
-  | "t_test"
+  | "regression"
+  | "ttest"
+  | "ranktest"
   | "anova"
-  | "chi_square"
-  | "distribution_fit"
+  | "chisquare"
+  | "fit"
   | "outliers"
-  | "confidence_interval";
+  | "ci";
 
-/** TODO(stats): provisional request envelope; fields narrow further per test kind. */
-export interface StatTestRequest {
-  kind: StatTestKind;
-  source: SourceRef;
-  pipelines?: Pipeline[];
-  filters?: Predicate[];
-  /** Field names the test operates on; meaning depends on `kind` (e.g. [x, y] for correlation). */
-  fields: string[];
-  /** Grouping field(s) for ANOVA / group comparisons. */
-  groupBy?: string[];
-  /** Test-specific knobs (e.g. confidence level, distribution family, outlier method). */
-  params?: Record<string, unknown>;
-}
-
-/** TODO(stats): provisional label per test kind, for the UI's "coming soon" state. */
 export const STAT_TEST_LABELS: Record<StatTestKind, string> = {
   correlation: "Correlation",
-  simple_regression: "Linear regression",
-  multiple_regression: "Multiple regression",
-  t_test: "T-test",
+  regression: "Linear regression",
+  ttest: "t-test",
+  ranktest: "Rank test (Mann-Whitney, Wilcoxon, Kruskal)",
   anova: "ANOVA",
-  chi_square: "Chi-square test",
-  distribution_fit: "Distribution fitting",
+  chisquare: "Chi-square test",
+  fit: "Distribution fitting",
   outliers: "Outlier detection",
-  confidence_interval: "Confidence interval",
+  ci: "Confidence interval",
 };
 
+/** A test request tagged with the endpoint it goes to. */
+export type StatTestCall =
+  | { kind: "correlation"; body: CorrelationRequest }
+  | { kind: "regression"; body: RegressionRequest }
+  | { kind: "ttest"; body: TTestRequest }
+  | { kind: "ranktest"; body: RankTestRequest }
+  | { kind: "anova"; body: AnovaRequest }
+  | { kind: "chisquare"; body: ChiSquareRequest }
+  | { kind: "fit"; body: DistributionFitRequest }
+  | { kind: "outliers"; body: OutlierRequest }
+  | { kind: "ci"; body: ConfidenceIntervalRequest };
+
+/** Runs one test against its real endpoint. */
+export async function runStatTest(call: StatTestCall, signal?: AbortSignal): Promise<StatResult> {
+  switch (call.kind) {
+    case "correlation":
+      return unwrap(await api.POST("/api/stats/correlation", { body: call.body, signal }));
+    case "regression":
+      return unwrap(await api.POST("/api/stats/regression", { body: call.body, signal }));
+    case "ttest":
+      return unwrap(await api.POST("/api/stats/ttest", { body: call.body, signal }));
+    case "ranktest":
+      return unwrap(await api.POST("/api/stats/ranktest", { body: call.body, signal }));
+    case "anova":
+      return unwrap(await api.POST("/api/stats/anova", { body: call.body, signal }));
+    case "chisquare":
+      return unwrap(await api.POST("/api/stats/chisquare", { body: call.body, signal }));
+    case "fit":
+      return unwrap(await api.POST("/api/stats/fit", { body: call.body, signal }));
+    case "outliers":
+      return unwrap(await api.POST("/api/stats/outliers", { body: call.body, signal }));
+    case "ci":
+      return unwrap(await api.POST("/api/stats/ci", { body: call.body, signal }));
+  }
+}
+
 /**
- * TODO(stats): runs one Wave 2 test. The endpoint does not exist on `main` yet, so this call
- * 404s until the `stats` branch merges; callers must keep it behind `featureOn("statsTests")`.
+ * The OpenAPI schema types `StatResult.values` as an open JSON object (it is shared by every
+ * stat and plot transform); each endpoint's concrete shape is the matching generated `*Values`
+ * model. This is the one place that narrowing happens.
  */
-export async function runStatTest(
-  body: StatTestRequest,
-  signal?: AbortSignal,
-): Promise<StatResult> {
-  return postJson<StatTestRequest, StatResult>(`/api/stats/${body.kind}`, body, signal);
+export function valuesOf<T>(result: StatResult): T {
+  return result.values as unknown as T;
 }
