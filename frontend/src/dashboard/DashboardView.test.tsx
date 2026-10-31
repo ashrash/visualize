@@ -575,6 +575,152 @@ describe("cross-filtering a dashboard", () => {
     expect(filtersOf("b")).toEqual([]);
   });
 
+  it("a legend toggle that cannot be a filter leaves a click's filter alone", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        // two measures: legend entries are series, so a toggle never becomes a filter
+        encodings: {
+          x: [{ field: "region" }],
+          y: [{ agg: "count" }, { field: "sales", agg: "sum" }],
+          color: [{ field: "channel" }],
+        },
+      }),
+      spec("b"),
+    ]);
+    click("a", "North");
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
+    act(() =>
+      views.get("a")?.onLegendChange?.({
+        toggled: "app",
+        selected: { web: true, app: false },
+        shown: ["web"],
+        hidden: ["app"],
+        field: "channel",
+        shownValues: ["web"],
+        hiddenValues: ["app"],
+      }),
+    );
+    act(() => vi.advanceTimersByTime(500));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
+  });
+
+  it("showing every legend entry again after a legend filter clears it", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        encodings: {
+          x: [{ field: "region" }],
+          y: [{ agg: "count" }],
+          color: [{ field: "channel" }],
+        },
+      }),
+      spec("b"),
+    ]);
+    const toggle = (hidden: string[]) =>
+      act(() =>
+        views.get("a")?.onLegendChange?.({
+          toggled: "app",
+          selected: {},
+          shown: ["web", "app", "store"].filter((n) => !hidden.includes(n)),
+          hidden,
+          field: "channel",
+          shownValues: [],
+          hiddenValues: hidden,
+        }),
+      );
+    toggle(["app"]);
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toHaveLength(1);
+    toggle([]); // everything on again
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([]);
+  });
+
+  it("a shift-click right after a band is removed extends nothing, not the removed range", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    brush("a", { categories: ["South"], values: ["South"] });
+    act(() => vi.advanceTimersByTime(200));
+    brush("a", { cleared: true }); // the user removes the band: the clear is waiting out its pause
+    act(() => vi.advanceTimersByTime(50));
+    click("a", "North", { shiftKey: true });
+    act(() => vi.advanceTimersByTime(500));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
+  });
+
+  it("restarts the message's timer when the same message appears again", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        encodings: { x: [{ field: "d", timeUnit: "month" }], y: [{ agg: "count" }] },
+        interactions: { brush: true, linkGroup: "g" } as never,
+      }),
+      spec("b"),
+    ]);
+    const dead = () =>
+      brush("a", {
+        field: "d",
+        categories: ["Jan", "Jun"],
+        values: ["2024-01-01T00:00:00.000Z", "2024-06-01T00:00:00.000Z"],
+      });
+    dead();
+    expect(screen.getByText(/can't be used as a filter/i)).toBeTruthy();
+    act(() => vi.advanceTimersByTime(5000));
+    dead(); // the same message again, 5 s in
+    act(() => vi.advanceTimersByTime(5000)); // 10 s after the first, 5 s after the second
+    expect(screen.getByText(/can't be used as a filter/i)).toBeTruthy();
+    act(() => vi.advanceTimersByTime(1500));
+    expect(screen.queryByText(/can't be used as a filter/i)).toBeNull();
+  });
+
+  it("opens at the top when a widget is pointed at a different chart with the same hierarchy", () => {
+    const hierarchy = { linkGroup: "g", drillHierarchy: ["country", "state"] } as never;
+    const dash = dashboardWith(["a"]);
+    const view = render(
+      wrap(
+        <DashboardView
+          dashboard={dash}
+          charts={[spec("a", { interactions: hierarchy })]}
+          pipelines={[]}
+          mode="view"
+        />,
+      ),
+    );
+    act(() =>
+      views.get("a")?.onDrillChange?.(["US"], [{ op: "eq", field: "country", value: "US" }]),
+    );
+    expect(views.get("a")?.drill).toEqual(["US"]);
+    // same widget, same source and hierarchy, but another chart
+    const first = dash.tabs?.[0];
+    if (!first) throw new Error("no tab");
+    const moved: Dashboard = {
+      ...dash,
+      tabs: [
+        {
+          ...first,
+          items: [
+            { i: "w-a", x: 0, y: 0, w: 6, h: 4, widget: { kind: "chart" as const, chartId: "z" } },
+          ],
+        },
+      ],
+    };
+    view.rerender(
+      wrap(
+        <DashboardView
+          dashboard={moved}
+          charts={[spec("z", { interactions: hierarchy })]}
+          pipelines={[]}
+          mode="view"
+        />,
+      ),
+    );
+    expect(views.get("z")?.drill).toEqual([]);
+  });
+
   it("holds the drill position, so a remount does not send the chart back to the top", () => {
     vi.useFakeTimers();
     renderDashboard([

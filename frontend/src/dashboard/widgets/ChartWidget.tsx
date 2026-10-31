@@ -107,6 +107,10 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   // replaces such a selection the chart is remounted: there is never a band with no filter.
   // TODO(ui-charts): a controlled clear (an imperative handle or a `brushClearKey` prop) would
   // replace the remount and keep the chart's zoom.
+  // TODO(ui-charts): a legend filter and a brush on one chart replace each other's predicate, but
+  // they filter different fields (colour and x) and should combine. That needs the two kept
+  // apart and published together; until then the later one wins. Also worth a real-browser look:
+  // a click on a bar outside a drawn band fires no click event.
   const origin = useRef<"brush" | "legend" | null>(null);
   const hadSelection = useRef(false);
   const [resetKey, setResetKey] = useState(0);
@@ -126,7 +130,11 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   // The drill-down position (`interactions.drillHierarchy`) is held by the dashboard, so it
   // survives a remount of the chart and a tab switch, and a selection made at a drilled level
   // always carries the path it was made under. A different source or hierarchy starts at the top.
-  const hierarchyKey = JSON.stringify([spec.source, spec.interactions?.drillHierarchy ?? []]);
+  const hierarchyKey = JSON.stringify([
+    spec.id,
+    spec.source,
+    spec.interactions?.drillHierarchy ?? [],
+  ]);
   const storedDrill = useDashboardRuntime((s) => s.chartDrills[widgetId]);
   const drill = storedDrill?.key === hierarchyKey ? storedDrill : NO_DRILL;
   const currentDrill = useCallback((): ChartDrill => {
@@ -135,10 +143,18 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   }, [hierarchyKey]);
 
   // Why the last brush could not be used, shown until the next interaction.
-  const [notice, setNotice] = useState<string | null>(null);
+  // `seq` makes the same message a new one, so its timer restarts.
+  const [notice, setNoticeState] = useState<{ text: string; seq: number } | null>(null);
+  const setNotice = useCallback(
+    (text: string | null) =>
+      setNoticeState((previous) =>
+        text === null ? null : { text, seq: (previous?.seq ?? 0) + 1 },
+      ),
+    [],
+  );
   useEffect(() => {
     if (notice === null) return;
-    const timer = setTimeout(() => setNotice(null), 6000);
+    const timer = setTimeout(() => setNoticeState(null), 6000);
     return () => clearTimeout(timer);
   }, [notice]);
 
@@ -177,12 +193,15 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
         origin.current = null;
         setResetKey((k) => k + 1);
       }
-      // A brush or legend report still waiting out its pause must not land after this click.
-      publish.settle.cancel();
+      // A brush or legend report still waiting out its pause must not land after this click. A
+      // plain click replaces the selection, so it is dropped; a shift-click extends it, so it is
+      // applied first (it may be the removal of a band, and extending a removed range is wrong).
+      if (hit.shiftKey) publish.settle.flush();
+      else publish.settle.cancel();
       setNotice(null);
       publish.send(predicates, hit.shiftKey ? "extend" : "toggle");
     },
-    [client, publish, currentDrill],
+    [client, publish, currentDrill, setNotice],
   );
   const onBrushSelected = useCallback(
     (brush: ChartBrush) => {
@@ -211,7 +230,7 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
       origin.current = "brush";
       publish.settle(predicates);
     },
-    [publish, currentDrill],
+    [publish, currentDrill, setNotice],
   );
   const onLegendChange = useCallback(
     (change: ChartLegendChange) => {
@@ -222,6 +241,9 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
         measures: s.encodings?.y?.length ?? 0,
         drill: currentDrill().predicates,
       });
+      // A toggle that cannot be a filter leaves the existing selection (a click or a brush)
+      // alone: reporting an empty one would replace it.
+      if (predicates.length === 0 && origin.current !== "legend") return;
       origin.current = predicates.length > 0 ? "legend" : null;
       publish.settle(predicates);
     },
@@ -240,7 +262,7 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
     <div className="flex h-full flex-col">
       {notice ? (
         <p role="status" className="px-1 pb-1 text-xs text-muted">
-          {notice}
+          {notice.text}
         </p>
       ) : null}
       {own.length > 0 || (env.onDrillThrough && env.mode !== "embed") ? (
