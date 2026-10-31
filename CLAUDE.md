@@ -265,7 +265,7 @@ Agent definitions live in `.claude/agents/`. Each file sets that agent's model, 
 |---|---|---|---|
 | `lead` | Fable 5.1 · high | `contracts/`, `CLAUDE.md`, `docs/STATUS.md`, `.claude/`, root config (`pyproject.toml`, `frontend/package.json`, Vite/TS/Biome config), merges | Phase 0, contract changes, dependencies, integration |
 | `reviewer` | Opus 5.5 · high | nothing (read-only) | Reviews every branch before merge |
-| `data-core` | Opus 5.5 · medium | `ingest/ storage/ engine/ jobs/ exports/`, `api/{datasets,jobs,exports}.py` | MVP §1, data exports (§9), concurrency model |
+| `data-core` | Opus 5.5 · medium | `ingest/ storage/ engine/ jobs/ exports/`, `api/{datasets,jobs,exports,assets}.py` | MVP §1, data exports (§9), concurrency model, image assets for dashboard widgets |
 | `transform` | Opus 5.5 · high | `transform/ chartdata/`, `api/{pipelines,charts}.py` | MVP §2, chart-data protocol |
 | `stats` | Opus 5.5 · xhigh | `stats/`, `plots/__init__.py`, `plots/base.py`, `api/stats.py` | MVP §5, shared stat kernels, plot-module discovery |
 | `platform` | Sonnet 5.5 · medium | `projects/ meta/ auth/`, `main.py cli.py config.py errors.py`, `api/__init__.py`, `api/deps.py`, `api/{projects,share}.py`, `infra/`, `alembic.ini` | MVP §10 backend, share/embed, CLI, packaging |

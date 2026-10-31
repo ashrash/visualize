@@ -2528,6 +2528,90 @@
         }
       }
     },
+    "/api/assets": {
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Upload Image",
+        "description": "Upload one image (multipart field `file`): PNG, JPEG, GIF, WebP or SVG, at most\n`settings.max_asset_mb` (default 10 MB). The type is sniffed from the file's bytes (415 if it\nisn't one of those); 413 if too big.",
+        "operationId": "upload_image_api_assets_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageAsset"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assets/{asset_id}": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Get Image",
+        "description": "The stored image with its sniffed content type; 404 if the id is unknown.",
+        "operationId": "get_image_api_assets__asset_id__get",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/png": {},
+              "image/jpeg": {},
+              "image/gif": {},
+              "image/webp": {},
+              "image/svg+xml": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/embed/{token}": {
       "get": {
         "tags": [
@@ -5373,6 +5457,44 @@
           "version"
         ],
         "title": "Health"
+      },
+      "ImageAsset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "image/svg+xml"
+            ],
+            "title": "Contenttype",
+            "description": "Sniffed from the bytes, not the client's header"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "title": "Sizebytes"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "contentType",
+          "sizeBytes",
+          "url"
+        ],
+        "title": "ImageAsset",
+        "description": "A stored image. Display it with `<img src={url}>`."
       },
       "ImageWidget": {
         "properties": {

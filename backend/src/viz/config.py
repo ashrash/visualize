@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     mark_cap: int = 50_000
     grid_page_max: int = 1_000
     max_upload_mb: int = 4_096
+    # Image assets (dashboard Image widgets) are far smaller than dataset uploads.
+    max_asset_mb: int = 10
     # Local mode reads files in place; hosted deployments turn this off.
     allow_path_import: bool = True
     # Path imports up to this size are copied into sources/ first; larger ones are read in place.

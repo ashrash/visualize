@@ -917,6 +917,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Image
+         * @description Upload one image (multipart field `file`): PNG, JPEG, GIF, WebP or SVG, at most
+         *     `settings.max_asset_mb` (default 10 MB). The type is sniffed from the file's bytes (415 if it
+         *     isn't one of those); 413 if too big.
+         */
+        post: operations["upload_image_api_assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image
+         * @description The stored image with its sniffed content type; 404 if the id is unknown.
+         */
+        get: operations["get_image_api_assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/embed/{token}": {
         parameters: {
             query?: never;
@@ -1843,6 +1885,24 @@ export interface components {
             status: string;
             /** Version */
             version: string;
+        };
+        /**
+         * ImageAsset
+         * @description A stored image. Display it with `<img src={url}>`.
+         */
+        ImageAsset: {
+            /** Id */
+            id: string;
+            /**
+             * Contenttype
+             * @description Sniffed from the bytes, not the client's header
+             * @enum {string}
+             */
+            contentType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/svg+xml";
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Url */
+            url: string;
         };
         /** ImageWidget */
         ImageWidget: {
@@ -5611,6 +5671,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SharedView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_image_api_assets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageAsset"];
+                };
+            };
+        };
+    };
+    get_image_api_assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                    "image/gif": unknown;
+                    "image/webp": unknown;
+                    "image/svg+xml": unknown;
                 };
             };
             /** @description Validation Error */
