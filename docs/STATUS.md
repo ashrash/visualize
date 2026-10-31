@@ -380,6 +380,33 @@ follow-ups rather than fixed (outside those agents' owned paths).
     rest; share list/revoke/report don't check per-project access (matches the rest of the
     projects API today); a future migration that rebuilds the `projects` table would cascade-
     delete `share_tokens` too (pre-existing SQLite rebuild-migration risk, noted in `0002`).
+- 2026-10-31: `ui-charts` drill-down/linked-charts/interaction-callbacks merged (Wave 3): chart-
+  level drill-down, `echarts.connect`-based linking, raw `onPointClick`/`onBrushSelected`/
+  `onLegendChange` callbacks and a `slot` prop for `ui-dashboard`'s cross-filter bus, plus 4 Wave
+  2 bug fixes (y-axis title gap, a log-x-axis filter's first-element-is-x assumption, StatResult
+  "view as table" raw-JSON, map-readiness keying). **Four review rounds**, each finding a real
+  issue in the stateful brush/legend event-forwarding logic — `echarts.connect` forwards brush
+  and legend actions between linked charts by design, which is exactly right for visual sync but
+  wrong for the filter-predicate callbacks layered on top. Round 1: 2 blockers (a gesture on one
+  linked chart could get misreported as another's, reading its coordRange against the wrong
+  chart's axis; a brush had no way to be cleared in multi-select mode, and some chart rebuilds
+  silently dropped one with no signal to the bus) plus 2 should-fix (temporal values went out as
+  epoch-ms the backend's eq/in predicates reject for date columns — fixed with ISO strings for
+  point values, kept as epoch ms for ranges since the backend accepts that directly; the axis-gap
+  fix's own measurement regressed large-number axes). Round 2 found the clear-selection fix still
+  let the clear dispatch itself get forwarded, so clearing one chart's brush could silently clear
+  a linked chart's too. Round 3 verified the fix by tracing ECharts' own source (not just the
+  agent's tests): the connect/`escapeConnect` event cycle terminates after exactly one restore
+  dispatch, and a cross-filter refetch can't spuriously trigger a false "cleared" (`TanStack
+  Query`'s `keepPreviousData` prevents the data flicker that would cause it). One documented perf
+  follow-up remains (a linked chart without its own brush does one extra, harmless visual-update
+  pass per mousemove during another chart's drag). vitest 691 passed/1 skipped, biome/tsc/build
+  clean.
+  - `TODO(plots-geo)` left in `charts/core/types.ts`: geo plots (choropleth, bubble map, cartogram,
+    dot density) should declare the new `PlotEntry.prepareParams` (e.g. `["level", "resolution"]`
+    on choropleth) so changing those `affectsData: false` params doesn't force an unnecessary
+    `prepare()` re-wait — not yet done, a follow-up for whoever next touches `plots/geo.py`'s
+    frontend renderers.
 
 ## MVP.md
 
@@ -467,7 +494,7 @@ Tracked per plot under Plots.md below.
 | Hover tooltips | ui-charts | done |  |
 | Click-to-filter | ui-dashboard | todo |  |
 | Cross-filtering | ui-dashboard | todo |  |
-| Drill-down | ui-dashboard | todo |  |
+| Drill-down | ui-charts | done | Chart-level hierarchy drilling (`PlotEntry.drill`, breadcrumb nav, keyboard "Drill into X" in the table view). Declared on bar/line/area/pie/donut; treemap/sunburst keep native ECharts drill. Reports via `onDrillChange`, doesn't publish to any bus itself. |
 | Drill-through | ui-dashboard | todo |  |
 | Data point selection | ui-dashboard | todo |  |
 | Multi-select | ui-dashboard | todo |  |
@@ -475,7 +502,7 @@ Tracked per plot under Plots.md below.
 | Range sliders | ui-charts | partial | Slider dataZoom; xDomain from server after transform merges. |
 | Date range filters | ui-dashboard | todo |  |
 | Dynamic chart updates | ui-dashboard | todo |  |
-| Linked visualizations | ui-dashboard | todo |  |
+| Linked visualizations | ui-charts · ui-dashboard | partial | `echarts.connect` done (ui-charts): refcounted by `linkGroup` membership, synced tooltip/zoom/legend, with a per-chart gesture gate so a brush/legend gesture made on one linked chart never gets misreported as another's. ui-dashboard wires `interactions.linkGroup` from the dashboard's own link groups (in progress). |
 
 ### 7. Dashboard
 
