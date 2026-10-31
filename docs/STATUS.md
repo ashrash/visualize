@@ -352,6 +352,34 @@ follow-ups rather than fixed (outside those agents' owned paths).
     options (`ssType`, `postHoc`, `maxLevels`) use silent defaults with no UI; distribution
     fitting shows a table only, no fitted-curve plot (a natural "plot this" follow-up, since the
     response already includes the density grid).
+- 2026-10-31: `platform`'s share/embed/report backend merged (MVP §9): `POST/GET/DELETE
+  /api/share` (authenticated, `secrets.token_urlsafe(32)` tokens, optionally expiring),
+  `GET /api/share/{token}` and `GET /api/embed/{token}` (public, no auth, resolve a token into a
+  `SharedView`), `GET /api/reports/{projectId}[/dashboards/{id}]` (authenticated report
+  assembly). New `share_tokens` table, Alembic migration, project FK `ON DELETE CASCADE`. Two
+  xhigh review rounds (public unauthenticated routes). Round 1: token scheme, SQL
+  parameterization, and revocation/expiry timing all confirmed correct; found 7 should-fix items,
+  the most serious being that a share of one chart leaked the *whole* project's pipelines and
+  datasets (a chart-only embed returned an unrelated pipeline's row-level filter and every
+  dataset id — fixed by scoping to what the shared item actually reaches, transitively through
+  pipeline joins/unions and KPI widget sources, independently verified with a 2-hop
+  pipeline-chain + cycle test case) and that `SharedView` didn't carry the `Project.global_filters`
+  field added earlier the same day (a shared dashboard would've shown a viewer more data than the
+  owner sees). Round 2 found the column-width fix for `item_id`/`created_by`/`token` had only
+  reached the SQLAlchemy model, not migration `0003`'s actual DDL — since the real schema comes
+  from `alembic upgrade head`, not `create_all`, Postgres would still 500 on a long value; SQLite
+  doesn't enforce VARCHAR length so this passed locally. Fixed directly by the lead. pytest 1121
+  passed/6 skipped, ruff/mypy clean.
+  - **Deferred to Wave 4/hosted mode, tracked via `TODO(platform)` in `projects/share.py`**: a
+    share/embed token today gates the chart *specs* returned by the public resolve route, not the
+    underlying *data* — actual rendering still calls the normally-authenticated
+    `/api/charts/data`, which only appears to work for an anonymous viewer locally because
+    `auth.current_user` is a no-op stub. Hosted mode needs a token-scoped data route (e.g.
+    `/api/share/{token}/charts/{chartId}/data`) before share/embed is real outside localhost/LAN.
+    Also hosted-mode-only, not yet needed: tokens are stored in plaintext rather than hashed at
+    rest; share list/revoke/report don't check per-project access (matches the rest of the
+    projects API today); a future migration that rebuilds the `projects` table would cascade-
+    delete `share_tokens` too (pre-existing SQLite rebuild-migration risk, noted in `0002`).
 
 ## MVP.md
 
@@ -492,10 +520,10 @@ Tracked per plot under Plots.md below.
 | Export as CSV | data-core · ui-data | partial | Backend done (DuckDB COPY, job + download). Pipeline sources wait on transform. UI: export job + download. |
 | Export underlying data to Excel | data-core · ui-data | partial | Backend done (streamed xlsxwriter, row-limit warning). UI: export job + download; warning toast must persist. |
 | Copy chart to clipboard | ui-charts | done | ClipboardItem PNG. |
-| Share dashboard through URL | platform · ui-dashboard | todo |  |
-| Embed visualizations | platform · ui-dashboard | todo |  |
-| Generate reports | platform · ui-dashboard | todo |  |
-| Print-friendly layouts | platform · ui-dashboard | todo |  |
+| Share dashboard through URL | platform · ui-dashboard | partial | Backend done: token mint/list/revoke, public resolve, scoped to what the shared item reaches. UI (`/share/:token` view): ui-dashboard, in progress. |
+| Embed visualizations | platform · ui-dashboard | partial | Backend done: `/api/embed/{token}` (same resolve, public). UI (`/embed/:token`, iframe snippet): ui-dashboard, in progress. |
+| Generate reports | platform · ui-dashboard | partial | Backend done: `/api/reports/{projectId}[/dashboards/{id}]`, authenticated, bundles chart specs/pipelines. HTML/PDF assembly is ui-dashboard's (frontend-rendered, since Python can't render ECharts headlessly), in progress. |
+| Print-friendly layouts | ui-dashboard | todo | Entirely frontend (print CSS); no backend component. |
 
 ### 10. Workspace & Project Management
 
