@@ -1,8 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link2, Table2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ChartSpec, Predicate } from "../../api/types";
-import { ChartView } from "../../charts";
+import {
+  type ChartBrush,
+  type ChartLegendChange,
+  type ChartPointClick,
+  ChartView,
+} from "../../charts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,22 +16,13 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { groupOf, selectionOf } from "../bus";
-import { attachChartEvents, hasXAxis } from "../chartEvents";
-import { chartLookup } from "../chartLookup";
+import { colorValueFor } from "../chartLookup";
 import { BRUSH_DEBOUNCE_MS, debounce } from "../debounce";
 import { describePredicate } from "../describe";
 import { useDashboardEnv, useWidgetFilters } from "../env";
 import { datasetOfSource } from "../filterControls";
-import {
-  brushPredicates,
-  canBrush,
-  canClickFilter,
-  legendPredicates,
-  pointPredicates,
-} from "../predicates";
-import { RangeBrushLayer, RangeBrushToggle } from "../RangeBrush";
+import { brushPredicates, canClickFilter, legendPredicates, pointPredicates } from "../predicates";
 import { useDashboardRuntime } from "../runtimeStore";
-import { useChartInstance } from "../useChartInstance";
 
 interface Props {
   widgetId: string;
@@ -56,19 +52,18 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   const clearSelection = useDashboardRuntime((s) => s.clearSelection);
 
   // The chart wrapper syncs tooltips and zoom across a link group (echarts.connect) from the
-  // spec; the dashboard link group decides, so hand it the effective group.
-  const viewSpec = useMemo<ChartSpec>(
-    () =>
-      group && spec.interactions?.linkGroup !== group
-        ? ({ ...spec, interactions: { ...spec.interactions, linkGroup: group } } as ChartSpec)
-        : spec,
-    [spec, group],
-  );
+  // spec; the dashboard link group decides, so hand it the effective group. While arranging the
+  // dashboard there is no brush band: charts are being moved, not explored.
+  const interactive = env.mode !== "edit";
+  const viewSpec = useMemo<ChartSpec>(() => {
+    const linkGroup = group ?? spec.interactions?.linkGroup;
+    const brush = interactive && spec.interactions?.brush === true;
+    if (linkGroup === spec.interactions?.linkGroup && brush === spec.interactions?.brush)
+      return spec;
+    return { ...spec, interactions: { ...spec.interactions, linkGroup, brush } } as ChartSpec;
+  }, [spec, group, interactive]);
 
-  const frame = useRef<HTMLDivElement>(null);
-  const chart = useChartInstance(frame);
-
-  // Handlers read the latest spec and group without re-attaching listeners.
+  // Handlers read the latest spec and group without being recreated on every render.
   const latest = useRef({ spec, group, widgetId });
   latest.current = { spec, group, widgetId };
   const publish = useMemo(() => {
@@ -79,42 +74,38 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
     };
     return {
       send,
-      // Brush drags and legend toggles can fire many times a second: commit once, after a pause.
-      brush: debounce((p: Predicate[]) => send(p, "replace"), BRUSH_DEBOUNCE_MS),
+      // Brushes and legend toggles can fire several times in a row: commit once, after a pause.
+      settle: debounce((p: Predicate[]) => send(p, "replace"), BRUSH_DEBOUNCE_MS),
     };
   }, [interact]);
-  useEffect(() => () => publish.brush.cancel(), [publish]);
+  useEffect(() => () => publish.settle.cancel(), [publish]);
 
   const clickable = spec.interactions?.clickFilter !== false && canClickFilter(spec);
-  const [brushOn, setBrushOn] = useState(false);
-  const brushable =
-    spec.interactions?.brush === true &&
-    canBrush(spec) &&
-    env.mode !== "edit" &&
-    chart !== null &&
-    hasXAxis(chart);
-  useEffect(() => {
-    if (!chart || env.mode === "edit") return;
-    return attachChartEvents(chart, () => ({
-      onPoint: (click, extend) => {
-        const { spec: s } = latest.current;
-        if (!clickable) return;
-        const predicates = pointPredicates(s, click, chartLookup(client, s));
-        if (predicates.length > 0) publish.send(predicates, extend ? "extend" : "toggle");
-      },
-      onLegend: (selected) =>
-        publish.brush(
-          legendPredicates(latest.current.spec, selected, chartLookup(client, latest.current.spec)),
-        ),
-    }));
-  }, [chart, env.mode, clickable, publish, client]);
+
+  const onPointClick = useCallback(
+    (hit: ChartPointClick) => {
+      const { spec: s } = latest.current;
+      const color = colorValueFor(client, s, hit.seriesName);
+      const predicates = pointPredicates(s, hit, color);
+      if (predicates.length > 0) publish.send(predicates, hit.shiftKey ? "extend" : "toggle");
+    },
+    [client, publish],
+  );
+  const onBrushSelected = useCallback(
+    (brush: ChartBrush) => publish.settle(brushPredicates(latest.current.spec, brush)),
+    [publish],
+  );
+  const onLegendChange = useCallback(
+    (change: ChartLegendChange) => publish.settle(legendPredicates(change)),
+    [publish],
+  );
 
   const drillTargets = (env.onDrillThrough ? (env.otherDashboards ?? []) : []).slice(0, 12);
   const drillPredicates = [...filters, ...own];
 
   return (
     <div className="flex h-full flex-col">
-      {own.length > 0 || brushable || (env.onDrillThrough && env.mode !== "embed") ? (
+      {own.length > 0 || (env.onDrillThrough && env.mode !== "embed") ? (
         <div className="flex flex-wrap items-center gap-1 px-1 pb-1 text-xs">
           {own.map((p) => (
             <span
@@ -125,9 +116,6 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
               {describePredicate(p)}
             </span>
           ))}
-          {brushable ? (
-            <RangeBrushToggle on={brushOn} onToggle={() => setBrushOn((v) => !v)} />
-          ) : null}
           {own.length > 0 && group ? (
             <button
               type="button"
@@ -181,28 +169,17 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
           ) : null}
         </div>
       ) : null}
-      <div ref={frame} className="relative min-h-0 flex-1">
-        {/* TODO(ui-charts): pass `slot={widgetId}` once ChartView accepts it, so two widgets that
-            show one chart do not supersede each other's in-flight requests on the server. */}
-        <ChartView spec={viewSpec} filters={filters} pipelines={env.pipelines} />
-        {brushable && brushOn ? (
-          <RangeBrushLayer
-            chart={chart}
-            frame={frame}
-            selected={own.length > 0}
-            onSpan={(span) =>
-              publish.brush(
-                span
-                  ? brushPredicates(
-                      latest.current.spec,
-                      span,
-                      chartLookup(client, latest.current.spec),
-                    )
-                  : [],
-              )
-            }
-          />
-        ) : null}
+      <div className="min-h-0 flex-1">
+        <ChartView
+          spec={viewSpec}
+          filters={filters}
+          pipelines={env.pipelines}
+          // Each widget has its own cancellation slot: one chart shown twice must not cancel itself.
+          slot={widgetId}
+          onPointClick={interactive && clickable ? onPointClick : undefined}
+          onBrushSelected={interactive ? onBrushSelected : undefined}
+          onLegendChange={interactive ? onLegendChange : undefined}
+        />
       </div>
     </div>
   );

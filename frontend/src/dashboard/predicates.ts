@@ -1,35 +1,12 @@
 /**
  * Interaction signals to Predicates. Every click, brush, legend toggle and drill in a dashboard
  * ends up as the one shared `Predicate` type (CLAUDE.md section 3); nothing else crosses the bus.
+ * The signals come from `ChartView`'s own callbacks, which report raw values from the data.
  */
 import type { ChartSpec, Encoding, Predicate } from "../api/types";
-import { categoryLabel } from "../charts/core/series";
+import type { ChartBrush, ChartLegendChange, ChartPointClick, DrillValue } from "../charts";
 
 type TimeUnit = NonNullable<Encoding["timeUnit"]>;
-
-/** What a chart reports for a plain click on a mark (ECharts event params, reduced). */
-export interface PointClick {
-  /** Category name, or the formatted axis label. */
-  name?: string | number | null;
-  /** Series name: the colour group of the clicked mark. */
-  seriesName?: string | null;
-  /** Raw axis value for numeric/time axes (epoch ms or ISO string). */
-  axisValue?: string | number | null;
-}
-
-/** A brushed span on the x axis, in axis values (epoch ms for time axes). */
-export interface BrushSpan {
-  /** Category names inside the brush, for category axes. */
-  categories?: string[];
-  min?: number;
-  max?: number;
-}
-
-const COLOR_CHANNEL = "color";
-
-function channelField(spec: ChartSpec, channel: string): Encoding | undefined {
-  return spec.encodings?.[channel]?.find((e) => e.field);
-}
 
 /** Start of the time bucket containing `ts`, and where the next one begins (UTC). */
 export function bucketBounds(ts: number, unit: TimeUnit): [Date, Date] {
@@ -74,40 +51,7 @@ function toEpoch(value: unknown): number | null {
   return null;
 }
 
-/**
- * The raw values behind a chart's labels. ECharts reports a clicked category by its display
- * label ("2,020", "(blank)", "Jan 2024"), never by the value in the data, so a click is mapped
- * back by running the renderer's own `categoryLabel` over the raw values the chart was drawn from.
- */
-export interface ChartLookup {
-  xs: readonly unknown[];
-  xKind?: string;
-  /** `style.xAxis.format`: the renderer labels categories with it (pies do not). */
-  xFormat?: string | null;
-  colors: readonly unknown[];
-  colorKind?: string;
-}
-
-type Raw = { found: true; value: unknown } | { found: false };
-
-/** The one raw value whose label is `label`; not found when none or several match. */
-function rawFor(
-  label: string,
-  raws: readonly unknown[],
-  kind: string | undefined,
-  formats: (string | null | undefined)[],
-): Raw {
-  const hits = new Set<unknown>();
-  for (const raw of new Set(raws)) {
-    if (formats.some((f) => categoryLabel(raw, kind, f) === label)) hits.add(raw);
-  }
-  if (hits.size !== 1) return { found: false };
-  return { found: true, value: [...hits][0] };
-}
-
 const isBlank = (v: unknown) => v === null || v === undefined || v === "";
-const scalar = (v: unknown): string | number | boolean | null =>
-  isBlank(v) ? null : typeof v === "number" || typeof v === "boolean" ? v : String(v);
 
 /** Plot types whose x channel carries the raw values of the x field, so a click can filter it. */
 export const CLICK_FILTER_PLOTS: ReadonlySet<string> = new Set([
@@ -123,21 +67,7 @@ export const CLICK_FILTER_PLOTS: ReadonlySet<string> = new Set([
   "donut",
 ]);
 
-/** Plot types with a horizontal x axis that a drag can span (not the swapped-axis forms). */
-export const BRUSH_PLOTS: ReadonlySet<string> = new Set([
-  "bar",
-  "grouped_bar",
-  "stacked_bar",
-  "percent_stacked_bar",
-  "line",
-  "area",
-  "stacked_area",
-]);
-
 export const canClickFilter = (spec: ChartSpec) => CLICK_FILTER_PLOTS.has(spec.plotType);
-
-export const canBrush = (spec: ChartSpec) =>
-  BRUSH_PLOTS.has(spec.plotType) && spec.style?.orientation !== "horizontal";
 
 function datePredicate(field: string, from: number, to: number, closed: boolean): Predicate {
   return {
@@ -150,120 +80,107 @@ function datePredicate(field: string, from: number, to: number, closed: boolean)
   };
 }
 
-/** The x field's `time` semantics: a bucketed time field, or a raw temporal one. */
-function isTemporal(x: Encoding, lookup: ChartLookup | undefined) {
-  return Boolean(x.timeUnit) || lookup?.xKind === "temporal";
-}
-
-/** A single x value (already resolved to its raw form) as a predicate. */
-function xValuePredicate(x: Encoding & { field: string }, raw: unknown): Predicate | null {
-  if (x.timeUnit) {
-    const ts = toEpoch(raw);
-    if (ts === null) return null;
-    const [start, end] = bucketBounds(ts, x.timeUnit);
-    return datePredicate(x.field, start.getTime(), end.getTime(), false);
+/** The encoding that feeds `field` (the x channel, or the drilled level's replacement). */
+function encodingOf(spec: ChartSpec, field: string): Encoding | undefined {
+  for (const items of Object.values(spec.encodings ?? {})) {
+    const hit = items.find((e) => e.field === field);
+    if (hit) return hit;
   }
-  return { op: "in", field: x.field, values: [scalar(raw)] };
+  return undefined;
 }
 
 /**
- * A plain click on a mark: the raw x value (or time bucket) and, for grouped series, the raw
- * colour group. Returns [] when it cannot be resolved with certainty: a click never filters by
- * a guess.
+ * One raw x value as a predicate. With a `timeUnit` the raw value is the START of a bucket, so it
+ * becomes the half-open range of that bucket; otherwise it is an exact match (NULL for blank).
+ */
+function valuePredicate(
+  field: string,
+  raw: DrillValue,
+  unit: TimeUnit | undefined,
+): Predicate | null {
+  if (unit) {
+    const ts = toEpoch(raw);
+    if (ts === null) return null;
+    const [start, end] = bucketBounds(ts, unit);
+    return datePredicate(field, start.getTime(), end.getTime(), false);
+  }
+  return { op: "in", field, values: [isBlank(raw) ? null : raw] };
+}
+
+/**
+ * A plain click on a mark, from the chart's own callback (`rawValue` is the value in the data, not
+ * the label that was drawn). Nothing is filtered unless the value is known for certain, and a
+ * click that drilled the chart one level deeper is that chart's own navigation, not a filter.
+ *
+ * `colorValue` is the raw colour group of the clicked series, when it is known.
  */
 export function pointPredicates(
   spec: ChartSpec,
-  click: PointClick,
-  lookup?: ChartLookup,
+  click: Pick<ChartPointClick, "field" | "rawValue" | "drilled">,
+  colorValue?: DrillValue,
 ): Predicate[] {
-  const x = channelField(spec, "x");
-  if (!x?.field) return [];
-  const field = { ...x, field: x.field };
-  const label = isBlank(click.name) ? "" : String(click.name);
-  const byLabel: Raw =
-    lookup && label !== ""
-      ? rawFor(label, lookup.xs, lookup.xKind, [lookup.xFormat, null])
-      : { found: false };
-  let predicate: Predicate | null = null;
-  if (isTemporal(x, lookup)) {
-    // Prefer the raw axis value (time axes report epoch ms); else map the label back.
-    const ts = toEpoch(click.axisValue) ?? (byLabel.found ? toEpoch(byLabel.value) : null);
-    if (ts === null) return [];
-    predicate = x.timeUnit ? xValuePredicate(field, ts) : datePredicate(x.field, ts, ts + 1, false);
-  } else if (byLabel.found) {
-    predicate = xValuePredicate(field, byLabel.value);
-  } else if (typeof click.axisValue === "number") {
-    predicate = xValuePredicate(field, click.axisValue);
-  } else if (label === "(blank)" && lookup?.xs.some(isBlank)) {
-    predicate = xValuePredicate(field, null);
-  }
-  if (!predicate) return [];
-  const out: Predicate[] = [predicate];
-  const color = channelField(spec, COLOR_CHANNEL);
-  if (color?.field && click.seriesName && lookup) {
-    const group = rawFor(click.seriesName, lookup.colors, lookup.colorKind, [null]);
-    if (group.found) out.push({ op: "in", field: color.field, values: [scalar(group.value)] });
+  if (click.drilled || !click.field || click.rawValue === undefined) return [];
+  const unit = encodingOf(spec, click.field)?.timeUnit ?? undefined;
+  const x = valuePredicate(click.field, click.rawValue, unit);
+  if (!x) return [];
+  const out: Predicate[] = [x];
+  const color = spec.encodings?.color?.find((e) => e.field);
+  if (color?.field && colorValue !== undefined) {
+    out.push({ op: "in", field: color.field, values: [isBlank(colorValue) ? null : colorValue] });
   }
   return out;
 }
 
 /**
- * A brush over the x axis: a numeric/time range, or the categories it covers (labels mapped back
- * to raw values; an unresolvable label cancels the whole selection).
+ * A committed brush, from the chart's own callback. Category brushes carry the raw values under
+ * the band; value and time brushes carry the covered range. Only a brush along the x field
+ * filters: on a horizontal chart the band spans the measure axis, which no predicate can express.
  */
 export function brushPredicates(
   spec: ChartSpec,
-  span: BrushSpan,
-  lookup?: ChartLookup,
+  brush: Pick<
+    ChartBrush,
+    "field" | "axis" | "kind" | "ranges" | "categories" | "values" | "cleared"
+  >,
 ): Predicate[] {
-  const x = channelField(spec, "x");
-  if (!x?.field) return [];
-  if (span.categories) {
-    if (span.categories.length === 0 || !lookup) return [];
-    const raws: unknown[] = [];
-    for (const label of span.categories) {
-      const hit = rawFor(label, lookup.xs, lookup.xKind, [lookup.xFormat, null]);
-      if (!hit.found) return [];
-      raws.push(hit.value);
-    }
-    if (isTemporal(x, lookup)) {
-      const times = raws.map(toEpoch);
+  if (brush.cleared || !brush.field) return [];
+  const field = brush.field;
+  const unit = encodingOf(spec, field)?.timeUnit ?? undefined;
+  if (brush.kind === "category") {
+    // Every brushed label must map to a value in the data, or the selection would be wider or
+    // narrower than what the user drew.
+    if (brush.categories.length === 0 || brush.values.length !== brush.categories.length) return [];
+    if (unit) {
+      const times = brush.values.map(toEpoch);
       if (times.some((t) => t === null)) return [];
       const lo = Math.min(...(times as number[]));
       const hi = Math.max(...(times as number[]));
-      const end = x.timeUnit ? bucketBounds(hi, x.timeUnit)[1].getTime() : hi + 1;
-      return [datePredicate(x.field, lo, end, false)];
+      return [datePredicate(field, lo, bucketBounds(hi, unit)[1].getTime(), false)];
     }
-    return [{ op: "in", field: x.field, values: raws.map(scalar) }];
+    return [{ op: "in", field, values: brush.values.map((v) => (isBlank(v) ? null : v)) }];
   }
-  if (span.min === undefined || span.max === undefined) return [];
-  const lo = Math.min(span.min, span.max);
-  const hi = Math.max(span.min, span.max);
-  if (isTemporal(x, lookup)) return [datePredicate(x.field, lo, hi, true)];
-  return [{ op: "range", field: x.field, min: lo, max: hi, includeMin: true, includeMax: true }];
+  if (brush.axis === "y" || brush.ranges.length !== 1) return [];
+  const [lo, hi] = brush.ranges[0] as [number, number];
+  if (brush.kind === "time") return [datePredicate(field, lo, hi, true)];
+  return [{ op: "range", field, min: lo, max: hi, includeMin: true, includeMax: true }];
 }
 
 /**
- * Legend toggles: the colour groups still switched on, as raw values, become an `in` predicate;
- * nothing is filtered while every group is on, or if a group cannot be resolved.
+ * Legend toggles, from the chart's own callback: the colour groups still switched on, as raw
+ * values, become an `in` predicate. Nothing is filtered while every group is on, or when none of
+ * the shown groups maps to a value in the data.
  */
 export function legendPredicates(
-  spec: ChartSpec,
-  selected: Record<string, boolean>,
-  lookup?: ChartLookup,
+  change: Pick<ChartLegendChange, "field" | "hidden" | "shownValues">,
 ): Predicate[] {
-  const color = channelField(spec, COLOR_CHANNEL);
-  if (!color?.field || !lookup) return [];
-  const names = Object.keys(selected);
-  const on = names.filter((n) => selected[n]);
-  if (on.length === names.length || on.length === 0) return [];
-  const raws: (string | number | boolean | null)[] = [];
-  for (const name of on) {
-    const hit = rawFor(name, lookup.colors, lookup.colorKind, [null]);
-    if (!hit.found) return [];
-    raws.push(scalar(hit.value));
-  }
-  return [{ op: "in", field: color.field, values: raws }];
+  if (!change.field || change.hidden.length === 0 || change.shownValues.length === 0) return [];
+  return [
+    {
+      op: "in",
+      field: change.field,
+      values: change.shownValues.map((v) => (isBlank(v) ? null : v)),
+    },
+  ];
 }
 
 type RangeLike = { min?: number | string | null; max?: number | string | null };

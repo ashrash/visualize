@@ -2,7 +2,6 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import type { ECharts } from "echarts/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChartSpec, Predicate } from "../api/types";
 import { dataIdentity } from "../charts/core/data";
@@ -12,45 +11,34 @@ import type { Dashboard } from "./types";
 
 // ---- stand-ins for the parts that need a browser or a server ----
 
-type Listener = (params: unknown) => void;
-const charts = new Map<string, { emit: (name: string, params?: unknown) => void }>();
+import type { ChartBrush, ChartLegendChange, ChartPointClick } from "../charts";
 
-function fakeChart(id: string): ECharts {
-  const listeners = new Map<string, Set<Listener>>();
-  charts.set(id, {
-    emit: (name, params) => {
-      for (const fn of listeners.get(name) ?? []) fn(params);
-    },
-  });
-  return {
-    on: (name: string, fn: Listener) => {
-      if (!listeners.has(name)) listeners.set(name, new Set());
-      listeners.get(name)?.add(fn);
-    },
-    off: (name: string, fn: Listener) => listeners.get(name)?.delete(fn),
-    getOption: () => ({ xAxis: [{ type: "category", data: ["North", "South", "East", "West"] }] }),
-    getDom: () => document.createElement("div"),
-    convertFromPixel: (_finder: unknown, x: number) => x / 10,
-    setOption: () => {},
-  } as unknown as ECharts;
+interface ViewProps {
+  spec: ChartSpec;
+  filters?: Predicate[];
+  slot?: string;
+  onPointClick?: (hit: ChartPointClick) => void;
+  onBrushSelected?: (brush: ChartBrush) => void;
+  onLegendChange?: (change: ChartLegendChange) => void;
 }
+// Latest props of each rendered chart, by chart id.
+const views = new Map<string, ViewProps>();
 
-// The chart wrapper: shows the filters it was asked to query with, and names its instance.
+// The chart wrapper: shows the filters it was asked to query with and keeps its callbacks.
 vi.mock("../charts", () => ({
-  ChartView: ({ spec, filters }: { spec: ChartSpec; filters?: Predicate[] }) => (
-    <div data-testid={`chart-${spec.id}`} data-chart={spec.id}>
-      <output aria-label={`filters of ${spec.id}`}>{JSON.stringify(filters ?? [])}</output>
-    </div>
-  ),
+  ChartView: (props: ViewProps) => {
+    views.set(props.spec.id, props);
+    return (
+      <div data-testid={`chart-${props.spec.id}`}>
+        <output aria-label={`filters of ${props.spec.id}`}>
+          {JSON.stringify(props.filters ?? [])}
+        </output>
+      </div>
+    );
+  },
   makeFormatter: () => (v: unknown) => String(v),
   useChartData: () => ({ data: undefined, error: null }),
   FORMAT_PRESETS: [],
-}));
-vi.mock("./useChartInstance", () => ({
-  useChartInstance: (frame: { current: HTMLElement | null }) => {
-    const id = frame.current?.querySelector("[data-chart]")?.getAttribute("data-chart");
-    return id ? fakeChart(id) : null;
-  },
 }));
 vi.mock("react-grid-layout", () => ({
   useContainerWidth: () => ({ width: 1200, containerRef: { current: null }, mounted: true }),
@@ -119,11 +107,41 @@ function dashboardWith(chartIds: string[]): Dashboard {
 const filtersOf = (id: string): Predicate[] =>
   JSON.parse(screen.getByLabelText(`filters of ${id}`).textContent ?? "[]");
 
-const click = (id: string, name: string, extra: Record<string, unknown> = {}) =>
+/** A click as ChartView reports it: the raw value is what is in the data, not the label. */
+const hit = (
+  rawValue: ChartPointClick["rawValue"],
+  over: Partial<ChartPointClick> = {},
+): ChartPointClick => ({
+  seriesIndex: 0,
+  seriesName: "",
+  name: String(rawValue),
+  dataIndex: 0,
+  value: 1,
+  shiftKey: false,
+  field: "region",
+  rawValue,
+  drilled: false,
+  ...over,
+});
+
+const click = (
+  id: string,
+  rawValue: ChartPointClick["rawValue"],
+  over: Partial<ChartPointClick> = {},
+) => act(() => views.get(id)?.onPointClick?.(hit(rawValue, over)));
+
+const brush = (id: string, over: Partial<ChartBrush> = {}) =>
   act(() =>
-    charts
-      .get(id)
-      ?.emit("click", { componentType: "series", name, seriesName: "series0", ...extra }),
+    views.get(id)?.onBrushSelected?.({
+      axis: "x",
+      kind: "category",
+      ranges: [],
+      categories: [],
+      cleared: false,
+      field: "region",
+      values: [],
+      ...over,
+    }),
   );
 
 function renderDashboard(chartSpecs: ChartSpec[], mode: "view" | "edit" | "embed" = "view") {
@@ -135,7 +153,7 @@ function renderDashboard(chartSpecs: ChartSpec[], mode: "view" | "edit" | "embed
 
 beforeEach(() => {
   queryClient = new QueryClient();
-  charts.clear();
+  views.clear();
   useDashboardRuntime.setState({ globalValues: {}, gridDrill: null });
   useDashboardRuntime.getState().open("fresh");
   vi.stubGlobal("matchMedia", () => ({
@@ -164,6 +182,58 @@ describe("cross-filtering a dashboard", () => {
     expect(filtersOf("c")).toEqual([]); // a different group is untouched
   });
 
+  it("filters by the raw value in the data: a number stays a number, blank is NULL", () => {
+    renderDashboard([spec("a", { encodings: { x: [{ field: "year" }] } }), spec("b")]);
+    click("a", 2020, { field: "year", name: "2,020" });
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "year", values: [2020] }]);
+    click("a", null, { field: "year", name: "(blank)" });
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "year", values: [null] }]);
+  });
+
+  it("filters a time bucket by the whole bucket, from the bucket's start", () => {
+    renderDashboard([
+      spec("a", { encodings: { x: [{ field: "order_date", timeUnit: "month" }] } }),
+      spec("b"),
+    ]);
+    click("a", "2024-02-01T00:00:00.000Z", { field: "order_date", name: "Feb 2024" });
+    expect(filtersOf("b")).toEqual([
+      {
+        op: "between_dates",
+        field: "order_date",
+        min: "2024-02-01T00:00:00.000Z",
+        max: "2024-03-01T00:00:00.000Z",
+        includeMin: true,
+        includeMax: false,
+      },
+    ]);
+  });
+
+  it("adds the colour group of a clicked stacked segment", () => {
+    renderDashboard([
+      spec("a", {
+        encodings: {
+          x: [{ field: "region" }],
+          y: [{ agg: "count" }],
+          color: [{ field: "channel" }],
+        },
+      }),
+      spec("b"),
+    ]);
+    click("a", "North", { seriesName: "web" });
+    expect(filtersOf("b")).toEqual([
+      { op: "in", field: "region", values: ["North"] },
+      { op: "in", field: "channel", values: ["web"] },
+    ]);
+  });
+
+  it("does nothing for a click it cannot resolve, or one that drilled the chart deeper", () => {
+    renderDashboard([spec("a"), spec("b")]);
+    click("a", undefined);
+    expect(filtersOf("b")).toEqual([]);
+    click("a", "North", { drilled: true });
+    expect(filtersOf("b")).toEqual([]);
+  });
+
   it("toggles a click off, and shift-click adds to the selection", () => {
     renderDashboard([spec("a"), spec("b")]);
     click("a", "North");
@@ -171,7 +241,7 @@ describe("cross-filtering a dashboard", () => {
     expect(filtersOf("b")).toEqual([]);
 
     click("a", "North");
-    click("a", "South", { event: { event: { shiftKey: true } } });
+    click("a", "South", { shiftKey: true });
     expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North", "South"] }]);
   });
 
@@ -203,70 +273,67 @@ describe("cross-filtering a dashboard", () => {
     expect(filtersOf("b")).toEqual([]);
   });
 
-  it("ignores clicks while editing (the chart is being moved, not explored)", () => {
-    renderDashboard([spec("a"), spec("b")], "edit");
-    click("a", "North");
-    expect(filtersOf("b")).toEqual([]);
+  it("gives charts no interaction callbacks while editing (they are being moved)", () => {
+    renderDashboard(
+      [spec("a", { interactions: { brush: true, linkGroup: "g" } as never }), spec("b")],
+      "edit",
+    );
+    expect(views.get("a")?.onPointClick).toBeUndefined();
+    expect(views.get("a")?.onBrushSelected).toBeUndefined();
+    expect(views.get("a")?.onLegendChange).toBeUndefined();
+    // and no brush band is drawn while arranging
+    expect(views.get("a")?.spec.interactions?.brush).toBe(false);
   });
 
-  it("ignores clicks on a chart with click filtering switched off", () => {
+  it("gives no click callback to a chart with click filtering off, or a plot that cannot use it", () => {
     renderDashboard([
       spec("a", { interactions: { clickFilter: false, linkGroup: "g" } as never }),
-      spec("b"),
+      spec("s", { plotType: "histogram" }),
     ]);
-    click("a", "North");
-    expect(filtersOf("b")).toEqual([]);
+    expect(views.get("a")?.onPointClick).toBeUndefined();
+    expect(views.get("s")?.onPointClick).toBeUndefined();
+    expect(views.get("s")?.onBrushSelected).toBeDefined();
   });
 
-  it("selects a range by dragging, committing once after a pause", () => {
+  it("gives each widget its own request slot, and the dashboard's link group", () => {
+    renderDashboard([spec("a", { interactions: { linkGroup: undefined } as never }), spec("b")]);
+    expect(views.get("a")?.slot).toBe("w-a");
+    expect(views.get("b")?.slot).toBe("w-b");
+  });
+
+  it("filters the others by a brush, committing once after a pause", () => {
     vi.useFakeTimers();
-    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
-      left: 0,
-      top: 0,
-      right: 400,
-      bottom: 200,
-      width: 400,
-      height: 200,
-      x: 0,
-      y: 0,
-      toJSON() {},
-    });
     renderDashboard([
       spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
       spec("b"),
     ]);
-    // The tool is off until asked for, so it never gets in the way of clicking bars.
-    expect(screen.queryByTestId("range-brush")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Select range" }));
-    const layer = screen.getByTestId("range-brush");
-    fireEvent.pointerDown(layer, { clientX: 10, pointerId: 1 });
-    fireEvent.pointerMove(layer, { clientX: 20, pointerId: 1 });
-    fireEvent.pointerMove(layer, { clientX: 30, pointerId: 1 });
-    fireEvent.pointerUp(layer, { clientX: 30, pointerId: 1 });
+    const picked = { categories: ["South", "East"], values: ["South", "East"] };
+    brush("a", { categories: ["South"], values: ["South"] });
+    brush("a", picked);
     expect(filtersOf("b")).toEqual([]); // nothing yet: waiting for the pause
     act(() => vi.advanceTimersByTime(200));
-    expect(filtersOf("b")).toEqual([
-      { op: "in", field: "region", values: ["South", "East", "West"] },
-    ]);
-    expect(filtersOf("a")).toEqual([]); // a chart is not filtered by its own range
-    vi.restoreAllMocks();
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["South", "East"] }]);
+    expect(filtersOf("a")).toEqual([]); // a chart is not filtered by its own brush
+    // removing the band clears the selection
+    brush("a", { cleared: true });
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([]);
   });
 
-  it("does not turn a plain click on the brush layer into a range", () => {
+  it("filters by a numeric range from a value-axis brush", () => {
     vi.useFakeTimers();
     renderDashboard([
       spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
       spec("b"),
     ]);
-    fireEvent.click(screen.getByRole("button", { name: "Select range" }));
-    const layer = screen.getByTestId("range-brush");
-    fireEvent.pointerDown(layer, { clientX: 50, pointerId: 1 });
-    fireEvent.pointerUp(layer, { clientX: 51, pointerId: 1 });
-    act(() => vi.advanceTimersByTime(300));
-    expect(filtersOf("b")).toEqual([]);
+    brush("a", { kind: "value", field: "price", ranges: [[3, 9]] });
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([
+      { op: "range", field: "price", min: 3, max: 9, includeMin: true, includeMax: true },
+    ]);
   });
 
-  it("applies a legend toggle as an `in` filter on the colour field", () => {
+  it("applies a legend toggle as an `in` filter on the colour field's raw values", () => {
     vi.useFakeTimers();
     renderDashboard([
       spec("a", {
@@ -279,9 +346,15 @@ describe("cross-filtering a dashboard", () => {
       spec("b"),
     ]);
     act(() =>
-      charts
-        .get("a")
-        ?.emit("legendselectchanged", { selected: { web: true, app: false, store: true } }),
+      views.get("a")?.onLegendChange?.({
+        toggled: "app",
+        selected: { web: true, app: false, store: true },
+        shown: ["web", "store"],
+        hidden: ["app"],
+        field: "channel",
+        shownValues: ["web", "store"],
+        hiddenValues: ["app"],
+      }),
     );
     act(() => vi.advanceTimersByTime(200));
     expect(filtersOf("b")).toEqual([{ op: "in", field: "channel", values: ["web", "store"] }]);

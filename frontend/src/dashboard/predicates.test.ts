@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { ChartSpec } from "../api/types";
-import { categoryLabel } from "../charts/core/series";
+import type { ChartBrush, ChartLegendChange, ChartPointClick } from "../charts";
 import {
   brushPredicates,
   bucketBounds,
-  type ChartLookup,
-  canBrush,
   canClickFilter,
   extendSelection,
   legendPredicates,
@@ -24,49 +22,42 @@ function spec(encodings: ChartSpec["encodings"], over: Partial<ChartSpec> = {}):
   } as ChartSpec;
 }
 
-const lookup = (over: Partial<ChartLookup> = {}): ChartLookup => ({
-  xs: [],
-  colors: [],
+const click = (
+  field: string | null,
+  rawValue: ChartPointClick["rawValue"],
+  over: Partial<ChartPointClick> = {},
+): Pick<ChartPointClick, "field" | "rawValue" | "drilled"> => ({
+  field,
+  rawValue,
+  drilled: false,
   ...over,
 });
 
-describe("pointPredicates", () => {
-  it("maps a category label back to the raw value in the data", () => {
+describe("pointPredicates (raw values from ChartView)", () => {
+  it("filters the x field by the raw value", () => {
     const s = spec({ x: [{ field: "region" }], y: [{ field: "sales", agg: "sum" }] });
-    const l = lookup({ xs: ["North", "South"], xKind: "string" });
-    expect(pointPredicates(s, { name: "North" }, l)).toEqual([
+    expect(pointPredicates(s, click("region", "North"))).toEqual([
       { op: "in", field: "region", values: ["North"] },
     ]);
   });
 
-  it("filters an integer category by its number, not the grouped label ('2,020')", () => {
-    const s = spec({ x: [{ field: "year" }] });
-    const l = lookup({ xs: [2019, 2020, 2021], xKind: "number" });
-    expect(categoryLabel(2020, "number")).toBe("2,020"); // what ECharts reports
-    expect(pointPredicates(s, { name: "2,020" }, l)).toEqual([
+  it("keeps numbers as numbers (the drawn label was '2,020')", () => {
+    expect(pointPredicates(spec({ x: [{ field: "year" }] }), click("year", 2020))).toEqual([
       { op: "in", field: "year", values: [2020] },
     ]);
   });
 
-  it("filters a blank category by NULL, not by the '(blank)' label", () => {
-    const s = spec({ x: [{ field: "region" }] });
-    const l = lookup({ xs: ["North", null], xKind: "string" });
-    expect(pointPredicates(s, { name: "(blank)" }, l)).toEqual([
-      { op: "in", field: "region", values: [null] },
-    ]);
+  it("filters a blank category by NULL", () => {
+    for (const blank of [null, ""]) {
+      expect(pointPredicates(spec({ x: [{ field: "region" }] }), click("region", blank))).toEqual([
+        { op: "in", field: "region", values: [null] },
+      ]);
+    }
   });
 
-  it("filters the right month for a month-formatted axis, whatever the machine's time zone", () => {
-    const s = spec(
-      { x: [{ field: "order_date", timeUnit: "month" }] },
-      {
-        style: { xAxis: { format: "month" } } as never,
-      },
-    );
-    const feb = Date.UTC(2024, 1, 1);
-    const l = lookup({ xs: [Date.UTC(2024, 0, 1), feb], xKind: "temporal", xFormat: "month" });
-    const label = categoryLabel(feb, "temporal", "month");
-    expect(pointPredicates(s, { name: label }, l)).toEqual([
+  it("turns the start of a time bucket into the half-open range of that bucket", () => {
+    const s = spec({ x: [{ field: "order_date", timeUnit: "month" }] });
+    expect(pointPredicates(s, click("order_date", "2024-02-01T00:00:00.000Z"))).toEqual([
       {
         op: "between_dates",
         field: "order_date",
@@ -76,75 +67,52 @@ describe("pointPredicates", () => {
         includeMax: false,
       },
     ]);
+    const quarter = spec({ x: [{ field: "d", timeUnit: "quarter" }] });
+    const [q] = pointPredicates(quarter, click("d", "2024-04-01T00:00:00.000Z"));
+    expect(q).toMatchObject({ min: "2024-04-01T00:00:00.000Z", max: "2024-07-01T00:00:00.000Z" });
   });
 
-  it("handles a quarter-formatted axis (the label is not a parseable date)", () => {
-    const s = spec(
-      { x: [{ field: "d", timeUnit: "quarter" }] },
-      {
-        style: { xAxis: { format: "quarter" } } as never,
-      },
-    );
-    const q2 = Date.UTC(2024, 3, 1);
-    const l = lookup({ xs: [Date.UTC(2024, 0, 1), q2], xKind: "temporal", xFormat: "quarter" });
-    const [p] = pointPredicates(s, { name: categoryLabel(q2, "temporal", "quarter") }, l);
-    expect(p).toMatchObject({ min: "2024-04-01T00:00:00.000Z", max: "2024-07-01T00:00:00.000Z" });
-  });
-
-  it("uses the raw axis value on a time axis (no label involved)", () => {
-    const s = spec({ x: [{ field: "d", timeUnit: "day" }] });
-    const [p] = pointPredicates(s, { name: "", axisValue: Date.UTC(2024, 4, 15, 13) });
-    expect(p).toMatchObject({
-      op: "between_dates",
-      min: "2024-05-15T00:00:00.000Z",
-      max: "2024-05-16T00:00:00.000Z",
-    });
-  });
-
-  it("uses the raw axis value on a numeric x axis instead of an empty label", () => {
-    const s = spec({ x: [{ field: "t" }] }, { plotType: "line" });
-    expect(pointPredicates(s, { name: "", axisValue: 12.5 })).toEqual([
-      { op: "in", field: "t", values: [12.5] },
+  it("matches a raw time value exactly when there is no bucket", () => {
+    const s = spec({ x: [{ field: "ts" }] }, { plotType: "line" });
+    expect(pointPredicates(s, click("ts", "2024-05-15T13:45:00.000Z"))).toEqual([
+      { op: "in", field: "ts", values: ["2024-05-15T13:45:00.000Z"] },
     ]);
   });
 
-  it("adds the raw colour group, mapped back from the series name", () => {
+  it("uses the chart's current field after a drill-down, not the spec's x field", () => {
+    const s = spec({ x: [{ field: "country" }] });
+    expect(pointPredicates(s, click("state", "Texas"))).toEqual([
+      { op: "in", field: "state", values: ["Texas"] },
+    ]);
+  });
+
+  it("adds the raw colour group when it is known", () => {
     const s = spec({ x: [{ field: "region" }], color: [{ field: "tier" }] });
-    const l = lookup({ xs: ["N"], xKind: "string", colors: [1, 2], colorKind: "number" });
-    expect(pointPredicates(s, { name: "N", seriesName: "2" }, l)).toEqual([
+    expect(pointPredicates(s, click("region", "N"), 2)).toEqual([
       { op: "in", field: "region", values: ["N"] },
       { op: "in", field: "tier", values: [2] },
     ]);
+    expect(pointPredicates(s, click("region", "N"))).toEqual([
+      { op: "in", field: "region", values: ["N"] },
+    ]);
   });
 
-  it("does not guess: an unknown or ambiguous label, or no data, filters nothing", () => {
+  it("filters nothing it cannot be sure of: unresolved, no field, or a drill-down click", () => {
     const s = spec({ x: [{ field: "region" }] });
-    expect(
-      pointPredicates(s, { name: "East" }, lookup({ xs: ["North"], xKind: "string" })),
-    ).toEqual([]);
-    // 1000 and "1,000" both label as "1,000": ambiguous
-    const ambiguous = lookup({ xs: [1000, "1,000"], xKind: "number" });
-    expect(pointPredicates(s, { name: "1,000" }, ambiguous)).toEqual([]);
-    expect(pointPredicates(s, { name: "North" })).toEqual([]);
-    expect(pointPredicates(spec({ x: [{ agg: "count" }] }), { name: "x" }, lookup())).toEqual([]);
+    expect(pointPredicates(s, click("region", undefined))).toEqual([]);
+    expect(pointPredicates(s, click(null, "N"))).toEqual([]);
+    expect(pointPredicates(s, click("region", "N", { drilled: true }))).toEqual([]);
+    const dated = spec({ x: [{ field: "d", timeUnit: "day" }] });
+    expect(pointPredicates(dated, click("d", "not a date"))).toEqual([]);
   });
 });
 
-describe("which plots can filter", () => {
-  it("only plots whose x channel carries raw x values click-filter", () => {
+describe("which plots can click-filter", () => {
+  it("only plots whose x channel carries the raw x values", () => {
     expect(canClickFilter(spec({}, { plotType: "bar" }))).toBe(true);
     expect(canClickFilter(spec({}, { plotType: "pie" }))).toBe(true);
     expect(canClickFilter(spec({}, { plotType: "scatter" }))).toBe(false);
     expect(canClickFilter(spec({}, { plotType: "histogram" }))).toBe(false);
-  });
-
-  it("brush needs a horizontal x axis: not horizontal charts or other families", () => {
-    expect(canBrush(spec({}, { plotType: "bar" }))).toBe(true);
-    expect(canBrush(spec({}, { plotType: "horizontal_bar" }))).toBe(false);
-    expect(
-      canBrush(spec({}, { plotType: "bar", style: { orientation: "horizontal" } as never })),
-    ).toBe(false);
-    expect(canBrush(spec({}, { plotType: "scatter" }))).toBe(false);
   });
 });
 
@@ -167,38 +135,64 @@ describe("bucketBounds", () => {
   });
 });
 
-describe("brushPredicates", () => {
-  it("makes a numeric range, ordering reversed bounds", () => {
+const brushOf = (over: Partial<ChartBrush>): ChartBrush => ({
+  axis: "x",
+  kind: "category",
+  ranges: [],
+  categories: [],
+  cleared: false,
+  field: "region",
+  values: [],
+  ...over,
+});
+
+describe("brushPredicates (raw values from ChartView)", () => {
+  it("filters the brushed categories by their raw values (integers, blanks)", () => {
+    const s = spec({ x: [{ field: "year" }] });
+    const b = brushOf({
+      field: "year",
+      categories: ["999", "1,000", "(blank)"],
+      values: [999, 1000, null],
+    });
+    expect(brushPredicates(s, b)).toEqual([{ op: "in", field: "year", values: [999, 1000, null] }]);
+  });
+
+  it("makes a numeric range from a value axis", () => {
     const s = spec({ x: [{ field: "price" }] });
-    expect(brushPredicates(s, { min: 9, max: 3 })).toEqual([
+    expect(
+      brushPredicates(s, brushOf({ field: "price", kind: "value", ranges: [[3, 9]] })),
+    ).toEqual([
       { op: "range", field: "price", min: 3, max: 9, includeMin: true, includeMax: true },
+    ]);
+    expect(
+      brushPredicates(s, brushOf({ field: "price", kind: "log", ranges: [[1, 100]] })),
+    ).toEqual([
+      { op: "range", field: "price", min: 1, max: 100, includeMin: true, includeMax: true },
     ]);
   });
 
-  it("makes a date range for a time axis", () => {
-    const s = spec({ x: [{ field: "d", timeUnit: "day" }] });
-    const [p] = brushPredicates(s, { min: Date.UTC(2024, 0, 2), max: Date.UTC(2024, 0, 5) });
+  it("makes a date range from a time axis", () => {
+    const s = spec({ x: [{ field: "d" }] }, { plotType: "line" });
+    const [p] = brushPredicates(
+      s,
+      brushOf({ field: "d", kind: "time", ranges: [[Date.UTC(2024, 0, 2), Date.UTC(2024, 0, 5)]] }),
+    );
     expect(p).toMatchObject({
       op: "between_dates",
       min: "2024-01-02T00:00:00.000Z",
       max: "2024-01-05T00:00:00.000Z",
+      includeMax: true,
     });
   });
 
-  it("maps brushed category labels back to raw values (integers, blanks)", () => {
-    const s = spec({ x: [{ field: "year" }] });
-    const l = lookup({ xs: [999, 1000, 2020, null], xKind: "number" });
-    expect(brushPredicates(s, { categories: ["999", "1,000", "(blank)"] }, l)).toEqual([
-      { op: "in", field: "year", values: [999, 1000, null] },
-    ]);
-  });
-
-  it("turns brushed month categories into one half-open date range through the last bucket", () => {
+  it("turns brushed month buckets into one half-open range through the last bucket", () => {
     const s = spec({ x: [{ field: "d", timeUnit: "month" }] });
-    const months = [0, 1, 2, 3].map((m) => Date.UTC(2024, m, 1));
-    const l = lookup({ xs: months, xKind: "temporal", xFormat: "month" });
-    const labels = [1, 2].map((i) => categoryLabel(months[i], "temporal", "month"));
-    expect(brushPredicates(s, { categories: labels }, l)).toEqual([
+    const b = brushOf({
+      field: "d",
+      categories: ["Feb 2024", "Mar 2024"],
+      values: ["2024-02-01T00:00:00.000Z", "2024-03-01T00:00:00.000Z"],
+    });
+    expect(brushPredicates(s, b)).toEqual([
       {
         op: "between_dates",
         field: "d",
@@ -210,28 +204,66 @@ describe("brushPredicates", () => {
     ]);
   });
 
-  it("cancels when any brushed label cannot be mapped, and when empty", () => {
+  it("filters nothing when cleared, or when a brushed label has no value in the data", () => {
     const s = spec({ x: [{ field: "region" }] });
-    const l = lookup({ xs: ["N", "S"], xKind: "string" });
-    expect(brushPredicates(s, { categories: ["N", "Elsewhere"] }, l)).toEqual([]);
-    expect(brushPredicates(s, { categories: [] }, l)).toEqual([]);
-    expect(brushPredicates(s, { categories: ["N"] })).toEqual([]);
+    expect(brushPredicates(s, brushOf({ cleared: true }))).toEqual([]);
+    expect(brushPredicates(s, brushOf({ categories: [], values: [] }))).toEqual([]);
+    expect(brushPredicates(s, brushOf({ categories: ["N", "Ghost"], values: ["N"] }))).toEqual([]);
+    expect(brushPredicates(s, brushOf({ field: null, categories: ["N"], values: ["N"] }))).toEqual(
+      [],
+    );
+  });
+
+  it("ignores a band along the measure axis (horizontal charts) and several value ranges", () => {
+    const s = spec({ x: [{ field: "region" }] });
+    expect(brushPredicates(s, brushOf({ axis: "y", kind: "value", ranges: [[1, 2]] }))).toEqual([]);
+    expect(
+      brushPredicates(
+        s,
+        brushOf({
+          kind: "value",
+          ranges: [
+            [1, 2],
+            [5, 6],
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("a horizontal chart's category brush (axis y) still filters its categories", () => {
+    const s = spec({ x: [{ field: "region" }] });
+    expect(brushPredicates(s, brushOf({ axis: "y", categories: ["N"], values: ["N"] }))).toEqual([
+      { op: "in", field: "region", values: ["N"] },
+    ]);
   });
 });
 
-describe("legendPredicates", () => {
-  const s = spec({ x: [{ field: "region" }], color: [{ field: "channel" }] });
-  const l = lookup({ colors: ["web", "store", "app"], colorKind: "string" });
+const legendOf = (over: Partial<ChartLegendChange>): ChartLegendChange => ({
+  toggled: "app",
+  selected: {},
+  shown: ["web", "store"],
+  hidden: ["app"],
+  field: "channel",
+  shownValues: ["web", "store"],
+  hiddenValues: ["app"],
+  ...over,
+});
+
+describe("legendPredicates (raw values from ChartView)", () => {
   it("keeps only the groups still on, as raw values", () => {
-    expect(legendPredicates(s, { web: true, store: false, app: true }, l)).toEqual([
-      { op: "in", field: "channel", values: ["web", "app"] },
+    expect(legendPredicates(legendOf({}))).toEqual([
+      { op: "in", field: "channel", values: ["web", "store"] },
+    ]);
+    expect(legendPredicates(legendOf({ shownValues: [2, null] }))).toEqual([
+      { op: "in", field: "channel", values: [2, null] },
     ]);
   });
-  it("does not filter when everything (or nothing) is on, or a group is unknown", () => {
-    expect(legendPredicates(s, { web: true, store: true }, l)).toEqual([]);
-    expect(legendPredicates(s, { web: false, store: false }, l)).toEqual([]);
-    expect(legendPredicates(s, { web: true, ghost: true, store: false }, l)).toEqual([]);
-    expect(legendPredicates(s, { web: true, store: false })).toEqual([]);
+
+  it("does not filter when every group is on, none maps to data, or there is no colour field", () => {
+    expect(legendPredicates(legendOf({ hidden: [], hiddenValues: [] }))).toEqual([]);
+    expect(legendPredicates(legendOf({ shownValues: [] }))).toEqual([]);
+    expect(legendPredicates(legendOf({ field: null }))).toEqual([]);
   });
 });
 
