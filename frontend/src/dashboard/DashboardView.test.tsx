@@ -1023,6 +1023,81 @@ describe("saving the layout", () => {
   });
 });
 
+describe("moving widgets that share the grid with the keyboard", () => {
+  function renderPair(second: { x: number; y: number }) {
+    const base = dashboardWith(["a", "b"]);
+    const tab = base.tabs?.[0];
+    if (!tab) throw new Error("no tab");
+    let dash: Dashboard = {
+      ...base,
+      tabs: [
+        {
+          ...tab,
+          items: (tab.items ?? []).map((it, i) =>
+            i === 0 ? { ...it, x: 0, y: 0 } : { ...it, x: second.x, y: second.y },
+          ),
+        },
+      ],
+    };
+    const ui = () =>
+      wrap(
+        <DashboardView
+          dashboard={dash}
+          charts={[spec("a"), spec("b")]}
+          pipelines={[]}
+          mode="edit"
+          onChange={(edit) => {
+            dash = edit(dash);
+            view.rerender(ui());
+          }}
+        />,
+      );
+    const view = render(ui());
+    const items = () => dash.tabs?.[0]?.items?.map((i) => [i.i, i.x, i.y]);
+    const handles = () => screen.getAllByRole("button", { name: /Move or resize/ });
+    const press = (index: number, key: string, shiftKey = false) =>
+      fireEvent.keyDown(handles()[index] as HTMLElement, { key, shiftKey });
+    return { items, press };
+  }
+
+  it("swaps two stacked widgets by stepping one past the other", () => {
+    const { items, press } = renderPair({ x: 0, y: 4 });
+    press(0, " ");
+    press(0, "ArrowDown");
+    expect(items()).toEqual([
+      ["w-a", 0, 4],
+      ["w-b", 0, 0],
+    ]);
+  });
+
+  it("pushes the neighbour a step lands on, and Escape puts both back", () => {
+    const { items, press } = renderPair({ x: 6, y: 0 });
+    press(0, " ");
+    for (let i = 0; i < 6; i++) press(0, "ArrowRight");
+    // a is now over b's column: b gives way (down), not a
+    expect(items()).toEqual([
+      ["w-a", 6, 0],
+      ["w-b", 6, 4],
+    ]);
+    press(0, "Escape");
+    expect(items()).toEqual([
+      ["w-a", 0, 0],
+      ["w-b", 6, 0],
+    ]);
+  });
+
+  it("says resize when a resize cannot go further, and move when a move cannot", () => {
+    const { press } = renderPair({ x: 6, y: 0 });
+    press(0, " ");
+    for (let i = 0; i < 8; i++) press(0, "ArrowLeft", true); // shrink to the minimum
+    expect(screen.getAllByRole("status", { name: "" })[0]?.textContent).toMatch(
+      /resized any further/,
+    );
+    press(0, "ArrowLeft"); // already at the left edge
+    expect(screen.getAllByRole("status", { name: "" })[0]?.textContent).toMatch(/move any further/);
+  });
+});
+
 describe("tabs and embed", () => {
   it("switches tabs without touching the cross-filter state", () => {
     const d = dashboardWith(["a"]);

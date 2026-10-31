@@ -4,7 +4,14 @@ import { Responsive, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { cn } from "../components/ui/cn";
 import { useDashboardEnv } from "./env";
-import { GRID_COLUMNS, type GridPosition, isArrowKey, nudge, settleLayout } from "./model";
+import {
+  GRID_COLUMNS,
+  type GridPosition,
+  isArrowKey,
+  type Step,
+  type StepKey,
+  stepLayout,
+} from "./model";
 import type { DashboardTab, LayoutItem } from "./types";
 import { ChartWidget } from "./widgets/ChartWidget";
 import { FilterWidget } from "./widgets/FilterWidget";
@@ -51,18 +58,21 @@ function WidgetBody({ item }: { item: LayoutItem }) {
   }
 }
 
-const samePosition = (a: GridPosition, b: GridPosition) =>
-  a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
-
 function WidgetFrame({
   item,
   onRemove,
-  onMove,
+  keyboard,
 }: {
   item: LayoutItem;
   onRemove?: () => void;
-  /** Applies a step and returns where the widget ends up once the grid has settled the layout. */
-  onMove?: (pos: GridPosition) => GridPosition;
+  /** What the keyboard needs from the grid; absent when the dashboard cannot be edited. */
+  keyboard?: {
+    /** The whole layout as it is now, to put back on Escape. */
+    snapshot: () => GridPosition[];
+    /** One step from `from`, applied; null when nothing would change. */
+    step: (from: GridPosition, key: StepKey, resize: boolean) => Step | null;
+    restore: (layout: GridPosition[]) => void;
+  };
 }) {
   const env = useDashboardEnv();
   const help = useId();
@@ -70,7 +80,8 @@ function WidgetFrame({
   // Space or Enter puts it down, Escape puts it back where it was. The same edits as dragging.
   const [grabbed, setGrabbed] = useState(false);
   const [said, setSaid] = useState("");
-  const origin = useRef<GridPosition | null>(null);
+  // The whole layout at pick-up, so Escape puts back the neighbours as well as this widget.
+  const origin = useRef<GridPosition[] | null>(null);
   // Where the widget is while it is picked up. The item prop lags a render behind, and a key
   // pressed in between would otherwise start from the old position and undo the last step.
   const live = useRef<GridPosition | null>(null);
@@ -85,7 +96,7 @@ function WidgetFrame({
         setSaid(`Dropped at ${whereIs(live.current ?? here())}.`);
         live.current = null;
       } else {
-        origin.current = here();
+        origin.current = keyboard?.snapshot() ?? null;
         live.current = here();
         setGrabbed(true);
         setSaid(
@@ -95,22 +106,25 @@ function WidgetFrame({
     } else if (grabbed && event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      if (origin.current) onMove?.(origin.current);
+      if (origin.current) keyboard?.restore(origin.current);
+      origin.current = null;
       live.current = null;
       setGrabbed(false);
       setSaid("Cancelled. Back where it was.");
     } else if (grabbed && isArrowKey(event.key)) {
       event.preventDefault();
-      const next = nudge(live.current ?? here(), event.key, event.shiftKey);
-      const before = live.current ?? here();
-      const settled = next ? (onMove?.(next) ?? next) : null;
-      if (settled && !samePosition(settled, before)) {
+      const step = keyboard?.step(live.current ?? here(), event.key, event.shiftKey) ?? null;
+      if (step) {
         // Follow where the grid really put it (it compacts upwards and pushes neighbours), so the
         // next key builds on that and the announcement is true.
-        live.current = settled;
-        setSaid(whereIs(settled));
+        live.current = step.position;
+        setSaid(whereIs(step.position));
       } else {
-        setSaid("It can't move any further that way.");
+        setSaid(
+          event.shiftKey
+            ? "It can't be resized any further that way."
+            : "It can't move any further that way.",
+        );
       }
     }
   };
@@ -182,6 +196,8 @@ export function DashboardGrid({ tab, onLayout, onRemove }: Props) {
   const cols = useRef<number>(GRID_COLUMNS);
 
   const items = tab.items ?? [];
+  const positions = (): GridPosition[] =>
+    items.map((it) => ({ i: it.i, x: it.x, y: it.y, w: it.w, h: it.h }));
   const layout = useMemo(
     () => items.map(({ i, x, y, w, h }) => ({ i, x, y, w, h, minW: 2, minH: 2 })),
     [items],
@@ -221,15 +237,18 @@ export function DashboardGrid({ tab, onLayout, onRemove }: Props) {
               <WidgetFrame
                 item={item}
                 onRemove={onRemove ? () => onRemove(item.i) : undefined}
-                onMove={
+                keyboard={
                   editing && onLayout
-                    ? (pos) => {
-                        const settled = settleLayout(
-                          items.map((it) => ({ i: it.i, x: it.x, y: it.y, w: it.w, h: it.h })),
-                          pos,
-                        );
-                        onLayout(settled);
-                        return settled.find((p) => p.i === pos.i) ?? pos;
+                    ? {
+                        snapshot: () => positions(),
+                        step: (from, key, resize) => {
+                          // The widget's own place is the live one; the others come from the doc.
+                          const layout = positions().map((p) => (p.i === from.i ? from : p));
+                          const step = stepLayout(layout, from.i, key, resize);
+                          if (step) onLayout(step.layout);
+                          return step;
+                        },
+                        restore: (layout) => onLayout(layout),
                       }
                     : undefined
                 }
