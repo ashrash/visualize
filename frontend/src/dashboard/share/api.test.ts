@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getSharedView, iframeSnippet, linkUrl } from "./api";
+import { getSharedView, iframeSnippet, linkUrl, revokeShare } from "./api";
 
 describe("share api helpers", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -42,5 +42,28 @@ describe("share api helpers", () => {
       status: 404,
       message: "share link not found",
     });
+  });
+
+  it("revoking succeeds on the 204 with no body", async () => {
+    const calls: Request[] = [];
+    vi.stubGlobal("fetch", async (request: Request) => {
+      calls.push(request);
+      return new Response(null, { status: 204 });
+    });
+    await expect(revokeShare("tok")).resolves.toBeUndefined();
+    expect(calls[0]?.method).toBe("DELETE");
+    expect(new URL(calls[0]?.url ?? "").pathname).toBe("/api/share/tok");
+  });
+
+  it("revoking still reports a real failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ detail: "share link not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    await expect(revokeShare("gone")).rejects.toMatchObject({ status: 404 });
   });
 });

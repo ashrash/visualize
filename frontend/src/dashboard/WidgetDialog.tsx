@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { type RefObject, useState } from "react";
 import type { Encoding } from "../api/types";
 import { FORMAT_PRESETS } from "../charts";
 import { Button } from "../components/ui/button";
@@ -42,13 +42,24 @@ interface Props {
   kind: NewWidgetKind | null;
   onClose: () => void;
   onAdd: (value: NewWidget) => void;
+  /** Where focus goes when the dialog closes (it opens from a menu item, not from a trigger). */
+  returnFocusTo?: RefObject<HTMLElement | null>;
 }
 
-export function WidgetDialog({ kind, onClose, onAdd }: Props) {
+export function WidgetDialog({ kind, onClose, onAdd, returnFocusTo }: Props) {
   return (
     <Dialog open={kind !== null} onOpenChange={(open) => !open && onClose()}>
       {kind ? (
-        <DialogContent title={TITLES[kind]}>
+        <DialogContent
+          title={TITLES[kind]}
+          onCloseAutoFocus={(event) => {
+            // Radix would restore focus to the menu item that opened the dialog, which is gone.
+            if (returnFocusTo?.current) {
+              event.preventDefault();
+              returnFocusTo.current.focus();
+            }
+          }}
+        >
           <WidgetForm
             kind={kind}
             onSubmit={(value) => {
@@ -357,7 +368,12 @@ function WidgetForm({ kind, onSubmit }: { kind: NewWidgetKind; onSubmit: (v: New
         <DialogClose asChild>
           <Button type="button">Cancel</Button>
         </DialogClose>
-        <Button type="submit" variant="primary" disabled={!valid}>
+        <Button
+          type="submit"
+          variant="primary"
+          className="hover:opacity-100 hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]"
+          disabled={!valid}
+        >
           Add
         </Button>
       </div>
