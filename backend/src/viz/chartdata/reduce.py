@@ -189,19 +189,25 @@ _INT_BUCKET_LIMIT = 2**62
 
 def _literal_bucket(position: exp.Expr, lo: float, hi: float, buckets: int) -> exp.Expr:
     """The pixel column (0..buckets-1) of `position` for a known extent; NULL for NULL or
-    non-finite positions, so those rows land in a group of their own that is dropped."""
+    non-finite positions, so those rows land in a group of their own that is dropped.
+
+    Every branch needs the explicit `isfinite` guard: DuckDB's `least()` skips NULL
+    arguments (`least(NULL, 49)` is 49), so without it a NULL x (an empty date cell, an
+    infinite timestamp) would be bucketed into the last pixel column as a fake point.
+    """
     if hi <= lo:  # one distinct x: every finite position is in column 0
-        return exp.Case(ifs=[exp.If(this=fn("isfinite", position.copy()), true=lit(0))])
-    if isinstance(lo, int) and isinstance(hi, int) and (hi - lo) * buckets < _INT_BUCKET_LIMIT:
-        # Epoch microseconds: exact integer math, and NULL (infinite timestamps) stays NULL.
+        index: exp.Expr = lit(0)
+    elif isinstance(lo, int) and isinstance(hi, int) and (hi - lo) * buckets < _INT_BUCKET_LIMIT:
+        # Epoch microseconds: exact integer math.
         offset = exp.Paren(this=exp.Sub(this=position.copy(), expression=lit(lo)))
         quotient = exp.IntDiv(
             this=exp.Mul(this=offset, expression=lit(buckets)), expression=lit(hi - lo)
         )
-        return fn("least", quotient, lit(buckets - 1))
-    offset = exp.Paren(this=exp.Sub(this=position.copy(), expression=lit(float(lo))))
-    scaled = exp.Mul(this=offset, expression=lit(buckets / (float(hi) - float(lo))))
-    index = fn("least", fn("floor", scaled), lit(float(buckets - 1)))
+        index = fn("least", quotient, lit(buckets - 1))
+    else:
+        offset = exp.Paren(this=exp.Sub(this=position.copy(), expression=lit(float(lo))))
+        scaled = exp.Mul(this=offset, expression=lit(buckets / (float(hi) - float(lo))))
+        index = fn("least", fn("floor", scaled), lit(float(buckets - 1)))
     return exp.Case(ifs=[exp.If(this=fn("isfinite", position.copy()), true=index)])
 
 

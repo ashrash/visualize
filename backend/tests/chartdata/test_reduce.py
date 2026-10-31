@@ -225,6 +225,54 @@ def _temporal_relation(engine: Engine, path: Path, select: str) -> Relation:
     return Relation(engine, parquet_source(path), None, columns, None, "test@v1")
 
 
+@pytest.mark.parametrize("ys", [["y0"], ["y0", "y1"]])
+def test_m4_integer_path_drops_null_x(engine: Engine, tmp_path: Path, ys: list[str]) -> None:
+    # Regression: DuckDB's least() skips NULLs, so an unguarded integer bucket put the NULL-x
+    # group (here 40 empty date cells summing to 4000, far above every real y) into the last
+    # pixel column as a fake spike, and in the whole-row (several measures) shape it also
+    # displaced that column's real extremes before being filtered out.
+    rel = _temporal_relation(
+        engine,
+        tmp_path / "nullx.parquet",
+        "SELECT TIMESTAMP '2024-01-01' + INTERVAL (i) SECOND AS x, (i % 97)::DOUBLE AS y0,"
+        " (i % 89)::DOUBLE AS y1 FROM range(5000) t(i)"
+        " UNION ALL SELECT NULL, 100.0, 100.0 FROM range(40)",
+    )
+    grouped = rel.select(col("x"), *(alias(fn("sum", col(y)), y) for y in ys)).group_by(col("x"))
+    extent_row = rel.arrow(m4_extent_query(rel, col("x"), ColumnSemantic.TEMPORAL)).to_pylist()[0]
+    assert extent_row["n"] == 5040
+    extent = m4_extent(extent_row)
+    assert extent is not None and all(isinstance(v, int) for v in extent)  # integer path
+    buckets = 50
+    out = rel.arrow(
+        m4_query(
+            grouped,
+            x="x",
+            x_position=bucket_position(col("x"), ColumnSemantic.TEMPORAL),
+            ys=ys,
+            series=None,
+            buckets=buckets,
+            extent=extent,
+        )
+    ).to_pylist()
+    assert {r["__viz_groups"] for r in out} == {5001}  # the NULL-x group still counts
+    assert all(r["x"] is not None for r in out)
+    assert all(r[y] != 4000.0 for r in out for y in ys)
+    seconds = np.arange(5000)
+    values = {"y0": seconds % 97, "y1": seconds % 89}
+    lo, hi = extent
+    bucket = np.minimum(seconds * 1_000_000 * buckets // (hi - lo), buckets - 1)
+    picked = {int((r["x"] - datetime(2024, 1, 1)).total_seconds()): r for r in out}  # type: ignore[operator]
+    for s, r in picked.items():  # every point is a real row
+        assert all(r[y] == values[y][s] for y in ys)
+    for b in (0, buckets - 1):  # every column's real extremes survive, the last one included
+        idx = np.flatnonzero(bucket == b)
+        assert {int(idx[0]), int(idx[-1])} <= set(picked)
+        for y in ys:
+            got = [picked[s][y] for s in picked if bucket[s] == b]
+            assert values[y][idx].max() in got and values[y][idx].min() in got
+
+
 def test_m4_temporal_integer_buckets(engine: Engine, tmp_path: Path) -> None:
     # Epoch-microsecond integer buckets; a NULL x and an infinite timestamp are left out (and
     # don't break the extent), but still count as groups.

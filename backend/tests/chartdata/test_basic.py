@@ -225,6 +225,26 @@ def test_raw_line_over_cap_queries(
     assert len(seen) == 2  # the extent (with the row count) and M4
 
 
+@pytest.mark.parametrize("cap", [1000])
+def test_raw_line_over_cap_ignores_empty_dates(upload: Any, chart: Any, make_spec: Any) -> None:
+    # Regression: 40 rows with an empty date cell (v=100 each, summing to 4000) must not
+    # come back as a fake 4000 spike on some real timestamp (the M4 extent path).
+    csv = series(3000) + "".join(",g0,100\n" for _ in range(40))
+    ds = upload(csv)
+    body = {
+        "spec": make_spec(
+            ds["id"], "line", encodings={"x": [{"field": "ts"}], "y": [{"field": "v"}]}
+        ),
+        "viewport": {"widthPx": 100},
+    }
+    table, meta = chart(body)
+    assert meta["method"] == "m4+minmaxlttb" and meta["rowsMatched"] == 3040
+    values = table.column("y0").to_pylist()
+    assert max(values) < 1200  # the real spike (~1000 + sin) survives; 4000 must not appear
+    assert max(values) > 1000
+    assert None not in table.column("x").to_pylist()
+
+
 def test_x_range_gives_detail_and_keeps_domain(upload: Any, chart: Any, make_spec: Any) -> None:
     ds = upload(series(3000))
     base = {
