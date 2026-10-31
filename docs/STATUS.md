@@ -226,6 +226,25 @@ tracked below for Wave 4, not blockers.
   change when only `params.level`/`resolution` change, so switching a choropleth's map resolution
   leaves the chart blank after the new map loads. Needs readiness keyed on the prepare inputs
   (e.g. a `preparedFor: {key, token}` bumped on every resolve), not the registry key.
+- 2026-10-31: `stats` merged (MVP §5, the rest beyond Wave 1's shared kernels and describe):
+  correlation, linear/multiple regression, t-tests, ANOVA, chi-square, rank tests, distribution
+  fitting, outliers, confidence intervals. Two xhigh review rounds ("wrong statistics still look
+  plausible" per the agent's own brief). Round 1 found 2 blockers, both independently
+  reproduced: bootstrap CIs for SD/extreme quantiles silently under-covered (0.665 actual vs a
+  claimed 0.95 in the >5000-value subsample-and-rescale path); NaN as a group/factor key caused
+  wrong results or 500s (wrong chi-square tables, ANOVA `KeyError`, misleading Kruskal 422s, and
+  the same latent bug in Wave 1's already-merged `describe()`). Both fixed and re-verified with
+  real coverage simulations: the subsample bootstrap was replaced with exact methods (order-
+  statistic CIs for quantiles/median, an asymptotic delta-method CI for SD using exact SQL
+  kurtosis, bootstrap kept for smaller inputs), and `key_expr` now maps NaN/+-inf to NULL
+  everywhere. Round 2 re-review found one more real issue in what looked like a benign leftover
+  (`cap_groups` counted NaN/+inf as separate groups during capping even though downstream merges
+  them, wasting cap slots and occasionally misreporting a group's size) — fixed directly by the
+  lead rather than a third agent round. pytest 838 passed/6 skipped, ruff/mypy clean.
+- 2026-10-31: stats' response/request models moved from `backend/src/viz/stats/models.py` into
+  `backend/src/viz/contracts/stats.py` (additive, mechanical; the stats agent couldn't touch
+  `contracts/` itself). Now in OpenAPI and the generated TypeScript types — unblocks ui-data's
+  `statsTests`-flagged UI follow-up.
 
 ## MVP.md
 
@@ -293,16 +312,16 @@ Tracked per plot under Plots.md below.
 | Mean, median and mode | stats · ui-data | done | Backend: describe (exact, SQL; modes with tie warning). Stats panel UI: source/field/group picker, result table. |
 | Standard deviation and variance | stats · ui-data | done | Backend: describe (overflow-safe moments). Stats panel UI: result table. |
 | Percentiles and quartiles | stats · ui-data | done | Backend: describe + quantiles kernel (exact, R type 7). Stats panel UI: percentile input, result table. |
-| Correlation analysis | stats · ui-data | todo |  |
-| Linear regression | stats · ui-data | partial | Kernel: OLS fit with CI band (used by trendlines). Endpoint + UI: Wave 2. |
-| Multiple regression | stats · ui-data | todo |  |
-| Hypothesis testing | stats · ui-data | todo |  |
-| T-tests | stats · ui-data | todo |  |
-| ANOVA | stats · ui-data | todo |  |
-| Chi-square tests | stats · ui-data | todo |  |
-| Distribution fitting | stats · ui-data | todo |  |
-| Outlier detection | stats · ui-data | todo |  |
-| Confidence intervals | stats · ui-data | partial | Kernel: bootstrap CIs; fit bands. Endpoint + UI: Wave 2. |
+| Correlation analysis | stats · ui-data | partial | Backend done: Pearson exact in SQL, Spearman/Kendall in SciPy, Fisher-z/Bonett-Wright/Fieller CIs. UI gated behind `statsTests` pending ui-data follow-up (see Wave 2 log). |
+| Linear regression | stats · ui-data | partial | Backend done: OLS (sampled to 1M), HC3 robust SEs, VIF/GVIF, Breusch-Pagan, residual-normality checks, NIST-verified. UI gated behind `statsTests`. |
+| Multiple regression | stats · ui-data | partial | Same endpoint/backend as linear regression (numeric/boolean/date/categorical predictors). UI gated behind `statsTests`. |
+| Hypothesis testing | stats · ui-data | partial | Backend done: t-tests, Mann-Whitney, Wilcoxon, Kruskal-Wallis, with assumption checks (Shapiro-Wilk, Brown-Forsythe Levene) as warnings. UI gated behind `statsTests`. |
+| T-tests | stats · ui-data | partial | Backend done: one-sample, Welch, Student, paired; every alternative hypothesis; CIs; Cohen's d. UI gated behind `statsTests`. |
+| ANOVA | stats · ui-data | partial | Backend done: one-way (eta²/omega²/Welch/Tukey HSD) and two-way (Type I/II/III SS), exact via per-cell weighted least squares. UI gated behind `statsTests`. |
+| Chi-square tests | stats · ui-data | partial | Backend done: independence and goodness-of-fit, exact SQL counts, Yates' correction, Cramer's V, adjusted residuals, Fisher's exact + odds ratio for 2x2. UI gated behind `statsTests`. |
+| Distribution fitting | stats · ui-data | partial | Backend done: SciPy MLE fits of 10 distributions on a 100k sample, ranked by AIC/Akaike weights/BIC/KS, with a density histogram and fitted curves for plotting. UI gated behind `statsTests`. |
+| Outlier detection | stats · ui-data | partial | Backend done: IQR fences, z-scores, MAD, exact in SQL, per field and optionally per group. UI gated behind `statsTests`. |
+| Confidence intervals | stats · ui-data | partial | Backend done: exact t intervals; exact distribution-free order-statistic intervals for median/quantiles; an asymptotic delta-method interval for SD; bootstrap (BCa/percentile) reserved for smaller inputs, independently coverage-simulated after a review found the original subsample approach under-covered. UI gated behind `statsTests`. |
 | Descriptive statistics | stats · ui-data | done | Backend: `/api/stats/describe` (grouped, filtered, percentiles, skew/kurtosis). 10 fields with modes 2.6-3.9 s at 10M depending on conditions (Wave 4 watch item); grouped 7-8 s (Wave 4). Stats panel UI: source (dataset/pipeline) picker, field/group-by checklists, result table, "plot this" shortcut to a histogram/box chart. |
 
 ### 6. Interactivity
