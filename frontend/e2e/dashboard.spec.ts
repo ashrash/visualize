@@ -191,8 +191,15 @@ test.describe("dashboards", () => {
         ]),
       ],
     );
+    // KNOWN BUG (ui-dashboard): about 1 run in 3 a keyboard move/resize ends in React error #185
+    // (maximum update depth) and the page goes white; the position never changes.
+    const crashes: string[] = [];
+    page.on("pageerror", (e) => crashes.push(e.message.slice(0, 200)));
     await openDashboards(page);
     await page.getByRole("button", { name: "Edit", exact: true }).click();
+    // let the chart finish loading and the grid settle before picking the widget up
+    await expect(page.locator("canvas").first()).toBeVisible();
+    await page.waitForTimeout(1000);
     const handle = page.locator(".dash-drag-handle").first();
     await handle.focus();
     await expect(handle).toBeFocused();
@@ -201,6 +208,8 @@ test.describe("dashboards", () => {
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("Shift+ArrowRight");
     await page.keyboard.press("Space");
+    await page.waitForTimeout(500);
+    expect(crashes, "the page threw while moving or resizing with the keyboard").toEqual([]);
     // the grid animates a move (200 ms), so poll rather than read the box at once
     await expect
       .poll(async () => (await page.locator(".react-grid-item").first().boundingBox())?.x ?? 0)
@@ -655,7 +664,11 @@ test.describe("dashboards", () => {
     const dialog = page.getByRole("dialog", { name: /Share "Revocable"/ });
     await dialog.getByRole("button", { name: "Create link" }).click();
     const shareUrl = await dialog.getByRole("textbox", { name: "Share URL" }).inputValue();
+    const revoked = page.waitForResponse(
+      (r) => r.request().method() === "DELETE" && r.url().includes("/api/share/"),
+    );
     await dialog.getByRole("button", { name: "Revoke", exact: true }).click();
+    expect((await revoked).status()).toBe(204);
 
     const visitor = await browser.newContext();
     try {

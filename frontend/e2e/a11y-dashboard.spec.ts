@@ -302,10 +302,20 @@ test.describe("dashboard landmarks, titles and focus", () => {
       "Remove Units by region",
       "Remove Total units",
     ];
+    // Walk the real tab order from the top of the page and record what each stop is called
+    // (.focus() alone would also pass for a tabIndex=-1 element).
+    await page.locator("body").click({ position: { x: 1, y: 1 } });
+    const seen = new Set<string>();
+    for (let i = 0; i < 80; i++) {
+      await page.keyboard.press("Tab");
+      const label = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        return (el?.getAttribute("aria-label") ?? el?.textContent ?? "").trim();
+      });
+      seen.add(label);
+    }
     for (const name of wanted) {
-      const control = page.getByRole("button", { name, exact: true });
-      await control.first().focus();
-      await expect(control.first(), `${name} can take focus`).toBeFocused();
+      expect([...seen], `${name} is in the tab order`).toContain(name);
     }
   });
 });
