@@ -770,6 +770,32 @@ the pre-existing `Plots.md`/`Next.md` uncommitted-edit question still awaiting t
     CI run on the pushed commit is green on both OSes (the lead can't check Actions status directly
     — `gh` isn't authenticated in this environment, only git-over-SSH — so this needs the user to
     either check `github.com/ashrash/visualize/actions` or run `gh auth login`).
+- 2026-10-31: **`qa`'s quiet-machine re-measurement confirms Wave 4's perf exit criteria are met**
+  (4+ full `scripts/bench.py` runs, 10M-row fixture, Ryzen 7 9800X3D/8 cores/~18GB free/~15%
+  background load): 25 pass, 0 fail, 2 known failures. Two items pass with thin margins, called
+  out explicitly rather than quietly tracked: the M4 raw-timestamp line chart (p50 260-300ms
+  against the 300ms budget — essentially no headroom) and the first cold sorted grid page
+  (130-160ms against the 150ms budget — occasionally a hair over, tracked with a 250ms bench
+  ceiling). Neither is being chased further right now; both are plausible future targets if real
+  usage shows they matter. `scripts/bench.py` updated accordingly (lead applied review nits):
+  removed "filtered range, deep offset, cold" from known-issues (reliably passes at 48-60ms);
+  "sorted, deep offset, cold" ceiling settled at 750ms (data-core's requested 650ms left too
+  little headroom above the measured 405-528ms max); "search, free text" ceiling at 300ms; fixed
+  the payload-cap scatter fixture (`lat`/`lon` get the geo semantic and are rejected for x/y, now
+  `unit_price` vs `score`); added tracked rows for the M4 line case and grouped describe (the
+  latter now checking response correctness — per-group summaries, non-null modes, not sampled —
+  the same way the ungrouped case already does). `docs/STATUS.md`'s MVP §1 and §5 rows above
+  updated with these final numbers, replacing the earlier under-load figures.
+
+**Wave 4 is now complete**: every originally-dispatched perf item is fixed and confirmed on a
+quiet machine, the wheel/Docker packaging is verified end to end, e2e and accessibility coverage
+exists for the Wave 3 dashboard surface (with every bug it found fixed), and the project has a
+real CI pipeline running on both Windows and macOS for the first time, with its first 3 flakes
+already found and fixed. Open items, none blocking: confirming the live GitHub Actions run is
+green (needs the user to check, since `gh` isn't authenticated here); real macOS *smoke-test*
+verification specifically (CI covers automated tests; a manual `uv run viz serve` smoke pass on an
+actual Mac is still unconfirmed); and the pre-existing `Plots.md`/`Next.md` uncommitted-edit
+question, still awaiting the user.
 
 ## MVP.md
 
@@ -782,7 +808,7 @@ the pre-existing `Plots.md`/`Next.md` uncommitted-edit question still awaiting t
 | JSON import | data-core · ui-data | partial | Backend done (array/NDJSON, nested-JSON hint). Not exercised in the UI yet. |
 | Data preview | data-core · ui-data | partial | Backend done: rows with sort/filter/search, values, materialized views for deep pages. UI: server sort/filter/search, filtered counts, columns menu. |
 | Data refresh | data-core · ui-data | partial | Backend done (new version, cache invalidation). UI: dataset menu refresh (verified against the backend). |
-| Large dataset handling | data-core · ui-data | partial | Jobs with SSE + cancel, background DuckDB instance, import from path. 10M rows: import 5.0 s, pages ~20 ms. First sorted page ~190-340 ms cold (budget 150 ms). Cold deep pages before their view is built: ~1.8-2.7 s sorted, ~0.6-0.7 s filtered range (Wave 4). Free-text search ~620-660 ms (Wave 4 search pass). |
+| Large dataset handling | data-core · ui-data | partial | Jobs with SSE + cancel, background DuckDB instance, import from path. 10M rows, quiet machine (Wave 4 final numbers): import 4.9-6.3 s, pages ~15-20 ms. First sorted page ~130-160 ms cold (budget 150 ms, thin margin, tracked with a 250 ms bench ceiling). Cold deep pages before their view is built: ~0.4-0.55 s sorted (tracked, ceiling 0.75 s), ~0.05-0.06 s filtered range (meets budget). Free-text search ~0.15-0.18 s (meets budget; up to ~0.3 s seen, tracked with a 0.3 s ceiling). |
 
 ### 2. Data Preparation & Transformation
 
@@ -847,7 +873,7 @@ Tracked per plot under Plots.md below.
 | Distribution fitting | stats · ui-data | partial | SciPy MLE fits of 10 distributions on a 100k sample, ranked by AIC/Akaike weights/BIC/KS, with a density histogram and fitted curves for plotting. UI: AIC ranking table only, no fitted-curve plot yet (a natural "plot this" follow-up - the response already includes the density grid). |
 | Outlier detection | stats · ui-data | done | IQR fences, z-scores, MAD, exact in SQL, per field and optionally per group. UI: fence/outlier tables (the `include` extra-columns option defaults with no UI control yet). |
 | Confidence intervals | stats · ui-data | done | Exact t intervals; exact distribution-free order-statistic intervals for median/quantiles; an asymptotic delta-method interval for SD; bootstrap (BCa/percentile) reserved for smaller inputs, independently coverage-simulated after a review found the original subsample approach under-covered. UI: interval table. |
-| Descriptive statistics | stats · ui-data | done | Backend: `/api/stats/describe` (grouped, filtered, percentiles, skew/kurtosis). 10 fields with modes 2.6-3.9 s at 10M depending on conditions (Wave 4 watch item); grouped 7-8 s (Wave 4). Stats panel UI: source (dataset/pipeline) picker, field/group-by checklists, result table, "plot this" shortcut to a histogram/box chart. |
+| Descriptive statistics | stats · ui-data | done | Backend: `/api/stats/describe` (grouped, filtered, percentiles, skew/kurtosis). 10 fields with modes at 10M, quiet machine (Wave 4 final numbers): ungrouped p95 1.8-2.0 s (budget 3 s, met); grouped (9 fields + region) p50 3.8-4.0 s, max 4.2 s (no formal budget, tracked with a 5 s bench ceiling; can still OOM on a very memory-constrained machine, a separately tracked gap). Stats panel UI: source (dataset/pipeline) picker, field/group-by checklists, result table, "plot this" shortcut to a histogram/box chart. |
 
 ### 6. Interactivity
 
