@@ -14,7 +14,9 @@ Budgets measured (CLAUDE.md section 6, laptop, 10M rows x 20 columns):
   aggregated chart query p50 <= 300 ms | chart payload <= 50k marks and <= 5 MB
   6-chart dashboard refresh with one shared filter <= 1 s, idle and during a 10M-row import
   12 concurrent chart queries finish without errors or OOM
-  descriptive stats for 10 fields with modes <= 3 s (n/a until /api/stats/describe exists)
+  descriptive stats for 10 fields with modes <= 3 s, ungrouped (n/a until /api/stats/describe
+  exists); grouped describe and the M4 raw-timestamp line chart have no formal budget but are
+  tracked against their own ceilings (KNOWN_ISSUES / run_describe_grouped)
 
 Results marked "known" are failures already tracked in docs/STATUS.md; they are shown as FAIL
 (known) and do not change the exit code unless --strict is given.
@@ -76,22 +78,25 @@ class Known:
 
 KNOWN_ISSUES = {
     # Keys are the case labels used by Bench.cold_case / grid_case (10M-row numbers).
-    # "filtered range, deep offset, cold" met budget on a quiet machine (58-60 ms) and was removed.
-    # "sorted, cold" stays: two quiet runs measured 159-160 ms, a hair over the 150 ms budget.
+    # "filtered range, deep offset, cold" met budget on a quiet machine (48-60 ms) and was removed.
+    # "sorted, cold" stays: quiet-machine runs measured 130-160 ms, a hair over the 150 ms budget.
     "sorted, cold": Known(
         250,
-        f"{_LARGE_DATASETS}: first sorted page ~150-160 ms cold, quiet machine (ceiling 250 ms)",
+        f"{_LARGE_DATASETS}: first sorted page ~130-160 ms cold, quiet machine (ceiling 250 ms)",
     ),
+    # Tighter than the ~1.5x convention on purpose: data-core asked for this exact ceiling, and
+    # the quiet-machine max (405-528 ms) sits close under it. Not in CI, so a flake here just
+    # means a re-run, not a blocked pipeline.
     "sorted, deep offset, cold": Known(
-        650,
-        f"{_LARGE_DATASETS}: deep sorted page, view not yet built ~0.4-0.55 s (ceiling 0.65 s)",
+        750,
+        f"{_LARGE_DATASETS}: deep sorted page, view not yet built ~0.4-0.55 s (ceiling 0.75 s)",
     ),
     "search, free text": Known(
-        300, f"{_LARGE_DATASETS}: free-text search ~0.19-0.28 s (ceiling 0.3 s)"
+        300, f"{_LARGE_DATASETS}: free-text search ~0.15-0.18 s, up to ~0.3 s (ceiling 0.3 s)"
     ),
-    # Raw-timestamp M4 line: p50 280-300 ms on a quiet machine, i.e. right at the 300 ms budget.
+    # Raw-timestamp M4 line: p50 260-300 ms on a quiet machine, i.e. right at the 300 ms budget.
     "chart aggregate line: order_ts vs score (M4)": Known(
-        400, "transform: M4 over 10M raw timestamps, p50 ~280-300 ms quiet (ceiling 400 ms)"
+        400, "transform: M4 over 10M raw timestamps, p50 ~260-300 ms quiet (ceiling 400 ms)"
     ),
 }
 
@@ -709,7 +714,7 @@ class Bench:
             "sorted, deep offset, cold",
             self.page_body(sort=[{"field": "score", "descending": False}], offset=n // 2),
         )
-        # Free-text search over the text columns (tracked in STATUS as ~620-660 ms at 10M).
+        # Free-text search over the text columns (tracked in STATUS as ~150-180 ms at 10M quiet).
         self.cold_case("search, free text", self.page_body(search="Product 01"))
         # Let the background view builds those queries triggered finish before the next scenario.
         self.wait_for_view(
@@ -767,16 +772,21 @@ class Bench:
                 )
                 continue
             stats = summarize(times)
-            status, known = verdict(
-                stats["p50"] <= CHART_P50_BUDGET_MS, f"chart aggregate {case.label}", stats["p50"]
+            key = f"chart aggregate {case.label}"
+            status, known = verdict(stats["p50"] <= CHART_P50_BUDGET_MS, key, stats["p50"])
+            base_note = f"{sample_bytes / 1024:.1f} KiB, {cached}/{len(times)} cached"
+            note = (
+                f"{base_note}; {known_note(key, known, stats['p50'])}"
+                if status == "FAIL" and known_note(key, known, stats["p50"])
+                else base_note
             )
             self.add(
                 Result(
-                    f"chart aggregate {case.label}",
+                    key,
                     f"p50 <= {CHART_P50_BUDGET_MS:.0f} ms",
                     f"p50 {fmt_ms(stats['p50'])} (p95 {fmt_ms(stats['p95'])})",
                     status,
-                    note=f"{sample_bytes / 1024:.1f} KiB, {cached}/{len(times)} cached",
+                    note=note,
                     known=known,
                     data={**stats, "cached": cached, "bytes": sample_bytes},
                 )
@@ -1148,13 +1158,15 @@ class Bench:
 
     def run_describe_grouped(self, fields: list[str]) -> None:
         """Grouped describe has no CLAUDE.md budget (Wave 4 item); tracked against a 5 s ceiling."""
-        name = "describe 10 fields with modes, grouped by region"
+        name = "describe 9 fields with modes, grouped by region"
         ceiling_s = 5.0
+        grouped_fields = [f for f in fields if f != "region"]
         times = []
+        problems: list[str] = []
         for k in range(4):  # one warm-up, then 3 timed runs
             body = {
                 "source": {"kind": "dataset", "id": self.dataset_id},
-                "fields": [f for f in fields if f != "region"],
+                "fields": grouped_fields,
                 "groupBy": ["region"],
                 "includeMode": True,
                 "filters": [bust(self.rows)],
@@ -1173,16 +1185,27 @@ class Bench:
                     )
                 )
                 return
-            if k:
-                times.append(elapsed)
+            if k == 0:
+                continue  # warm-up
+            times.append(elapsed)
+            result = response.json()
+            summaries = result.get("values", {}).get("summaries", [])
+            grouped = [s for s in summaries if s.get("group") is not None]
+            if not grouped:
+                problems.append("no per-group summaries returned")
+            if any(s.get("distinct") is None for s in grouped):
+                problems.append("modes missing (distinct is null)")
+            if result.get("sampled"):
+                problems.append("result is sampled, expected exact")
         stats = summarize(times)
+        status = "PASS" if stats["max"] <= ceiling_s and not problems else "FAIL"
         self.add(
             Result(
                 name,
                 f"<= {ceiling_s:.0f} s (tracked, no formal budget)",
                 f"p50 {fmt_s(stats['p50'])} (max {fmt_s(stats['max'])}, n={len(times)})",
-                "PASS" if stats["max"] <= ceiling_s else "FAIL",
-                note="9 fields, grouped, modes on",
+                status,
+                note="; ".join(sorted(set(problems))) or "9 fields, grouped, modes on, exact",
                 data=stats,
             )
         )
