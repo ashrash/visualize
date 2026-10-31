@@ -1326,6 +1326,8 @@ export interface components {
             };
             /** Predicate */
             predicate?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"]) | null;
+            /** Control */
+            control?: ("date_range" | "dropdown" | "slider") | null;
         };
         /** DashboardTab */
         DashboardTab: {
@@ -2321,6 +2323,8 @@ export interface components {
             charts?: components["schemas"]["ChartSpec"][];
             /** Dashboards */
             dashboards?: components["schemas"]["Dashboard"][];
+            /** Globalfilters */
+            globalFilters?: components["schemas"]["DashboardFilter"][];
             /** Folders */
             folders?: components["schemas"]["Folder"][];
             /** Themes */
