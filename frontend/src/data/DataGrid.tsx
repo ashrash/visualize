@@ -16,11 +16,18 @@ import { type FetchPage, GridView, useGridHead } from "./GridView";
 import { useDebounced } from "./pipeline/usePipelineApi";
 import { useExport } from "./useExport";
 
-export function DataGrid({ dataset }: { dataset: Dataset }) {
+export function DataGrid({
+  dataset,
+  initialFilters,
+}: {
+  dataset: Dataset;
+  /** Filters applied on mount (e.g. a dashboard drill-through). */
+  initialFilters?: FilterMap;
+}) {
   const version = dataset.versions?.at(-1);
   const columns = useMemo(() => version?.columns ?? [], [version]);
   const [sort, setSort] = useState<SortKey[]>([]);
-  const [filters, setFilters] = useState<FilterMap>({});
+  const [filters, setFilters] = useState<FilterMap>(initialFilters ?? {});
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const [searchText, setSearchText] = useState("");
   const search = useDebounced(searchText.trim(), 300) || null;

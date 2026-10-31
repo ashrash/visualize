@@ -7,15 +7,27 @@ const DataScreen = lazy(() => import("./DataScreen"));
 const PipelinesView = lazy(() => import("./PipelinesView"));
 const ChartsView = lazy(() => import("./ChartsView"));
 const StatsView = lazy(() => import("./StatsView"));
+const DashboardPage = lazy(() => import("../dashboard/DashboardPage"));
+// Public read-only views: no app chrome.
+const SharePage = lazy(() =>
+  import("../dashboard/share/SharedViewPage").then((m) => ({ default: m.SharePage })),
+);
+const EmbedPage = lazy(() =>
+  import("../dashboard/share/SharedViewPage").then((m) => ({ default: m.EmbedPage })),
+);
 
 export function App() {
   return (
     <Routes>
+      <Route path="share/:token" element={<SharePage />} />
+      <Route path="embed/:token" element={<EmbedPage />} />
       <Route element={<AppShell />}>
         <Route index element={<Navigate to="/data" replace />} />
         <Route path="data" element={<DataScreen />} />
         <Route path="pipelines" element={<PipelinesView />} />
         <Route path="charts" element={<ChartsView />} />
+        <Route path="dashboards" element={<DashboardPage />} />
+        <Route path="dashboards/:id" element={<DashboardPage />} />
         <Route path="stats" element={<StatsView />} />
         <Route path="*" element={<Navigate to="/data" replace />} />
       </Route>
