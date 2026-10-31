@@ -1,4 +1,5 @@
-"""All API routes, mounted under /api. Every route depends on the current user."""
+"""All API routes, mounted under /api. Every route depends on the current user, except the two
+deliberate public exceptions documented in `viz.auth`: share/embed resolution and `/health`."""
 
 from __future__ import annotations
 

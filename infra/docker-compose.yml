@@ -9,6 +9,8 @@
 #   docker compose -f infra/docker-compose.yml down -v    # -v also drops the volumes
 #
 # The credentials below are throwaway defaults for a local test; override with POSTGRES_PASSWORD.
+# Keep it to URL-safe characters (no @, /, :, % or whitespace): it's interpolated directly into
+# VIZ_DATABASE_URL below without percent-encoding, so an unsafe character breaks the app's startup.
 
 name: visualize
 

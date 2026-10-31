@@ -26,30 +26,43 @@ COPY backend/src backend/src
 COPY --from=frontend /src/backend/src/viz/static backend/src/viz/static
 # Pinned third-party requirements (from uv.lock) are exported separately so the runtime stage
 # can install them in a cacheable layer, then add the wheel with --no-deps. `--extra postgres`
-# pulls psycopg into this same export: `uv pip install --no-deps` on the wheel later would
-# otherwise skip an extra's dependencies too, not just the base ones (confirmed: psycopg silently
-# missing from the image when the wheel install used `<wheel>[postgres]` with --no-deps).
-RUN uv export --frozen --no-dev --no-emit-project --no-hashes --extra postgres -o /requirements.txt \
+# pulls psycopg into this same export, since `uv pip install --no-deps` on the wheel disables
+# dependency resolution entirely, including an extra's own deps, not just the base package's
+# (confirmed: psycopg silently missing from the image when the wheel install instead used
+# `<wheel>[postgres]` with --no-deps). --locked (not --frozen) fails the build if uv.lock is
+# stale against pyproject.toml, instead of silently exporting an outdated requirement set.
+#
+# IMPORTANT: any new [project.optional-dependencies] extra the server needs at runtime (not just
+# a dev/test extra) must be added to --extra here too, or it silently won't be in the image.
+RUN uv export --locked --no-dev --no-emit-project --no-hashes --extra postgres -o /requirements.txt \
     && uv build --wheel --out-dir /dist \
     && python -c "import glob, zipfile; z = zipfile.ZipFile(glob.glob('/dist/*.whl')[0]); assert 'viz/static/index.html' in z.namelist(), 'wheel has no built frontend'"
 
 # ---- 3. runtime ----------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.13 /uv /usr/local/bin/uv
-ENV UV_SYSTEM_PYTHON=1 UV_COMPILE_BYTECODE=1 PYTHONUNBUFFERED=1
+ENV UV_SYSTEM_PYTHON=1 UV_COMPILE_BYTECODE=1 UV_NO_CACHE=1 PYTHONUNBUFFERED=1
 COPY --from=wheel /requirements.txt /tmp/requirements.txt
 RUN uv pip install -r /tmp/requirements.txt
 COPY --from=wheel /dist/ /tmp/dist/
-RUN uv pip install --no-deps /tmp/dist/*.whl && rm -rf /tmp/dist /tmp/requirements.txt
+# `uv pip check` and the import assertions catch a requirements.txt that's quietly missing
+# something a wheel built with --no-deps needs (the same class of bug --extra postgres above
+# fixed for psycopg) instead of failing only at request time in production. The uv binary and
+# its cache are removed afterwards; neither is needed once the image is built.
+RUN uv pip install --no-deps /tmp/dist/*.whl \
+    && uv pip check \
+    && python -c "import viz, psycopg" \
+    && rm -rf /tmp/dist /tmp/requirements.txt /root/.cache/uv /usr/local/bin/uv
 
 RUN useradd --create-home --uid 10001 viz && mkdir /data && chown viz /data
 USER viz
 ENV VIZ_DATA_DIR=/data VIZ_HOST=0.0.0.0 VIZ_PORT=8000
 VOLUME /data
 EXPOSE 8000
-# /api/health is the one deliberately unauthenticated route (viz/auth/__init__.py): a load
-# balancer probe can't carry credentials. It also runs a trivial query, so this proves the
-# metadata DB connection works too.
+# /api/health is deliberately unauthenticated (viz/auth/__init__.py documents it alongside
+# share/embed resolution as the two public-route exceptions): a load balancer or container probe
+# can't carry credentials. It also runs a trivial query, so this proves the metadata DB connection
+# works too. Reads VIZ_PORT from the environment so this still works if it's overridden.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 \
-    CMD ["python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"]
+    CMD ["python", "-c", "import os, urllib.request as u; u.urlopen(f'http://127.0.0.1:{os.environ.get(\"VIZ_PORT\", \"8000\")}/api/health', timeout=4)"]
 CMD ["viz", "serve", "--no-open"]
