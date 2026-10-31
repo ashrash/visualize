@@ -221,7 +221,10 @@ export function StatsPanel() {
           </div>
         </TabsContent>
         <TabsContent value="tests" className="min-h-0 flex-1">
-          <TestsPanel source={source} pipelines={pipelines} columns={columns} />
+          {/* Keyed on the source choice: remounts (resetting form/result state) instead of
+              keeping a field selection that no longer matches the new source's columns, which
+              could run with a stale field (a 422) or show a prior source's result unlabeled. */}
+          <TestsPanel key={choice} source={source} pipelines={pipelines} columns={columns} />
         </TabsContent>
       </Tabs>
     </div>
