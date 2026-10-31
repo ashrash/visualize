@@ -58,12 +58,28 @@ const CHARTS: ChartSpec[] = [
 ];
 const DASHBOARD = { id: "d", name: "bench", tabs: [], filters: [], linkGroups: [] } as Dashboard;
 
+// Every run and round filters on a different (always true) lower bound, so no result is ever
+// answered from the server cache, whatever ran before.
+const RUN_SALT = Date.now();
+
 function refresh(round: number, signal?: AbortSignal) {
+  const bust = (n: number): Predicate => ({
+    op: "range",
+    field: "sales",
+    min: -1 - RUN_SALT - n,
+    max: null,
+    includeMin: true,
+    includeMax: true,
+  });
   // A seventh widget (a clicked chart) publishes the selection; the six charts all receive it.
-  const selection: Predicate = { op: "eq", field: "country", value: `Country ${(round % 40) + 1}` };
+  const selection: Predicate = {
+    op: "eq",
+    field: "country",
+    value: `Country ${String((round % 40) + 1).padStart(2, "0")}`,
+  };
   const bus = publish(EMPTY_BUS, "g", "clicked", {
     sourceId: DATASET ?? "",
-    predicates: [selection],
+    predicates: [selection, bust(round)],
   });
   return Promise.all(
     CHARTS.map((spec) =>
@@ -98,7 +114,7 @@ describe.skipIf(!enabled)("6-chart cross-filter refresh against a live server", 
     vi.stubGlobal("fetch", (input: string, init?: RequestInit) =>
       realFetch(new URL(input, URL_BASE), init),
     );
-    await refresh(1000); // warm-up: connection setup, first-query planning
+    await refresh(-1); // warm-up on a country that has no rows: connection setup, planning
     const times: number[] = [];
     let cached = 0;
     for (let round = 0; round < ROUNDS; round++) {

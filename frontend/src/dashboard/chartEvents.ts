@@ -1,5 +1,5 @@
 /**
- * Turns raw ECharts events (click, brush end, legend toggle) into the reduced signals the
+ * Turns raw ECharts events (click, legend toggle) and pixel drags (range brush) into the reduced signals the
  * dashboard bus understands.
  *
  * TODO(ui-charts): `ChartView` should expose `onPointClick` / `onBrushSelected` /
@@ -8,18 +8,12 @@
  * land, replace `useChartInstance` + `attachChartEvents` with them; `PointClick`, `BrushSpan`
  * and the legend map are already the callback payloads.
  */
-import { BrushComponent, ToolboxComponent } from "echarts/components";
-import { type ECharts, use } from "echarts/core";
+import type { ECharts } from "echarts/core";
 import type { BrushSpan, PointClick } from "./predicates";
-
-// The brush tool is registered here: ui-charts does not register it yet (see the TODO above).
-use([BrushComponent, ToolboxComponent]);
 
 export interface ChartEventHandlers {
   /** A click on a mark. `extend` is true with shift/ctrl/cmd held (multi-select). */
   onPoint?(click: PointClick, extend: boolean): void;
-  /** A finished brush. `null` when the brush was cleared. */
-  onBrush?(span: BrushSpan | null): void;
   /** The legend's selected map after a toggle. */
   onLegend?(selected: Record<string, boolean>): void;
 }
@@ -88,29 +82,27 @@ function firstXAxis(chart: ECharts): AxisOption | undefined {
   return option.xAxis?.[0];
 }
 
-/** Enable the x-range brush tool on a chart (the toolbox button is the user's way to start it). */
-export function ensureBrush(chart: ECharts, enabled: boolean): void {
-  const option = chart.getOption() as { brush?: unknown[] };
-  const has = Array.isArray(option.brush) ? option.brush.length > 0 : Boolean(option.brush);
-  if (!enabled || has) return;
-  chart.setOption({
-    brush: {
-      toolbox: ["lineX", "clear"],
-      xAxisIndex: 0,
-      brushLink: "none",
-      throttleType: "debounce",
-      throttleDelay: 150,
-    },
-    toolbox: { feature: { brush: { type: ["lineX", "clear"] } }, right: 8, top: 0, itemSize: 12 },
-  });
+/** True when the chart has a cartesian x axis to brush along. */
+export function hasXAxis(chart: ECharts): boolean {
+  return firstXAxis(chart) !== undefined;
+}
+
+/**
+ * The span between two pixel x positions (relative to the chart element), in axis terms. The
+ * brush is drawn by `RangeBrush` rather than ECharts own brush tool, which gave no events when
+ * a drag started on a bar (verified in a real browser), so only `convertFromPixel` is needed.
+ */
+export function brushSpanFromPixels(chart: ECharts, x0: number, x1: number): BrushSpan | null {
+  const a = chart.convertFromPixel({ xAxisIndex: 0 }, x0);
+  const b = chart.convertFromPixel({ xAxisIndex: 0 }, x1);
+  if (typeof a !== "number" || typeof b !== "number" || Number.isNaN(a) || Number.isNaN(b)) {
+    return null;
+  }
+  return areaToSpan({ coordRange: [a, b] }, firstXAxis(chart));
 }
 
 /** Attach the handlers; returns a function that detaches them. */
-export function attachChartEvents(
-  chart: ECharts,
-  handlers: () => ChartEventHandlers,
-  options: { brush: boolean },
-): () => void {
+export function attachChartEvents(chart: ECharts, handlers: () => ChartEventHandlers): () => void {
   const onClick = (params: unknown) => {
     const point = clickToPoint(params as ClickParams);
     if (point) handlers().onPoint?.(point.click, point.extend);
@@ -119,24 +111,10 @@ export function attachChartEvents(
     const selected = (params as { selected?: Record<string, boolean> }).selected;
     if (selected) handlers().onLegend?.(selected);
   };
-  const onBrushEnd = (params: unknown) => {
-    const areas = (params as { areas?: BrushArea[] }).areas ?? [];
-    handlers().onBrush?.(areas.length === 0 ? null : areaToSpan(areas[0], firstXAxis(chart)));
-  };
-  const onFinished = () => ensureBrush(chart, options.brush);
-
   chart.on("click", onClick);
   chart.on("legendselectchanged", onLegend);
-  if (options.brush) {
-    chart.on("brushEnd", onBrushEnd);
-    // A rebuild of the chart (new identity) drops merged components: put the brush back.
-    chart.on("finished", onFinished);
-    ensureBrush(chart, true);
-  }
   return () => {
     chart.off("click", onClick);
     chart.off("legendselectchanged", onLegend);
-    chart.off("brushEnd", onBrushEnd);
-    chart.off("finished", onFinished);
   };
 }

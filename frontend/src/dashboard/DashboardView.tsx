@@ -162,10 +162,18 @@ export function DashboardView({
       s.predicates.map((p) => ({ group, widgetId, predicate: p })),
     ),
   );
+  // A filter placed on the grid as a widget is not repeated in the toolbar.
+  const placed = new Set(
+    tabs.flatMap((t) =>
+      (t.items ?? []).flatMap((i) => (i.widget.kind === "filter" ? [i.widget.filterId] : [])),
+    ),
+  );
   const filterItems = [
-    ...globalFilters.filter(hasControl).map((f) => ({ f, scope: "global" as const })),
+    ...globalFilters
+      .filter((f) => hasControl(f) && !placed.has(f.id))
+      .map((f) => ({ f, scope: "global" as const })),
     ...(dashboard.filters ?? [])
-      .filter(hasControl)
+      .filter((f) => hasControl(f) && !placed.has(f.id))
       .map((f) => ({ f, scope: "dashboard" as const })),
   ];
   const anyActive = selections.length > 0 || drill.length > 0;

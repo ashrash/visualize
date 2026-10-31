@@ -27,7 +27,9 @@ function fakeChart(id: string): ECharts {
       listeners.get(name)?.add(fn);
     },
     off: (name: string, fn: Listener) => listeners.get(name)?.delete(fn),
-    getOption: () => ({ xAxis: [{ type: "category", data: ["N", "S", "E", "W"] }], brush: [{}] }),
+    getOption: () => ({ xAxis: [{ type: "category", data: ["N", "S", "E", "W"] }] }),
+    getDom: () => document.createElement("div"),
+    convertFromPixel: (_finder: unknown, x: number) => x / 10,
     setOption: () => {},
   } as unknown as ECharts;
 }
@@ -203,20 +205,50 @@ describe("cross-filtering a dashboard", () => {
     expect(filtersOf("b")).toEqual([]);
   });
 
-  it("commits a brush once after a pause, not on every drag event", () => {
+  it("selects a range by dragging, committing once after a pause", () => {
+    vi.useFakeTimers();
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 400,
+      bottom: 200,
+      width: 400,
+      height: 200,
+      x: 0,
+      y: 0,
+      toJSON() {},
+    });
+    renderDashboard([
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    // The tool is off until asked for, so it never gets in the way of clicking bars.
+    expect(screen.queryByTestId("range-brush")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Select range" }));
+    const layer = screen.getByTestId("range-brush");
+    fireEvent.pointerDown(layer, { clientX: 10, pointerId: 1 });
+    fireEvent.pointerMove(layer, { clientX: 20, pointerId: 1 });
+    fireEvent.pointerMove(layer, { clientX: 30, pointerId: 1 });
+    fireEvent.pointerUp(layer, { clientX: 30, pointerId: 1 });
+    expect(filtersOf("b")).toEqual([]); // nothing yet: waiting for the pause
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["S", "E", "W"] }]);
+    expect(filtersOf("a")).toEqual([]); // a chart is not filtered by its own range
+    vi.restoreAllMocks();
+  });
+
+  it("does not turn a plain click on the brush layer into a range", () => {
     vi.useFakeTimers();
     renderDashboard([
       spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
       spec("b"),
     ]);
-    const brush = (lo: number, hi: number) =>
-      act(() => charts.get("a")?.emit("brushEnd", { areas: [{ coordRange: [lo, hi] }] }));
-    brush(0, 1);
-    brush(0, 2);
-    brush(1, 2);
-    expect(filtersOf("b")).toEqual([]); // nothing yet
-    act(() => vi.advanceTimersByTime(200));
-    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["S", "E"] }]);
+    fireEvent.click(screen.getByRole("button", { name: "Select range" }));
+    const layer = screen.getByTestId("range-brush");
+    fireEvent.pointerDown(layer, { clientX: 50, pointerId: 1 });
+    fireEvent.pointerUp(layer, { clientX: 51, pointerId: 1 });
+    act(() => vi.advanceTimersByTime(300));
+    expect(filtersOf("b")).toEqual([]);
   });
 
   it("applies a legend toggle as an `in` filter on the colour field", () => {

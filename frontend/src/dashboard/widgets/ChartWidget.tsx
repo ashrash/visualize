@@ -1,5 +1,5 @@
 import { Link2, Table2, X } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChartSpec, Predicate } from "../../api/types";
 import { ChartView } from "../../charts";
 import {
@@ -10,12 +10,13 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { groupOf, selectionOf } from "../bus";
-import { attachChartEvents } from "../chartEvents";
+import { attachChartEvents, hasXAxis } from "../chartEvents";
 import { BRUSH_DEBOUNCE_MS, debounce } from "../debounce";
 import { describePredicate } from "../describe";
 import { useDashboardEnv, useWidgetFilters } from "../env";
 import { datasetOfSource } from "../filterControls";
 import { brushPredicates, legendPredicates, pointPredicates } from "../predicates";
+import { RangeBrushLayer, RangeBrushToggle } from "../RangeBrush";
 import { useDashboardRuntime } from "../runtimeStore";
 import { useChartInstance } from "../useChartInstance";
 
@@ -77,24 +78,21 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   useEffect(() => () => publish.brush.cancel(), [publish]);
 
   const clickable = spec.interactions?.clickFilter !== false;
-  const brushable = spec.interactions?.brush === true;
+  const [brushOn, setBrushOn] = useState(false);
+  const brushable =
+    spec.interactions?.brush === true && env.mode !== "edit" && chart !== null && hasXAxis(chart);
   useEffect(() => {
     if (!chart || env.mode === "edit") return;
-    return attachChartEvents(
-      chart,
-      () => ({
-        onPoint: (click, extend) => {
-          const { spec: s } = latest.current;
-          if (!clickable) return;
-          const predicates = pointPredicates(s, click);
-          if (predicates.length > 0) publish.send(predicates, extend ? "extend" : "toggle");
-        },
-        onBrush: (span) => publish.brush(span ? brushPredicates(latest.current.spec, span) : []),
-        onLegend: (selected) => publish.brush(legendPredicates(latest.current.spec, selected)),
-      }),
-      { brush: brushable },
-    );
-  }, [chart, env.mode, clickable, brushable, publish]);
+    return attachChartEvents(chart, () => ({
+      onPoint: (click, extend) => {
+        const { spec: s } = latest.current;
+        if (!clickable) return;
+        const predicates = pointPredicates(s, click);
+        if (predicates.length > 0) publish.send(predicates, extend ? "extend" : "toggle");
+      },
+      onLegend: (selected) => publish.brush(legendPredicates(latest.current.spec, selected)),
+    }));
+  }, [chart, env.mode, clickable, publish]);
 
   // A chart that leaves the dashboard must not keep filtering the others.
   useEffect(() => () => forgetWidget(widgetId), [forgetWidget, widgetId]);
@@ -104,7 +102,7 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
 
   return (
     <div className="flex h-full flex-col">
-      {own.length > 0 || (env.onDrillThrough && env.mode !== "embed") ? (
+      {own.length > 0 || brushable || (env.onDrillThrough && env.mode !== "embed") ? (
         <div className="flex flex-wrap items-center gap-1 px-1 pb-1 text-xs">
           {own.map((p) => (
             <span
@@ -115,6 +113,9 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
               {describePredicate(p)}
             </span>
           ))}
+          {brushable ? (
+            <RangeBrushToggle on={brushOn} onToggle={() => setBrushOn((v) => !v)} />
+          ) : null}
           {own.length > 0 && group ? (
             <button
               type="button"
@@ -168,10 +169,18 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
           ) : null}
         </div>
       ) : null}
-      <div ref={frame} className="min-h-0 flex-1">
+      <div ref={frame} className="relative min-h-0 flex-1">
         {/* TODO(ui-charts): pass `slot={widgetId}` once ChartView accepts it, so two widgets that
             show one chart do not supersede each other's in-flight requests on the server. */}
         <ChartView spec={viewSpec} filters={filters} pipelines={env.pipelines} />
+        {brushable && brushOn ? (
+          <RangeBrushLayer
+            chart={chart}
+            frame={frame}
+            selected={own.length > 0}
+            onSpan={(span) => publish.brush(span ? brushPredicates(latest.current.spec, span) : [])}
+          />
+        ) : null}
       </div>
     </div>
   );

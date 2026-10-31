@@ -163,7 +163,8 @@ export default function DashboardPage() {
   const openDashboard = useDashboardRuntime((s) => s.open);
   const setGridDrill = useDashboardRuntime((s) => s.setGridDrill);
 
-  const [editing, setEditing] = useState(true);
+  // Opens in presenting mode (clicks filter) unless the dashboard is still empty.
+  const [editOverride, setEditOverride] = useState<boolean | null>(null);
   const [sharing, setSharing] = useState(false);
   const [globals, setGlobals] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -171,6 +172,10 @@ export default function DashboardPage() {
 
   const dashboards = project?.dashboards ?? [];
   const dashboard = dashboards.find((d) => d.id === id) ?? dashboards[0];
+  const empty = dashboard
+    ? (dashboard.tabs ?? []).every((t) => (t.items ?? []).length === 0)
+    : false;
+  const editing = editOverride ?? empty;
   const charts = project?.charts ?? [];
   const pipelines = project?.pipelines ?? [];
   const report = useReport({
@@ -217,13 +222,13 @@ export default function DashboardPage() {
   const create = () => {
     const created = createDashboard(`Dashboard ${dashboards.length + 1}`);
     update((p) => addDashboardToProject(p, created));
-    setEditing(true);
+    setEditOverride(true);
     go(created.id);
   };
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <div className="dashboard-chrome flex flex-wrap items-center gap-2">
+      <div className="dashboard-chrome flex flex-wrap items-center gap-2 print:hidden">
         {dashboards.length > 0 ? (
           <Select
             aria-label="Dashboard"
@@ -247,7 +252,7 @@ export default function DashboardPage() {
         </Button>
         {dashboard ? (
           <>
-            <Button aria-pressed={editing} onClick={() => setEditing((v) => !v)}>
+            <Button aria-pressed={editing} onClick={() => setEditOverride(!editing)}>
               {editing ? (
                 <Eye size={14} aria-hidden="true" />
               ) : (

@@ -1,6 +1,12 @@
 import type { ECharts } from "echarts/core";
 import { describe, expect, it, vi } from "vitest";
-import { areaToSpan, attachChartEvents, clickToPoint, ensureBrush } from "./chartEvents";
+import {
+  areaToSpan,
+  attachChartEvents,
+  brushSpanFromPixels,
+  clickToPoint,
+  hasXAxis,
+} from "./chartEvents";
 
 type Listener = (params: unknown) => void;
 
@@ -69,10 +75,10 @@ describe("areaToSpan", () => {
 });
 
 describe("attachChartEvents", () => {
-  it("forwards clicks, legend changes and brushes, and detaches cleanly", () => {
-    const { chart, emit, listeners } = fakeChart({ xAxis: [{ type: "value" }] });
-    const handlers = { onPoint: vi.fn(), onLegend: vi.fn(), onBrush: vi.fn() };
-    const detach = attachChartEvents(chart, () => handlers, { brush: true });
+  it("forwards clicks and legend changes, and detaches cleanly", () => {
+    const { chart, emit, listeners } = fakeChart();
+    const handlers = { onPoint: vi.fn(), onLegend: vi.fn() };
+    const detach = attachChartEvents(chart, () => handlers);
 
     emit("click", { componentType: "series", name: "N", seriesName: "web" });
     expect(handlers.onPoint).toHaveBeenCalledWith(
@@ -83,33 +89,47 @@ describe("attachChartEvents", () => {
     emit("legendselectchanged", { selected: { web: false, app: true } });
     expect(handlers.onLegend).toHaveBeenCalledWith({ web: false, app: true });
 
-    emit("brushEnd", { areas: [{ coordRange: [2, 8] }] });
-    expect(handlers.onBrush).toHaveBeenCalledWith({ min: 2, max: 8 });
-    emit("brushEnd", { areas: [] });
-    expect(handlers.onBrush).toHaveBeenLastCalledWith(null);
-
     detach();
     for (const set of listeners.values()) expect(set.size).toBe(0);
   });
-
-  it("does not listen for brushes unless the chart asks for them", () => {
-    const { chart, listeners, setOption } = fakeChart();
-    attachChartEvents(chart, () => ({}), { brush: false });
-    expect(listeners.get("brushEnd")?.size ?? 0).toBe(0);
-    expect(setOption).not.toHaveBeenCalled();
-  });
 });
 
-describe("ensureBrush", () => {
-  it("adds the brush tool once, and puts it back after a rebuild drops it", () => {
-    const option: Record<string, unknown> = {};
-    const { chart, setOption } = fakeChart(option);
-    ensureBrush(chart, true);
-    expect(setOption).toHaveBeenCalledTimes(1);
-    ensureBrush(chart, true); // already there (option now has brush)
-    expect(setOption).toHaveBeenCalledTimes(1);
-    option.brush = undefined; // a rebuild
-    ensureBrush(chart, true);
-    expect(setOption).toHaveBeenCalledTimes(2);
+describe("brushSpanFromPixels", () => {
+  const withAxis = (xAxis: unknown, convert: (x: number) => unknown) =>
+    ({
+      getOption: () => ({ xAxis: [xAxis] }),
+      convertFromPixel: (_finder: unknown, x: number) => convert(x),
+    }) as unknown as ECharts;
+
+  it("converts a pixel drag on a value axis, whichever way it was dragged", () => {
+    const chart = withAxis({ type: "value" }, (x) => x / 10);
+    expect(brushSpanFromPixels(chart, 80, 20)).toEqual({ min: 2, max: 8 });
+  });
+
+  it("maps a drag across a category axis to the categories under it", () => {
+    const chart = withAxis({ type: "category", data: ["N", "S", "E", "W"] }, (x) => x / 100);
+    expect(brushSpanFromPixels(chart, 90, 210)).toEqual({ categories: ["S", "E"] });
+  });
+
+  it("is null when the pixels are outside the axis", () => {
+    expect(
+      brushSpanFromPixels(
+        withAxis({ type: "value" }, () => Number.NaN),
+        0,
+        10,
+      ),
+    ).toBeNull();
+    expect(
+      brushSpanFromPixels(
+        withAxis({ type: "value" }, () => [1, 2]),
+        0,
+        10,
+      ),
+    ).toBeNull();
+  });
+
+  it("knows whether a chart has an x axis", () => {
+    expect(hasXAxis(withAxis({ type: "value" }, () => 0))).toBe(true);
+    expect(hasXAxis({ getOption: () => ({}) } as unknown as ECharts)).toBe(false);
   });
 });

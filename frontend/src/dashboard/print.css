@@ -28,6 +28,18 @@
     display: none !important;
   }
 
+  /* The sidebar is hidden: let the page content take the whole sheet. */
+  main {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  /* Chart toolbars (table view, export, drill-through) are screen controls. Filter controls stay
+     so the page shows which filter values are in effect. */
+  .dashboard-widget button:not([aria-label$=" filter"]) {
+    display: none !important;
+  }
+
   .dashboard-grid {
     /* The grid places items with transforms; a transform that spans pages breaks charts. */
     overflow: visible !important;
