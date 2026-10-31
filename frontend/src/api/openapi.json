@@ -3353,6 +3353,15 @@
             ],
             "title": "Subtitle"
           },
+          "titlePosition": {
+            "type": "string",
+            "enum": [
+              "top",
+              "bottom"
+            ],
+            "title": "Titleposition",
+            "default": "top"
+          },
           "xAxis": {
             "$ref": "#/components/schemas/AxisStyle"
           },

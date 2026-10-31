@@ -171,12 +171,19 @@ describe("ChartConfigPanel", () => {
       orientation: "vertical",
       stack: "none",
       showLabels: true,
+      titlePosition: "top",
       palette: "okabe-ito",
     } as const;
     render(
       <ChartConfigPanel
         spec={makeSpec({
-          style: { orientation: "vertical", stack: "none", showLabels: false, title: "Mine" },
+          style: {
+            orientation: "vertical",
+            stack: "none",
+            showLabels: false,
+            titlePosition: "top",
+            title: "Mine",
+          },
         })}
         columns={columns}
         onChange={onChange}
@@ -203,6 +210,7 @@ describe("plot-type switch (S6)", () => {
         orientation: "horizontal",
         stack: "percent",
         showLabels: true,
+        titlePosition: "top",
         errorBars: { kind: "sd", level: 0.95 },
         trendlines: [{ kind: "linear", series: 0, degree: 2, showEquation: false, showR2: false }],
         refLines: [{ axis: "y", value: 1, lineStyle: "dashed" }],
@@ -248,6 +256,7 @@ describe("plot-type switch (S6)", () => {
           orientation: "vertical",
           stack: "stack",
           showLabels: false,
+          titlePosition: "top",
           refLines: [{ axis: "y", value: 1, lineStyle: "dashed" }],
         },
       }),
@@ -328,6 +337,7 @@ describe("spec helpers", () => {
       orientation: "horizontal",
       stack: "none",
       showLabels: true,
+      titlePosition: "top",
       title: "T",
       palette: "viridis",
       refLines: [{ axis: "y", value: 1, lineStyle: "dashed" }],
@@ -343,6 +353,7 @@ describe("spec helpers", () => {
           orientation: "vertical",
           stack: "none",
           showLabels: false,
+          titlePosition: "top",
           title: "Mine",
           xAxis: { grid: true, title: "Area" },
         },

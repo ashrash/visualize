@@ -3,7 +3,13 @@ import type { AxisStyle, DeepPartial, PlotEntry, StyleSection } from "../core/ty
 
 /** A full style from a partial one: every required field present. */
 export function fullStyle(style: ChartStyle | undefined): ChartStyle {
-  return { orientation: "vertical", stack: "none", showLabels: false, ...style };
+  return {
+    orientation: "vertical",
+    stack: "none",
+    showLabels: false,
+    titlePosition: "top",
+    ...style,
+  };
 }
 
 export function patchStyle(spec: ChartSpec, patch: Partial<ChartStyle>): ChartSpec {

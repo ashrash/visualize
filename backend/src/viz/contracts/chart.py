@@ -351,6 +351,7 @@ class TooltipStyle(Contract):
 class ChartStyle(Contract):
     title: str | None = None
     subtitle: str | None = None
+    title_position: Literal["top", "bottom"] = "top"
     x_axis: AxisStyle = Field(default_factory=AxisStyle)
     # More than one entry gives multiple Y axes; series pick one by index.
     y_axes: list[AxisStyle] = Field(default_factory=lambda: [AxisStyle()])

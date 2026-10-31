@@ -367,6 +367,7 @@ export function StyleTab({
     orientation: "vertical",
     stack: "none",
     showLabels: false,
+    titlePosition: "top",
     ...spec.style,
   };
   const has = (s: StyleSection) => entry.styleSections.includes(s);
@@ -388,6 +389,17 @@ export function StyleTab({
             label="Subtitle"
             value={style.subtitle}
             onChange={(subtitle) => patch({ subtitle: subtitle || null })}
+          />
+          <SelectField
+            label="Title position"
+            value={style.titlePosition ?? "top"}
+            options={[
+              { value: "top", label: "Top" },
+              { value: "bottom", label: "Bottom" },
+            ]}
+            onChange={(titlePosition) =>
+              patch({ titlePosition: titlePosition as ChartStyle["titlePosition"] })
+            }
           />
           <SelectField
             label="Font"

@@ -387,16 +387,19 @@ export function applyStyle(
   let right = 20;
   const hasTitle = Boolean(style.title);
   const hasSubtitle = Boolean(style.subtitle);
+  const titleAtBottom = style.titlePosition === "bottom";
+  const titleReserve = (hasTitle ? TITLE_HEIGHT : 8) + (hasSubtitle ? SUBTITLE_HEIGHT : 0);
   if (hasTitle || hasSubtitle) {
     out.title = {
       text: style.title ?? "",
       subtext: style.subtitle ?? "",
       left: 8,
-      top: 4,
+      ...(titleAtBottom ? { bottom: 4 } : { top: 4 }),
       textStyle: { color: t.text, fontSize: 15, fontWeight: 600 },
       subtextStyle: { color: t.textMuted, fontSize: 12 },
     };
-    top += (hasTitle ? TITLE_HEIGHT : 8) + (hasSubtitle ? SUBTITLE_HEIGHT : 0);
+    if (titleAtBottom) bottom += titleReserve;
+    else top += titleReserve;
   } else {
     out.title = undefined;
   }
@@ -426,7 +429,8 @@ export function applyStyle(
       out.legend = { ...legendBase, top: top - 8, left: 8, right: 8 };
       top += LEGEND_HEIGHT;
     } else if (position === "bottom") {
-      out.legend = { ...legendBase, bottom: hasSlider ? 40 : 4, left: "center" };
+      const legendBottom = (hasSlider ? 40 : 4) + (titleAtBottom ? titleReserve : 0);
+      out.legend = { ...legendBase, bottom: legendBottom, left: "center" };
       bottom += LEGEND_HEIGHT + (hasSlider ? 0 : 0);
     } else {
       const longest = rawSeries.reduce(

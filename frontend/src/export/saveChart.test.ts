@@ -112,7 +112,7 @@ function renderPieOption() {
   return entry.render(
     makeSpec({
       plotType: "pie",
-      style: { orientation: "vertical", stack: "none", showLabels: true },
+      style: { orientation: "vertical", stack: "none", showLabels: true, titlePosition: "top" },
     }),
     data,
     theme,

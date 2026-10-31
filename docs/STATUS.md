@@ -812,6 +812,20 @@ question, still awaiting the user.
     for every `font-medium`/`text-muted` combination found elsewhere checked out fine, well above
     4.5:1). Revisit with the actual axe report JSON (`test-results/artifacts/a11y-axe-dark-theme-
     data-screen-with-the-grid/`) if it recurs.
+- 2026-10-31: Built a live demo. `scripts/gen_demo_data.py` generates 5 seeded datasets (10,000+
+  rows each: `orders`, `measurements`, `web_traffic_large`, `geo_events_large`, `churn_large`) into
+  the git-ignored `data/demo/` (not `samples/`, which stays under its 5 MB CI-fixture cap).
+  `scripts/seed_demo_project.py` imports them through the real `/datasets/import-path` endpoint and
+  saves a "Demo" project with 19 charts across 5 dashboard tabs spanning most plot families (basic,
+  distribution, relationship, multivariate, time series, geospatial, econometric) — verified by
+  querying every chart's `/api/charts/data` response for real, non-empty, correctly-labeled output
+  and by screenshotting all 5 tabs in a running `viz serve` (zero console errors).
+- 2026-10-31: Added chart title position (top/bottom). `ChartStyle.titlePosition` (contracts/chart.py,
+  additive, default `"top"`) lets a chart's title sit below the plot instead of above it; the Style
+  tab (`StyleTab.tsx`) exposes it next to Title/Subtitle, and `charts/core/style.ts` reserves the
+  right side (top or bottom) for it and shifts a bottom-positioned legend above a bottom title so
+  they don't overlap. Verified against the running demo project (rebuilt the frontend — `viz serve`
+  only serves the built bundle, so a source-only change doesn't show up without `uv run viz build`).
 
 ## MVP.md
 

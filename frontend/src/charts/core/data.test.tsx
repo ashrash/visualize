@@ -68,6 +68,7 @@ describe("dataIdentity (S2)", () => {
           orientation: "vertical",
           stack: "none",
           showLabels: false,
+          titlePosition: "top",
           errorBars: { kind: "sd", level: 0.95 },
         },
       }),

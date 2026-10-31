@@ -1192,6 +1192,12 @@ export interface components {
             title?: string | null;
             /** Subtitle */
             subtitle?: string | null;
+            /**
+             * Titleposition
+             * @default top
+             * @enum {string}
+             */
+            titlePosition: "top" | "bottom";
             xAxis?: components["schemas"]["AxisStyle"];
             /** Yaxes */
             yAxes?: components["schemas"]["AxisStyle"][];

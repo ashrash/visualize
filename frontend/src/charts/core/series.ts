@@ -23,6 +23,7 @@ export function resolveStyle(spec: ChartSpec): ResolvedStyle {
     orientation: "vertical",
     stack: "none",
     showLabels: false,
+    titlePosition: "top",
     ...style,
     xAxis: style?.xAxis ?? { grid: true },
     yAxes: yAxes as AxisStyle[],
