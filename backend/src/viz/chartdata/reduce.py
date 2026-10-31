@@ -32,10 +32,13 @@ from viz.chartdata.sql import (
     cast,
     col,
     fn,
+    ident,
     lit,
+    ordered,
     subquery,
     table,
     temporal_literal,
+    window,
     with_ctes,
 )
 from viz.contracts import ColumnSemantic, TimeUnit
@@ -46,8 +49,11 @@ __all__ = [
     "agg_sql",
     "aggregate_query",
     "bin2d",
+    "bucket_position",
     "epoch_ms_values",
     "hexbin",
+    "m4_extent",
+    "m4_extent_query",
     "m4_query",
     "minmaxlttb",
     "numeric_x",
@@ -144,6 +150,80 @@ def over_groups(grouped: exp.Select) -> exp.Select:
     return exp.select(exp.Star()).from_(subquery(grouped, "__viz_g"))
 
 
+def bucket_position(expression: exp.Expr, semantic: ColumnSemantic) -> exp.Expr:
+    """x's position for M4 pixel bucketing: epoch microseconds (BIGINT) for temporal values,
+    DOUBLE otherwise. At 10M rows `epoch_us(x)` with integer bucket math is ~40 ms cheaper
+    than `epoch_ms(x)::DOUBLE` with float math. Infinite timestamps give NULL."""
+    if semantic == ColumnSemantic.TEMPORAL:
+        return fn("epoch_us", expression)
+    return cast(expression, "DOUBLE")
+
+
+def m4_extent_query(relation: Relation, x_dim: exp.Expr, semantic: ColumnSemantic) -> exp.Select:
+    """`lo`, `hi` (x's extent in `bucket_position` units) and `n` (rows) of `relation`.
+
+    The aggregates take x itself, not its position, so for a raw column with no filter (or
+    filters DuckDB can prune by row group) the answer comes from Parquet statistics. `lo`/`hi`
+    may come back NULL or non-finite (all-NULL x, NaN, infinite timestamps); `m4_extent`
+    turns that into None, and `m4_query` then computes the extent itself.
+    """
+    lo, hi = fn("min", x_dim.copy()), fn("max", x_dim.copy())
+    return relation.select(
+        alias(bucket_position(lo, semantic), "lo"),
+        alias(bucket_position(hi, semantic), "hi"),
+        alias(exp.Count(this=exp.Star()), "n"),
+    )
+
+
+def m4_extent(row: dict[str, Any]) -> tuple[float, float] | None:
+    """The (lo, hi) of an `m4_extent_query` row, or None when it isn't usable."""
+    lo, hi = row.get("lo"), row.get("hi")
+    if lo is None or hi is None or not (math.isfinite(lo) and math.isfinite(hi)) or lo > hi:
+        return None
+    return lo, hi
+
+
+# Integer bucket math keeps (position - lo) * buckets below this; above it, DOUBLE math.
+_INT_BUCKET_LIMIT = 2**62
+
+
+def _literal_bucket(position: exp.Expr, lo: float, hi: float, buckets: int) -> exp.Expr:
+    """The pixel column (0..buckets-1) of `position` for a known extent; NULL for NULL or
+    non-finite positions, so those rows land in a group of their own that is dropped."""
+    if hi <= lo:  # one distinct x: every finite position is in column 0
+        return exp.Case(ifs=[exp.If(this=fn("isfinite", position.copy()), true=lit(0))])
+    if isinstance(lo, int) and isinstance(hi, int) and (hi - lo) * buckets < _INT_BUCKET_LIMIT:
+        # Epoch microseconds: exact integer math, and NULL (infinite timestamps) stays NULL.
+        offset = exp.Paren(this=exp.Sub(this=position.copy(), expression=lit(lo)))
+        quotient = exp.IntDiv(
+            this=exp.Mul(this=offset, expression=lit(buckets)), expression=lit(hi - lo)
+        )
+        return fn("least", quotient, lit(buckets - 1))
+    offset = exp.Paren(this=exp.Sub(this=position.copy(), expression=lit(float(lo))))
+    scaled = exp.Mul(this=offset, expression=lit(buckets / (float(hi) - float(lo))))
+    index = fn("least", fn("floor", scaled), lit(float(buckets - 1)))
+    return exp.Case(ifs=[exp.If(this=fn("isfinite", position.copy()), true=index)])
+
+
+def _computed_bucket(position: exp.Expr, extent: str, buckets: int) -> exp.Expr:
+    """The pixel column of `position` against the extent CTE `extent` (columns lo, hi)."""
+    lo, hi = col("lo", extent), col("hi", extent)
+    span = exp.Nullif(this=exp.Paren(this=exp.Sub(this=hi, expression=lo)), expression=lit(0))
+    scaled = exp.Mul(
+        this=exp.Div(
+            this=exp.Paren(
+                this=exp.Sub(this=cast(position.copy(), "DOUBLE"), expression=lo.copy())
+            ),
+            expression=span,
+        ),
+        expression=lit(buckets),
+    )
+    index = exp.Coalesce(
+        this=fn("least", fn("floor", scaled), lit(buckets - 1)), expressions=[lit(0)]
+    )
+    return exp.Case(ifs=[exp.If(this=fn("isfinite", position.copy()), true=index)])
+
+
 def m4_query(
     source: exp.Select,
     *,
@@ -152,80 +232,120 @@ def m4_query(
     ys: Sequence[str],
     series: str | None,
     buckets: int,
+    extent: tuple[float, float] | None = None,
 ) -> exp.Select:
     """Rows of `source` that are M4 extremes (first/last x, min/max of each y) of a pixel
-    column within their series. `source` must have unique (series, x); `x_position` is a
-    DOUBLE expression over `source`'s columns giving x's position. Every row also carries
-    `__viz_groups`, the number of rows in `source`."""
+    column within their series, ordered by series then x. Every row also carries
+    `__viz_groups`, the number of rows in `source`.
+
+    `source` must have unique (series, x), and no column named `__viz_r`. `x_position` is
+    an expression over `source`'s columns giving x's position (`bucket_position`, or the
+    older DOUBLE `numeric_x`). Rows whose position is NULL or non-finite are left out.
+
+    `extent` is (min, max) of the finite positions in those same units, e.g. from
+    `m4_extent_query`, which reads it from Parquet statistics where it can. With it the query
+    is one pipeline: aggregate `source`, then GROUP BY (series, pixel column) picking the
+    extreme rows directly, with no materialized copy of `source` and no join back to it
+    (~60-90 ms less at 10M groups than the earlier semi-join shape). Without it the extent is
+    computed in SQL over a materialized `source` (still no join back).
+    """
     buckets = max(1, int(buckets))
-    extent = exp.select(
-        alias(fn("min", x_position.copy()), "lo"), alias(fn("max", x_position.copy()), "hi")
-    ).from_(table("__viz_a"))
-    span = exp.Nullif(
-        this=exp.Paren(this=exp.Sub(this=col("hi", "__viz_e"), expression=col("lo", "__viz_e"))),
-        expression=lit(0),
-    )
-    scaled = exp.Mul(
-        this=exp.Div(
-            this=exp.Paren(this=exp.Sub(this=x_position.copy(), expression=col("lo", "__viz_e"))),
-            expression=span,
-        ),
-        expression=lit(buckets),
-    )
-    bucket = exp.Coalesce(
-        this=fn("least", fn("floor", scaled), lit(buckets - 1)), expressions=[lit(0)]
-    )
-    bucketed = (
-        exp.select(exp.Star(), alias(bucket, "__viz_bucket"))
-        .from_(table("__viz_a"))
-        .join(subquery(extent, "__viz_e"), join_type="cross")
-    )
-    keys = [col(series)] if series else []
-    picks: list[exp.Expr] = [
-        alias(fn("min", col(x)), "__viz_p0"),
-        alias(fn("max", col(x)), "__viz_p1"),
-    ]
-    for i, y in enumerate(ys):
-        # arg_min/arg_max skip NULL y. Ties (equal y in one pixel column) pick an arbitrary
-        # x: the points are within a pixel of each other, and a (y, x) tie-break cost ~60 ms
-        # at 10M groups. Responses are cached per data version, so a chart doesn't flicker.
-        picks.append(alias(fn("arg_min", col(x), col(y)), f"__viz_p{2 + 2 * i}"))
-        picks.append(alias(fn("arg_max", col(x), col(y)), f"__viz_p{3 + 2 * i}"))
-    picks.append(alias(exp.Count(this=exp.Star()), "__viz_cnt"))
-    pick_query = (
-        exp.select(*keys, *picks)
-        .from_(table("__viz_b"))
-        .group_by(*[col(series)] if series else [], col("__viz_bucket"))
-    )
-    point_list = exp.Array(expressions=[col(f"__viz_p{i}") for i in range(2 + 2 * len(ys))])
-    xs = (
-        exp.select(*keys, alias(fn("unnest", point_list), x)).from_(table("__viz_picks")).distinct()
-    )
-    condition: exp.Expr = exp.EQ(this=col(x, "__viz_a"), expression=col(x, "__viz_xs"))
-    if series:
-        condition = exp.and_(
-            condition,
-            exp.NullSafeEQ(this=col(series, "__viz_a"), expression=col(series, "__viz_xs")),
+    row = "__viz_r"
+    names = source.named_selects
+    # One measure and nothing else: pick (x, y) pairs with scalar aggregates (~60 ms faster at
+    # 10M groups than whole-row struct picks). With several measures or extra columns, each
+    # pick must be one whole row: scalar arg_min(y1, y0) and arg_min(x, y0) could each take a
+    # different row among ties in y0 and pair values that never occurred together.
+    scalar = len(ys) == 1 and sorted(names) == sorted([x, ys[0], *([series] if series else [])])
+    ctes: list[tuple[str, exp.Query]] = []
+    if extent is not None:
+        bucket = _literal_bucket(x_position, extent[0], extent[1], buckets)
+        from_: exp.Expr = subquery(source, row)
+        joined: exp.Expr | None = None
+    else:
+        finite = exp.Case(
+            ifs=[
+                exp.If(
+                    this=fn("isfinite", x_position.copy()), true=cast(x_position.copy(), "DOUBLE")
+                )
+            ]
         )
-    order = [col(series, "__viz_a")] if series else []
-    # How many (series, x) groups there were in all, so a caller that skipped its size probe
-    # can tell whether reducing was needed at all.
-    groups = exp.Subquery(this=exp.select(fn("sum", col("__viz_cnt"))).from_(table("__viz_picks")))
+        extent_sql = exp.select(
+            alias(fn("min", finite), "lo"), alias(fn("max", finite.copy()), "hi")
+        ).from_(table("__viz_a"))
+        ctes = [("__viz_a", source), ("__viz_e", extent_sql)]
+        bucket = _computed_bucket(x_position, "__viz_e", buckets)
+        from_ = exp.Table(this=ident("__viz_a"), alias=exp.TableAlias(this=ident(row)))
+        joined = table("__viz_e")
+
+    keys = [col(series)] if series else []
+    picks: list[exp.Expr] = []
+    if scalar:
+        y = ys[0]
+        # (x, y) per pick: first and last x (arg_*_null keeps a NULL y there), then the
+        # lowest and highest y (arg_min/arg_max skip NULL y). Ties in y pick an arbitrary
+        # row; the points are within a pixel of each other, and responses are cached per
+        # data version, so a chart doesn't flicker.
+        pairs = [
+            (fn("min", col(x)), fn("arg_min_null", col(y), col(x))),
+            (fn("max", col(x)), fn("arg_max_null", col(y), col(x))),
+            (fn("arg_min", col(x), col(y)), fn("min", col(y))),
+            (fn("arg_max", col(x), col(y)), fn("max", col(y))),
+        ]
+        for i, (px, py) in enumerate(pairs):
+            picks += [alias(px, f"__viz_x{i}"), alias(py, f"__viz_y{i}")]
+        n_picks = len(pairs)
+    else:
+        # `__viz_r` names the source row: as a column it is the whole row as a STRUCT.
+        whole = col(row)
+        keyed = [col(x), *(col(y) for y in ys)]
+        n_picks = 0
+        for key in keyed:
+            for agg in ("arg_min", "arg_max"):
+                picks.append(alias(fn(agg, whole.copy(), key.copy()), f"__viz_q{n_picks}"))
+                n_picks += 1
+    groups = window(fn("sum", exp.Count(this=exp.Star())))
+    pick_query = exp.select(
+        *keys,
+        alias(bucket, "__viz_bucket"),
+        *picks,
+        alias(cast(groups, "BIGINT"), "__viz_groups"),
+    ).from_(from_)
+    if joined is not None:
+        pick_query = pick_query.join(joined, join_type="cross")
+    pick_query = pick_query.group_by(*(k.copy() for k in keys), bucket.copy())
+
+    if scalar:
+        unpivot: dict[str, exp.Expr] = {
+            x: fn("unnest", exp.Array(expressions=[col(f"__viz_x{i}") for i in range(n_picks)])),
+            ys[0]: fn(
+                "unnest", exp.Array(expressions=[col(f"__viz_y{i}") for i in range(n_picks)])
+            ),
+        }
+        if series:
+            unpivot[series] = col(series)
+        # In `source`'s column order.
+        points: list[exp.Expr] = [alias(unpivot[n], n) for n in names]
+    else:
+        recursive = exp.PropertyEQ(this=exp.var("recursive"), expression=exp.true())
+        rows = exp.Array(expressions=[col(f"__viz_q{i}") for i in range(n_picks)])
+        points = [exp.Anonymous(this="unnest", expressions=[rows, recursive])]
+    distinct = (
+        exp.select(*points, col("__viz_groups"))
+        .from_(subquery(pick_query, "__viz_p"))
+        # The NULL pixel column holds rows with a NULL or non-finite x (and, per series, its
+        # count still goes into __viz_groups above).
+        .where(exp.Not(this=exp.Is(this=col("__viz_bucket"), expression=exp.Null())))
+        .distinct()
+    )
     final = (
-        exp.select(exp.Star(), alias(cast(groups, "BIGINT"), "__viz_groups"))
-        .from_(table("__viz_a"))
-        .join(table("__viz_xs"), on=condition, join_type="semi")
-        .order_by(*order, col(x, "__viz_a"))
+        exp.select(exp.Star())
+        .from_(subquery(distinct, "__viz_m"))
+        # A pick is NULL where a pixel column has no non-NULL y.
+        .where(exp.Not(this=exp.Is(this=col(x), expression=exp.Null())))
+        .order_by(*(ordered(k.copy()) for k in keys), ordered(col(x)))
     )
-    return with_ctes(
-        [
-            ("__viz_a", source),
-            ("__viz_b", bucketed),
-            ("__viz_picks", pick_query),
-            ("__viz_xs", xs),
-        ],
-        final,
-    )
+    return with_ctes(ctes, final)
 
 
 def warm_up() -> None:

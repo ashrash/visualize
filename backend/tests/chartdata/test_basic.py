@@ -193,6 +193,38 @@ def test_line_over_cap_uses_m4_then_lttb(upload: Any, chart: Any, make_spec: Any
     assert table.num_rows <= 1000
 
 
+@pytest.mark.parametrize("cap", [1000])
+def test_raw_line_over_cap_queries(
+    upload: Any, chart: Any, make_spec: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Perf regression guard for the raw-timestamp line (10M rows: ~230 ms -> ~140 ms): one
+    # extent+count scan, then M4 as a single pipeline (no CTE, no semi-join back to the
+    # grouped rows), and no separate count query for rowsMatched.
+    from viz.transform import runtime
+
+    seen: list[str] = []
+    original = runtime.query_arrow
+
+    def recording(engine: Any, sql: str, **kwargs: Any) -> Any:
+        seen.append(sql)
+        return original(engine, sql, **kwargs)
+
+    monkeypatch.setattr(runtime, "query_arrow", recording)
+    ds = upload(series(3000))
+    body = {
+        "spec": make_spec(
+            ds["id"], "line", encodings={"x": [{"field": "ts"}], "y": [{"field": "v"}]}
+        ),
+        "viewport": {"widthPx": 100},
+    }
+    table, meta = chart(body)
+    assert meta["method"] == "m4+minmaxlttb" and meta["rowsMatched"] == 3000
+    assert table.num_rows <= 200 and max(table.column("y0").to_pylist()) > 1000
+    m4 = [s for s in seen if "__viz_groups" in s]
+    assert len(m4) == 1 and "WITH" not in m4[0] and "SEMI" not in m4[0].upper()
+    assert len(seen) == 2  # the extent (with the row count) and M4
+
+
 def test_x_range_gives_detail_and_keeps_domain(upload: Any, chart: Any, make_spec: Any) -> None:
     ds = upload(series(3000))
     base = {
