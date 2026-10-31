@@ -27,7 +27,9 @@ const inP = (field: string, ...values: string[]): Predicate => ({ op: "in", fiel
 const dashboard = (over: Partial<Dashboard> = {}): Dashboard =>
   ({ id: "d", name: "d", tabs: [], filters: [], linkGroups: [], ...over }) as Dashboard;
 
-function inputs(over: Partial<FilterInputs> & Pick<FilterInputs, "spec" | "widgetId">): FilterInputs {
+function inputs(
+  over: Partial<FilterInputs> & Pick<FilterInputs, "spec" | "widgetId">,
+): FilterInputs {
   return {
     dashboard: dashboard(),
     bus: EMPTY_BUS,
@@ -84,9 +86,15 @@ describe("filtersForChart: own-predicate exclusion", () => {
 
   it("gives every other chart in the group the selection, but never the chart its own", () => {
     const d = dashboard();
-    const one = filtersForChart(inputs({ dashboard: d, spec: spec("c1", "ds1", "g"), widgetId: "w1", bus }));
-    const two = filtersForChart(inputs({ dashboard: d, spec: spec("c2", "ds1", "g"), widgetId: "w2", bus }));
-    const three = filtersForChart(inputs({ dashboard: d, spec: spec("c3", "ds1", "g"), widgetId: "w3", bus }));
+    const one = filtersForChart(
+      inputs({ dashboard: d, spec: spec("c1", "ds1", "g"), widgetId: "w1", bus }),
+    );
+    const two = filtersForChart(
+      inputs({ dashboard: d, spec: spec("c2", "ds1", "g"), widgetId: "w2", bus }),
+    );
+    const three = filtersForChart(
+      inputs({ dashboard: d, spec: spec("c3", "ds1", "g"), widgetId: "w3", bus }),
+    );
     expect(one).toEqual([inP("channel", "web")]);
     expect(two).toEqual([inP("region", "N")]);
     expect(three).toEqual([inP("region", "N"), inP("channel", "web")]);
@@ -147,7 +155,13 @@ describe("filtersForChart: dashboard and global filters", () => {
     const d = dashboard({ filters: [dateFilter] });
     const columnsOf = (id: string) => (id === "ds1" ? new Set(["region"]) : undefined);
     const f = filtersForChart(
-      inputs({ dashboard: d, spec: spec("c", "ds1"), widgetId: "w", filterValues: { f1: range }, columnsOf }),
+      inputs({
+        dashboard: d,
+        spec: spec("c", "ds1"),
+        widgetId: "w",
+        filterValues: { f1: range },
+        columnsOf,
+      }),
     );
     expect(f).toEqual([]);
   });

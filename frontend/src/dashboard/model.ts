@@ -52,7 +52,9 @@ export function addWidget(
   // Fill the right half of the last row before starting a new one.
   const last = items.at(-1);
   const fitsBeside =
-    last !== undefined && last.y + last.h === bottomRow(items) && last.x + last.w + size.w <= GRID_COLUMNS;
+    last !== undefined &&
+    last.y + last.h === bottomRow(items) &&
+    last.x + last.w + size.w <= GRID_COLUMNS;
   const item: LayoutItem = {
     i: newId(),
     x: fitsBeside && last ? last.x + last.w : 0,
@@ -115,7 +117,10 @@ export function applyLayout(
   return changed ? mapTab(dashboard, tabId, (t) => ({ ...t, items })) : dashboard;
 }
 
-export function addTab(dashboard: Dashboard, name?: string): { dashboard: Dashboard; tab: DashboardTab } {
+export function addTab(
+  dashboard: Dashboard,
+  name?: string,
+): { dashboard: Dashboard; tab: DashboardTab } {
   const tabs = dashboard.tabs ?? [];
   const tab: DashboardTab = { id: newId(), name: name ?? `Tab ${tabs.length + 1}`, items: [] };
   return { dashboard: { ...dashboard, tabs: [...tabs, tab] }, tab };
