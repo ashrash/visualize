@@ -9,6 +9,7 @@ import {
   type PointHit,
   pointHitFrom,
 } from "./events";
+import { createGestureGate } from "./gesture";
 import { joinLinkGroup } from "./linkGroup";
 import { buildEChartsTheme } from "./theme";
 import type { ChartTheme } from "./types";
@@ -184,15 +185,20 @@ export function EChart({
       const hit = pointHitFrom(params);
       if (hit) latest.current.onPointClick?.(hit);
     });
+    // Linked charts replay each other's brush and legend actions as if the user had made them.
+    // Only a gesture on THIS chart is reported (see gesture.ts).
+    const gate = createGestureGate(chart.getZr());
     chart.on("legendselectchanged", (event: unknown) => {
-      latest.current.onLegendChange?.(legendChangeFrom(event));
+      if (gate.isLocal()) latest.current.onLegendChange?.(legendChangeFrom(event));
     });
     // A committed brush; `brush` also fires while dragging, so only its "removed" case is used.
     chart.on("brushEnd", (event: unknown) => {
+      if (!gate.isLocal()) return;
       const payload = brushPayloadFrom(event, chart.getOption() as Record<string, unknown>);
       if (payload) latest.current.onBrush?.(payload);
     });
     chart.on("brush", (event: unknown) => {
+      if (!gate.isLocal()) return;
       if (((event as { areas?: unknown[] }).areas ?? []).length > 0) return;
       const payload = brushPayloadFrom(event, chart.getOption() as Record<string, unknown>);
       if (payload) latest.current.onBrush?.(payload);
@@ -200,6 +206,7 @@ export function EChart({
 
     return () => {
       clearTimeout(timer);
+      gate.dispose();
       observer.disconnect();
       latest.current.onReady?.(null);
       chart.dispose();

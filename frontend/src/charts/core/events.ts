@@ -1,4 +1,4 @@
-import type { DrillValue } from "./drill";
+import { type DrillValue, toDrillValue } from "./drill";
 import { categoryLabel } from "./series";
 import type { ChartData } from "./types";
 
@@ -116,18 +116,9 @@ export function resolveBrushValues(
       (v) => categoryLabel(v, kind, o.format, o.locale) === label || String(v) === label,
     );
     if (raw === undefined) continue;
-    out.push(toDrillValue(raw));
+    out.push(toDrillValue(raw, kind));
   }
   return out;
-}
-
-export function toDrillValue(raw: unknown): DrillValue {
-  if (raw === null || raw === undefined) return null;
-  if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") return raw;
-  if (typeof raw === "bigint" && Math.abs(Number(raw)) <= Number.MAX_SAFE_INTEGER) {
-    return Number(raw);
-  }
-  return String(raw);
 }
 
 /** The legend's state after one entry was toggled. */
@@ -164,7 +155,7 @@ export function legendValues(data: ChartData, names: string[]): DrillValue[] {
       const label = categoryLabel(v, kind);
       return name === label || name.startsWith(`${label} · `);
     });
-    const value = raw === undefined ? undefined : toDrillValue(raw);
+    const value = raw === undefined ? undefined : toDrillValue(raw, kind);
     if (value !== undefined && !out.includes(value)) out.push(value);
   }
   return out;

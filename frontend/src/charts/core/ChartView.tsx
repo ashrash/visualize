@@ -17,6 +17,7 @@ import {
   drillLevels,
   drillTo,
   resolveDrillValue,
+  toDrillValue,
 } from "./drill";
 import { EChart, type XRange } from "./EChart";
 import {
@@ -25,7 +26,6 @@ import {
   legendValues,
   type PointHit,
   resolveBrushValues,
-  toDrillValue,
 } from "./events";
 import { chartXDomain } from "./primitives/extra";
 import { getPlot } from "./registry";
@@ -213,7 +213,7 @@ function DataTable({
                   {onDrill && j === xColumn ? (
                     <button
                       type="button"
-                      onClick={() => onDrill(toDrillValue(data.columns.x?.[i]))}
+                      onClick={() => onDrill(toDrillValue(data.columns.x?.[i], data.kinds.x))}
                       aria-label={`Drill into ${cell || "(blank)"}`}
                       className="text-accent underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-accent"
                     >
@@ -324,7 +324,12 @@ export function ChartView({
   // Lazy plot assets (maps, custom series) load before the first render. Readiness is keyed on
   // what `prepare` reads (the plot and its params, e.g. a map's level), not on the plot alone, so
   // changing a param waits for the new asset instead of drawing with the old or no map.
-  const prepareKey = JSON.stringify([baseSpec.plotType, baseSpec.params ?? {}]);
+  const prepareKey = JSON.stringify([
+    baseSpec.plotType,
+    entry?.prepareParams
+      ? entry.prepareParams.map((name) => baseSpec.params?.[name] ?? null)
+      : (baseSpec.params ?? {}),
+  ]);
   const [preparedKey, setPreparedKey] = useState<string | null>(null);
   useEffect(() => {
     if (!entry?.prepare) return;
@@ -374,9 +379,11 @@ export function ChartView({
       const resolved =
         resolveDrillValue(data, hit.name, { format: xFormat }) ??
         (Array.isArray(hit.value) && hit.value[0] !== undefined
-          ? { value: toDrillValue(hit.value[0]) }
+          ? { value: toDrillValue(hit.value[0], data.kinds[xChannel]) }
           : undefined);
-      const goDeeper = resolved !== undefined && canDrillDown(levels, path);
+      // A date or time bucket is a range, not a value to filter on with `eq`: never drill into one.
+      const goDeeper =
+        resolved !== undefined && canDrillDown(levels, path) && data.kinds[xChannel] !== "temporal";
       if (goDeeper) changeDrill(drillInto(path, resolved.value));
       onPointClick?.({
         ...hit,
@@ -385,23 +392,71 @@ export function ChartView({
         drilled: goDeeper,
       });
     },
-    [data, xFormat, levels, path, changeDrill, onPointClick, xField],
+    [data, xFormat, levels, path, changeDrill, onPointClick, xField, xChannel],
   );
 
+  // Brush lifecycle. `cleared` is reported exactly once per brush: ECharts fires an empty `brush`
+  // and an empty `brushEnd` for one removal, and a chart rebuild (drill, spec edit, table view)
+  // silently discards a drawn band, so those report it too.
+  const brushState = useRef({
+    active: false,
+    axis: (horizontal ? "y" : "x") as BrushPayload["axis"],
+    kind: "category" as BrushPayload["kind"],
+  });
+  const brushCallback = useRef(onBrushSelected);
+  brushCallback.current = onBrushSelected;
+  const [brushShown, setBrushShown] = useState(false);
   const handleBrush = useCallback(
     (brush: BrushPayload) => {
-      if (!onBrushSelected) return;
-      onBrushSelected({
+      const state = brushState.current;
+      const wasActive = state.active;
+      state.active = !brush.cleared;
+      if (!brush.cleared) {
+        state.axis = brush.axis;
+        state.kind = brush.kind;
+      }
+      setBrushShown(state.active);
+      if (brush.cleared && !wasActive) return;
+      brushCallback.current?.({
         ...brush,
-        axis: brush.cleared ? (horizontal ? "y" : "x") : brush.axis,
+        axis: brush.cleared ? state.axis : brush.axis,
+        kind: brush.cleared ? state.kind : brush.kind,
         field: xField,
         values:
-          data && brush.kind === "category"
+          data && brush.kind === "category" && !brush.cleared
             ? resolveBrushValues(data, brush.categories, { format: xFormat })
             : [],
       });
     },
-    [onBrushSelected, data, xField, xFormat, horizontal],
+    [data, xField, xFormat],
+  );
+  const reportCleared = useCallback(() => {
+    handleBrush({
+      axis: brushState.current.axis,
+      kind: brushState.current.kind,
+      ranges: [],
+      categories: [],
+      cleared: true,
+    });
+  }, [handleBrush]);
+  const reportClearedRef = useRef(reportCleared);
+  reportClearedRef.current = reportCleared;
+  const clearBrush = useCallback(() => {
+    chartRef.current?.dispatchAction({ type: "brush", areas: [] });
+    reportCleared();
+  }, [reportCleared]);
+  // The chart is rebuilt from scratch when this key changes (and is gone in table view), which
+  // throws away a drawn band: tell the embedder so its filter does not outlive the selection.
+  const chartResetKey = `${identity}|${spec.interactions?.zoom ?? true}|${spec.interactions?.brush ?? false}`;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on the key and the view mode only
+  useEffect(() => {
+    if (brushState.current.active) reportClearedRef.current();
+  }, [chartResetKey, asTable]);
+  useEffect(
+    () => () => {
+      if (brushState.current.active) reportClearedRef.current();
+    },
+    [],
   );
 
   const handleLegend = useCallback(
@@ -526,12 +581,23 @@ export function ChartView({
           </span>
         </nav>
       ) : null}
+      {brushShown && !asTable ? (
+        <div className="flex items-center gap-2 px-1 pb-1 text-xs">
+          <button
+            type="button"
+            onClick={clearBrush}
+            className="rounded-md border border-line bg-bg px-2 py-0.5 text-fg hover:bg-surface focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            Clear selection
+          </button>
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1">
         {asTable ? (
           <DataTable
             data={data}
             onDrill={
-              canDrillDown(levels, path) && !data.stat
+              canDrillDown(levels, path) && !data.stat && data.kinds.x !== "temporal"
                 ? (value) => changeDrill(drillInto(path, value))
                 : undefined
             }
@@ -542,7 +608,7 @@ export function ChartView({
             theme={theme}
             className="h-full"
             ariaLabel={label}
-            resetKey={`${identity}|${spec.interactions?.zoom ?? true}|${spec.interactions?.brush ?? false}`}
+            resetKey={chartResetKey}
             onReady={onReady}
             onViewport={setZoom}
             linkGroup={spec.interactions?.linkGroup}

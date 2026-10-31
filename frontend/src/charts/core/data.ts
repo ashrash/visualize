@@ -160,6 +160,8 @@ export function useChartData(
       filters,
       options.xRange ?? null,
       pipelines.length > 0 ? pipelines : null,
+      // Widgets with their own slot do not share a query: one cancels only its own requests.
+      options.slot ?? null,
     ],
     queryFn: ({ signal }) =>
       fetchChartData(buildRequest(spec, filters, options, pipelines), signal),
@@ -188,6 +190,7 @@ export function useChartOverlays(
       trendlines,
       filters,
       pipelines.length > 0 ? pipelines : null,
+      options.slot ?? null,
     ],
     queryFn: ({ signal }) => fetchOverlays(buildRequest(spec, filters, options, pipelines), signal),
     placeholderData: keepPreviousData,

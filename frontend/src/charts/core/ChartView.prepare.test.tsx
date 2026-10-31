@@ -79,6 +79,22 @@ describe("ChartView asset readiness", () => {
     expect(renders.at(-1)).toBe("admin1");
   });
 
+  it("with prepareParams, only those params wait; other param edits keep the chart", async () => {
+    (fakeEntry as { prepareParams?: string[] }).prepareParams = ["level"];
+    try {
+      const spec = (level: string, bubbles: number) =>
+        makeSpec({ plotType: "choropleth" as never, params: { level, bubbles } });
+      const { rerender } = render(<ChartView spec={spec("country", 1)} />);
+      await act(async () => prepares[0]?.resolve());
+      rerender(<ChartView spec={spec("country", 2)} />);
+      expect(screen.getByTestId("echart")).toBeTruthy();
+      rerender(<ChartView spec={spec("admin1", 2)} />);
+      expect(screen.queryByTestId("echart")).toBeNull();
+    } finally {
+      (fakeEntry as { prepareParams?: string[] }).prepareParams = undefined;
+    }
+  });
+
   it("does not drop the chart for a cosmetic edit", async () => {
     const spec = (name: string) => makeSpec({ plotType: "choropleth" as never, name, params: {} });
     const { rerender } = render(<ChartView spec={spec("a")} />);

@@ -221,7 +221,10 @@ function DrillLevels({
       {levels.map((level, i) => {
         const options = eligible.map((c) => ({ value: c.name, label: c.name }));
         if (!options.some((o) => o.value === level))
-          options.unshift({ value: level, label: level });
+          options.unshift({
+            value: level,
+            label: `${level} (not a category column: will not drill)`,
+          });
         return (
           <div
             // biome-ignore lint/suspicious/noArrayIndexKey: levels are positional

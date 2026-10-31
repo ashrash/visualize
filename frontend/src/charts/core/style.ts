@@ -109,6 +109,8 @@ export function niceTickLabels(
     logBase?: number;
     format?: (v: unknown) => string;
     splitNumber?: number;
+    /** A value axis starts at 0 unless it is a `scale: true` axis. Default true. */
+    includeZero?: boolean;
   } = {},
 ): string[] {
   const show = (v: number) => (o.format ? o.format(v) : String(v));
@@ -116,7 +118,9 @@ export function niceTickLabels(
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [show(0)];
   if (o.log) {
     const base = o.logBase ?? 10;
-    lo = Math.max(lo, Number.MIN_VALUE);
+    // A log axis only draws positive values: ticks run over the positive part of the extent.
+    if (hi <= 0) return [show(1)];
+    if (lo <= 0) lo = hi;
     hi = Math.max(hi, lo);
     const first = Math.floor(Math.log(lo) / Math.log(base));
     const last = Math.max(first, Math.ceil(Math.log(hi) / Math.log(base)));
@@ -124,8 +128,10 @@ export function niceTickLabels(
     for (let e = first; e <= last && labels.length < 20; e++) labels.push(show(base ** e));
     return labels;
   }
-  lo = Math.min(lo, 0);
-  hi = Math.max(hi, 0);
+  if (o.includeZero !== false) {
+    lo = Math.min(lo, 0);
+    hi = Math.max(hi, 0);
+  }
   if (hi === lo) hi = lo + 1;
   const step = niceStep(hi - lo, o.splitNumber ?? 5);
   const labels: string[] = [];
@@ -473,15 +479,19 @@ export function applyStyle(
       const fmt = makeFormatter(yFormatOf(i) ?? "auto", locale);
       const vals = valuesOf(onAxis);
       // The widest label is a tick the axis draws (a rounded value), not the data maximum.
-      const customFormat = yFormatOf(i) && yFormatOf(i) !== "auto";
       const log = a.scale === "log";
-      const lo = bound(a.min, "value") ?? minOf(vals);
-      const hi = bound(a.max, "value") ?? maxOf(vals);
-      const ticks = vals.length
+      // Log axes draw only positive values, so their ticks start at the smallest of those.
+      const measured = log ? vals.filter((v) => v > 0) : vals;
+      const lo = bound(a.min, "value") ?? minOf(measured);
+      const hi = bound(a.max, "value") ?? maxOf(measured);
+      // `fmt` is the axis's own format; for "auto" it groups digits like ECharts' default axis
+      // labels ("2,000,000"), which is what is actually drawn when no format is set.
+      const ticks = measured.length
         ? niceTickLabels([lo, hi], {
             log,
             logBase: a.logBase ?? 10,
-            format: customFormat ? (v) => fmt(v) : undefined,
+            format: (v) => fmt(v),
+            includeZero: (yBases[i] as Obj | undefined)?.scale !== true,
           })
         : [fmtAuto(0)];
       yAxes.push(

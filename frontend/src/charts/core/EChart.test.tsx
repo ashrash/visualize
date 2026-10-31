@@ -3,6 +3,11 @@ import { cleanup, render } from "@testing-library/react";
 import type { ECharts } from "echarts/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const zrHandlers = new Map<string, () => void>();
+const zr = {
+  on: (e: string, h: () => void) => zrHandlers.set(e, h),
+  off: (e: string) => zrHandlers.delete(e),
+};
 const chart = {
   setOption: vi.fn(),
   setTheme: vi.fn(),
@@ -11,6 +16,7 @@ const chart = {
   resize: vi.fn(),
   dispose: vi.fn(),
   dispatchAction: vi.fn(),
+  getZr: () => zr,
   group: "",
 };
 const { connect, disconnect } = vi.hoisted(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
@@ -46,7 +52,8 @@ beforeEach(() => {
       disconnect() {}
     },
   );
-  for (const fn of Object.values(chart)) if (typeof fn === "function") fn.mockClear();
+  for (const fn of Object.values(chart)) if (vi.isMockFunction(fn)) fn.mockClear();
+  zrHandlers.clear();
   chart.group = "";
   connect.mockClear();
   disconnect.mockClear();
@@ -229,6 +236,12 @@ describe("EChart", () => {
         onBrush={onBrush}
       />,
     );
+    // Legend and brush events only count while the pointer is on this chart.
+    handler("legendselectchanged")?.({ name: "s", selected: { s: true } });
+    handler("brushEnd")?.({ areas: [{ brushType: "lineX", coordRange: [0, 1] }] });
+    expect(onLegendChange).not.toHaveBeenCalled();
+    expect(onBrush).not.toHaveBeenCalled();
+    zrHandlers.get("mousedown")?.();
     handler("click")?.({ componentType: "series", seriesName: "s", name: "b", dataIndex: 1 });
     handler("click")?.({ componentType: "title" });
     expect(onPointClick).toHaveBeenCalledTimes(1);
@@ -237,7 +250,7 @@ describe("EChart", () => {
     handler("legendselectchanged")?.({ name: "s", selected: { s: false } });
     expect(onLegendChange).toHaveBeenCalledWith(expect.objectContaining({ hidden: ["s"] }));
 
-    handler("brushEnd")?.({ areas: [{ brushType: "lineX", coordRange: [0.8, 2.1] }] });
+    handler("brushEnd")?.({ areas: [{ brushType: "lineX", coordRange: [1, 2] }] });
     expect(onBrush).toHaveBeenCalledWith(expect.objectContaining({ categories: ["b", "c"] }));
     // `brush` fires while dragging: only its "removed" case counts.
     handler("brush")?.({ areas: [{ brushType: "lineX", coordRange: [0, 1] }] });

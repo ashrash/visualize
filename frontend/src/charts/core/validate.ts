@@ -77,6 +77,11 @@ export function validateEntry(entry: PlotEntry): string[] {
       problems.push(`${where} defaults.encodings has unknown channel "${channel}"`);
     }
   }
+  for (const name of entry.prepareParams ?? []) {
+    if (!paramNames.includes(name)) {
+      problems.push(`${where} prepareParams names unknown param "${name}"`);
+    }
+  }
   if (entry.drill) {
     const channel = entry.encodingsSchema.find((c) => c.name === entry.drill?.channel);
     if (!channel) problems.push(`${where} drill.channel "${entry.drill.channel}" is not a channel`);

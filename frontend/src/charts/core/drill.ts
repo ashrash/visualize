@@ -96,14 +96,27 @@ export function resolveDrillValue(
   const kind = data.kinds[o.column ?? "x"];
   for (const raw of column) {
     if (categoryLabel(raw, kind, o.format, o.locale) !== label && String(raw) !== label) continue;
-    if (raw === null || raw === undefined) return { value: null };
-    if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") {
-      return { value: raw };
-    }
-    if (typeof raw === "bigint" && Math.abs(Number(raw)) <= Number.MAX_SAFE_INTEGER) {
-      return { value: Number(raw) };
-    }
-    return { value: String(raw) };
+    return { value: toDrillValue(raw, kind) };
   }
   return undefined;
+}
+
+/**
+ * A column value as a Predicate scalar. Temporal values arrive as epoch milliseconds, but a
+ * Predicate on a date or timestamp column takes ISO-8601 text (an epoch number cannot be cast to
+ * a TIMESTAMP): a UTC-midnight instant becomes "YYYY-MM-DD", anything else a full ISO instant.
+ */
+export function toDrillValue(raw: unknown, kind?: string): DrillValue {
+  if (raw === null || raw === undefined) return null;
+  if (kind === "temporal" && (typeof raw === "number" || raw instanceof Date)) {
+    const date = raw instanceof Date ? raw : new Date(raw);
+    if (Number.isNaN(date.getTime())) return null;
+    const iso = date.toISOString();
+    return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : iso;
+  }
+  if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") return raw;
+  if (typeof raw === "bigint" && Math.abs(Number(raw)) <= Number.MAX_SAFE_INTEGER) {
+    return Number(raw);
+  }
+  return String(raw);
 }

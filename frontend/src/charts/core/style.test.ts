@@ -347,4 +347,40 @@ describe("y axis title gap", () => {
     expect(build(1607.42).yAxis.nameGap).toBe(build(1600).yAxis.nameGap);
     expect(build(44.53).yAxis.nameGap).toBe(build(40).yAxis.nameGap);
   });
+
+  it("measures the comma-grouped labels ECharts draws for large values", () => {
+    const build = (v: number, yAxis: Opt = { type: "value" }, patch: Opt = {}) =>
+      applyStyle(
+        {
+          xAxis: { type: "category", data: ["a", "b"] },
+          yAxis,
+          series: [{ type: "bar", name: "v", data: [v / 3, v] }],
+        },
+        makeSpec(style({ yAxes: [{ grid: true, title: "Total", ...patch }] })),
+        theme,
+      ) as Opt;
+    // "2,000,000" is 9 characters wide, not the 7 of "2000000".
+    expect(build(2_000_000).yAxis.nameGap).toBe(9 * 7 + 12);
+  });
+
+  it("does not force a scale: true axis to include zero", () => {
+    const labels = niceTickLabels([1000, 1100], { includeZero: false });
+    expect(labels[0]).toBe("1000");
+    expect(niceTickLabels([1000, 1100])[0]).toBe("0");
+  });
+
+  it("builds log ticks from the positive part of the data", () => {
+    expect(niceTickLabels([-5, 4200], { log: true })).toEqual(["1000", "10000"]);
+    expect(niceTickLabels([-5, -1], { log: true })).toEqual(["1"]);
+    const out = applyStyle(
+      {
+        xAxis: { type: "category", data: ["a", "b", "c"] },
+        yAxis: { type: "value" },
+        series: [{ type: "bar", name: "v", data: [-3, 0, 5000] }],
+      },
+      makeSpec(style({ yAxes: [{ grid: true, title: "T", scale: "log" }] })),
+      theme,
+    ) as Opt;
+    expect(Number.isFinite(out.yAxis.nameGap)).toBe(true);
+  });
 });

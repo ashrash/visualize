@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExportSinkProvider } from "../../export/sinkContext";
 import { makeData, makeSpec } from "./testing";
 
+const chartDispatch = vi.fn();
 const useChartData = vi.fn();
 const useChartOverlays = vi.fn(() => ({ data: undefined }));
 vi.mock("./data", async (importOriginal) => ({
@@ -27,7 +28,7 @@ vi.mock("./EChart", () => ({
   EChart: (props: FakeEChartProps) => {
     lastEChartProps = props;
     useEffect(() => {
-      props.onReady?.({});
+      props.onReady?.({ dispatchAction: chartDispatch });
     }, [props.onReady]);
     return <div data-testid="echart" />;
   },
@@ -242,6 +243,157 @@ describe("drill-down", () => {
     expect(screen.queryByRole("navigation", { name: "Drill-down" })).toBeNull();
     act(() => lastEChartProps.onPointClick?.(hit("a")));
     expect(onPointClick).toHaveBeenCalledWith(expect.objectContaining({ drilled: false }));
+  });
+});
+
+describe("temporal values in signals", () => {
+  const dayData = () =>
+    makeData(
+      { x: [Date.UTC(2026, 0, 1), Date.UTC(2026, 0, 2)], color: ["e", "w"], y0: [1, 2] },
+      { x: "day" },
+      { kinds: { x: "temporal", color: "string" } },
+    );
+  const spec = () =>
+    makeSpec({
+      encodings: { x: [{ field: "day" }], color: [{ field: "r" }] },
+      interactions: {
+        zoom: true,
+        brush: false,
+        clickFilter: true,
+        drillHierarchy: ["day", "hour"],
+      },
+    });
+
+  it("reports ISO dates, never epoch ms, and does not drill into a date bucket", () => {
+    ready(dayData());
+    const onPointClick = vi.fn();
+    const onDrillChange = vi.fn();
+    render(<ChartView spec={spec()} onPointClick={onPointClick} onDrillChange={onDrillChange} />);
+    act(() => lastEChartProps.onPointClick?.(hit("2026-01-02")));
+    expect(onPointClick).toHaveBeenCalledWith(
+      expect.objectContaining({ rawValue: "2026-01-02", drilled: false }),
+    );
+    expect(onDrillChange).not.toHaveBeenCalled();
+  });
+
+  it("reports ISO dates for a click on a [x, y] point of a time axis", () => {
+    ready(dayData());
+    const onPointClick = vi.fn();
+    render(<ChartView spec={spec()} onPointClick={onPointClick} />);
+    act(() => lastEChartProps.onPointClick?.(hit("", { value: [Date.UTC(2026, 0, 1), 5] })));
+    expect(onPointClick).toHaveBeenCalledWith(expect.objectContaining({ rawValue: "2026-01-01" }));
+  });
+
+  it("does not offer table drill buttons for dates", () => {
+    ready(dayData());
+    render(<ChartView spec={spec()} />);
+    fireEvent.click(screen.getByRole("button", { name: /View as table/ }));
+    expect(screen.queryByRole("button", { name: /Drill into/ })).toBeNull();
+  });
+});
+
+describe("brush lifecycle", () => {
+  const brushSpec = (extra: Record<string, unknown> = {}) =>
+    makeSpec({
+      encodings: { x: [{ field: "year" }] },
+      interactions: { zoom: true, brush: true, clickFilter: true, ...extra },
+    });
+  const drawn = {
+    axis: "x" as const,
+    kind: "category" as const,
+    ranges: [],
+    categories: ["2025"],
+    cleared: false,
+  };
+  const cleared = { ...drawn, categories: [], cleared: true };
+  const data = () => makeData({ x: [2024, 2025], y0: [1, 2] }, { x: "year" });
+
+  it("reports a removal once, even though ECharts fires two empty events for it", () => {
+    ready(data());
+    const onBrushSelected = vi.fn();
+    render(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    act(() => lastEChartProps.onBrush?.(drawn));
+    act(() => lastEChartProps.onBrush?.(cleared));
+    act(() => lastEChartProps.onBrush?.(cleared));
+    expect(onBrushSelected).toHaveBeenCalledTimes(2);
+    expect(onBrushSelected).toHaveBeenLastCalledWith(expect.objectContaining({ cleared: true }));
+  });
+
+  it("does not report clearing when nothing was brushed", () => {
+    ready(data());
+    const onBrushSelected = vi.fn();
+    render(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    act(() => lastEChartProps.onBrush?.(cleared));
+    expect(onBrushSelected).not.toHaveBeenCalled();
+  });
+
+  it("offers a keyboard-reachable Clear selection that removes the band and reports it", () => {
+    ready(data());
+    const onBrushSelected = vi.fn();
+    render(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    expect(screen.queryByRole("button", { name: "Clear selection" })).toBeNull();
+    act(() => lastEChartProps.onBrush?.(drawn));
+    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(chartDispatch).toHaveBeenCalledWith({ type: "brush", areas: [] });
+    expect(onBrushSelected).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cleared: true, field: "year" }),
+    );
+    expect(screen.queryByRole("button", { name: "Clear selection" })).toBeNull();
+  });
+
+  it("reports a cleared brush before a rebuild or table view would silently drop it", () => {
+    ready(data());
+    const onBrushSelected = vi.fn();
+    const { rerender } = render(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    act(() => lastEChartProps.onBrush?.(drawn));
+    onBrushSelected.mockClear();
+    // Brushing is switched off: the chart rebuilds and the band is gone.
+    rerender(
+      <ChartView
+        spec={makeSpec({
+          encodings: { x: [{ field: "year" }] },
+          interactions: { zoom: true, brush: false, clickFilter: true },
+        })}
+        onBrushSelected={onBrushSelected}
+      />,
+    );
+    expect(onBrushSelected).toHaveBeenCalledTimes(1);
+    expect(onBrushSelected).toHaveBeenCalledWith(expect.objectContaining({ cleared: true }));
+
+    // Table view unmounts the chart.
+    act(() => lastEChartProps.onBrush?.(drawn));
+    onBrushSelected.mockClear();
+    rerender(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    onBrushSelected.mockClear();
+    act(() => lastEChartProps.onBrush?.(drawn));
+    onBrushSelected.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /View as table/ }));
+    expect(onBrushSelected).toHaveBeenCalledWith(expect.objectContaining({ cleared: true }));
+  });
+
+  it("reports a cleared brush when the chart goes away", () => {
+    ready(data());
+    const onBrushSelected = vi.fn();
+    const { unmount } = render(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    act(() => lastEChartProps.onBrush?.(drawn));
+    onBrushSelected.mockClear();
+    unmount();
+    expect(onBrushSelected).toHaveBeenCalledWith(expect.objectContaining({ cleared: true }));
+  });
+
+  it("clears a brush when the chart is drilled", () => {
+    ready(data());
+    const onBrushSelected = vi.fn();
+    render(
+      <ChartView
+        spec={brushSpec({ drillHierarchy: ["year", "month"] })}
+        onBrushSelected={onBrushSelected}
+      />,
+    );
+    act(() => lastEChartProps.onBrush?.(drawn));
+    onBrushSelected.mockClear();
+    act(() => lastEChartProps.onPointClick?.(hit("2025")));
+    expect(onBrushSelected).toHaveBeenCalledWith(expect.objectContaining({ cleared: true }));
   });
 });
 

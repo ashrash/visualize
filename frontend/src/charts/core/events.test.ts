@@ -44,7 +44,7 @@ describe("brushPayloadFrom", () => {
 
   it("turns an x-range brush on a category axis into the category names it covers", () => {
     const payload = brushPayloadFrom(
-      { areas: [{ brushType: "lineX", coordRange: [0.6, 2.2] }] },
+      { areas: [{ brushType: "lineX", coordRange: [1, 2] }] },
       categoryOption,
     );
     expect(payload).toMatchObject({ axis: "x", kind: "category", categories: ["b", "c"] });
@@ -55,8 +55,8 @@ describe("brushPayloadFrom", () => {
     const payload = brushPayloadFrom(
       {
         areas: [
-          { brushType: "lineX", coordRange: [-1, 0.2] },
-          { brushType: "lineX", coordRange: [2.8, 9] },
+          { brushType: "lineX", coordRange: [-1, 0] },
+          { brushType: "lineX", coordRange: [3, 9] },
         ],
       },
       categoryOption,
@@ -112,6 +112,15 @@ describe("resolveBrushValues", () => {
   it("maps selected category names back to raw column values", () => {
     const data = makeData({ x: [2024, 2025, 2026], y0: [1, 2, 3] });
     expect(resolveBrushValues(data, ["2024", "2026", "nope"])).toEqual([2024, 2026]);
+  });
+
+  it("gives temporal categories as ISO text", () => {
+    const data = makeData(
+      { x: [Date.UTC(2026, 0, 1), Date.UTC(2026, 1, 1)], y0: [1, 2] },
+      {},
+      { kinds: { x: "temporal" } },
+    );
+    expect(resolveBrushValues(data, ["2026-02-01"])).toEqual(["2026-02-01"]);
   });
 });
 

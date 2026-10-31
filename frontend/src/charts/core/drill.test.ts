@@ -7,6 +7,7 @@ import {
   drillLevels,
   drillTo,
   resolveDrillValue,
+  toDrillValue,
 } from "./drill";
 import { makeData, makeSpec } from "./testing";
 import type { PlotEntry } from "./types";
@@ -100,7 +101,18 @@ describe("resolveDrillValue", () => {
 
   it("matches the label as the chart formatted it", () => {
     const data = makeData({ x: [Date.UTC(2026, 0, 1)], y0: [1] }, {}, { kinds: { x: "temporal" } });
-    expect(resolveDrillValue(data, "2026-01-01")).toEqual({ value: Date.UTC(2026, 0, 1) });
+    // A Predicate on a date column takes ISO text; an epoch number cannot be cast to a TIMESTAMP.
+    expect(resolveDrillValue(data, "2026-01-01")).toEqual({ value: "2026-01-01" });
+  });
+
+  it("gives temporal values as ISO text, date-only at UTC midnight", () => {
+    expect(toDrillValue(Date.UTC(2026, 0, 1), "temporal")).toBe("2026-01-01");
+    expect(toDrillValue(Date.UTC(2026, 0, 1, 13, 30), "temporal")).toBe("2026-01-01T13:30:00.000Z");
+    expect(toDrillValue(new Date(Date.UTC(2026, 5, 2)), "temporal")).toBe("2026-06-02");
+    expect(toDrillValue(Number.NaN, "temporal")).toBeNull();
+    // Numbers in a non-temporal column stay numbers, and bigints become numbers.
+    expect(toDrillValue(1767225600000, "number")).toBe(1767225600000);
+    expect(toDrillValue(10n, "number")).toBe(10);
   });
 
   it("handles blanks", () => {
