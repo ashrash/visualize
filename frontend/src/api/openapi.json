@@ -2273,6 +2273,302 @@
           }
         }
       }
+    },
+    "/api/share": {
+      "post": {
+        "tags": [
+          "share"
+        ],
+        "summary": "Create Share",
+        "operationId": "create_share_api_share_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareLink"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "share"
+        ],
+        "summary": "List Shares",
+        "operationId": "list_shares_api_share_get",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Projectid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShareLink"
+                  },
+                  "title": "Response List Shares Api Share Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/share/{token}": {
+      "delete": {
+        "tags": [
+          "share"
+        ],
+        "summary": "Revoke Share",
+        "operationId": "revoke_share_api_share__token__delete",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "share"
+        ],
+        "summary": "Resolve Share",
+        "operationId": "resolve_share_api_share__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{project_id}": {
+      "get": {
+        "tags": [
+          "share"
+        ],
+        "summary": "Project Report",
+        "description": "Report bundle with every chart of the project.",
+        "operationId": "project_report_api_reports__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{project_id}/dashboards/{dashboard_id}": {
+      "get": {
+        "tags": [
+          "share"
+        ],
+        "summary": "Dashboard Report",
+        "operationId": "dashboard_report_api_reports__project_id__dashboards__dashboard_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "dashboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dashboard Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/embed/{token}": {
+      "get": {
+        "tags": [
+          "share"
+        ],
+        "summary": "Resolve Embed",
+        "operationId": "resolve_embed_api_embed__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7771,6 +8067,201 @@
         ],
         "title": "SeriesStyle",
         "description": "Per-series overrides, keyed by index into the y channel."
+      },
+      "ShareCreate": {
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "title": "Projectid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "dashboard",
+              "chart"
+            ],
+            "title": "Kind"
+          },
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "expiresInDays": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3650.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresindays"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "projectId",
+          "kind",
+          "itemId"
+        ],
+        "title": "ShareCreate"
+      },
+      "ShareLink": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "projectId": {
+            "type": "string",
+            "title": "Projectid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "dashboard",
+              "chart"
+            ],
+            "title": "Kind"
+          },
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "revoked": {
+            "type": "boolean",
+            "title": "Revoked"
+          },
+          "sharePath": {
+            "type": "string",
+            "title": "Sharepath"
+          },
+          "embedPath": {
+            "type": "string",
+            "title": "Embedpath"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token",
+          "projectId",
+          "kind",
+          "itemId",
+          "createdAt",
+          "expiresAt",
+          "revoked",
+          "sharePath",
+          "embedPath"
+        ],
+        "title": "ShareLink"
+      },
+      "SharedView": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "dashboard",
+              "chart",
+              "project"
+            ],
+            "title": "Kind"
+          },
+          "projectId": {
+            "type": "string",
+            "title": "Projectid"
+          },
+          "projectName": {
+            "type": "string",
+            "title": "Projectname"
+          },
+          "dashboard": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Dashboard"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "charts": {
+            "items": {
+              "$ref": "#/components/schemas/ChartSpec"
+            },
+            "type": "array",
+            "title": "Charts"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "datasetIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Datasetids"
+          },
+          "themes": {
+            "items": {
+              "$ref": "#/components/schemas/Theme"
+            },
+            "type": "array",
+            "title": "Themes"
+          },
+          "globalFilters": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardFilter"
+            },
+            "type": "array",
+            "title": "Globalfilters"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generatedat"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "projectId",
+          "projectName",
+          "dashboard",
+          "charts",
+          "pipelines",
+          "datasetIds",
+          "themes",
+          "globalFilters",
+          "generatedAt"
+        ],
+        "title": "SharedView",
+        "description": "Everything the share/embed/report views need; chart data is fetched separately."
       },
       "SortKey": {
         "properties": {
