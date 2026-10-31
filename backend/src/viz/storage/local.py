@@ -84,6 +84,12 @@ class LocalStorage:
     def assets_dir(self) -> Path:
         return self.root / "assets"
 
+    @property
+    def assets_incoming_dir(self) -> Path:
+        """Where an asset upload streams to before it's sniffed; `sweep()` expires orphans left
+        by a crash or a locked file that couldn't be moved/removed."""
+        return self.assets_dir / "_incoming"
+
     def ensure(self) -> None:
         for directory in (
             self.sources_dir,
@@ -294,6 +300,10 @@ class LocalStorage:
         """Locally a route on this server; on AWS this becomes a presigned S3 URL."""
         return f"/api/exports/{export_id}/download"
 
+    def asset_url(self, asset_id: str) -> str:
+        """Locally a route on this server; on AWS this becomes a presigned S3 URL."""
+        return f"/api/assets/{asset_id}"
+
     def sweep(self, *, staged_max_age_s: float, exports_max_age_s: float) -> int:
         """Delete expired staged uploads and export files, skipping uploads a queued or running
         job is using. Returns how many dirs were removed."""
@@ -302,6 +312,7 @@ class LocalStorage:
         for parent, max_age in (
             (self.staged_dir, staged_max_age_s),
             (self.exports_dir, exports_max_age_s),
+            (self.assets_incoming_dir, staged_max_age_s),
         ):
             if not parent.is_dir():
                 continue

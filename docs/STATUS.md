@@ -320,12 +320,13 @@ built but gated behind a `statsTests` flag pending a ui-data wiring pass, the sa
 used for pipelines; several ui-charts bugs were found by plot agents and documented below as
 follow-ups rather than fixed (outside those agents' owned paths).
 
-### ui-charts follow-ups found during Wave 2 (not yet fixed; see entries above for detail)
-- Axis title gap sizing from unrounded data instead of tick labels (can clip off-screen).
+### ui-charts follow-ups found during Wave 2 (fixed in the Wave 3 `ui-charts` merge below)
+- Axis title gap sizing from unrounded data instead of tick labels (can clip off-screen). Fixed.
 - A log-x-axis filter drops array rows whose first element is <=0 (breaks some error-bar layouts).
-- "View as table" shows raw JSON for StatResult-based plots instead of a real table.
+  Fixed.
+- "View as table" shows raw JSON for StatResult-based plots instead of a real table. Fixed.
 - `ChartView` keys map-readiness on a plot's registry key, not the prepare inputs, so switching a
-  choropleth's map resolution leaves the chart blank after the new map loads.
+  choropleth's map resolution leaves the chart blank after the new map loads. Fixed.
 
 ## Wave 3 log
 
@@ -407,6 +408,114 @@ follow-ups rather than fixed (outside those agents' owned paths).
     on choropleth) so changing those `affectsData: false` params doesn't force an unnecessary
     `prepare()` re-wait — not yet done, a follow-up for whoever next touches `plots/geo.py`'s
     frontend renderers.
+  - `TODO(ui-data)`: grid drill-through (a dashboard chart drilling into the data grid) carries
+    *pipeline-output* field names in its predicates, which won't always match the *underlying
+    dataset's* column names shown in the grid (e.g. a calc/renamed column). Dispatched to ui-data
+    alongside the dashboard route wiring; for now, predicates whose field doesn't match a grid
+    column should be silently skipped rather than crashing the grid. The general pipeline-to-
+    dataset field-mapping problem is left for later.
+  - `TODO(data-core)`: `backend/src/viz/ingest/rows.py`'s grid filter path calls `where_sql(...)`
+    without passing `duck_type`, so an epoch-ms range/`between_dates` bound on a DATE/TIMESTAMP
+    grid column compiles as a bare integer literal instead of a cast timestamp. Only matters once
+    a temporal drill-through predicate reaches the grid (see the `ui-data` item above) — not yet
+    fixed, flagged for whoever next touches the grid's filter compilation.
+- 2026-10-31: Two Wave 3 integration gaps dispatched in parallel: `ui-data` is wiring
+  `/dashboards`, `/dashboards/:id`, `/share/:token`, `/embed/:token` routes into the app shell and
+  hooking the data grid up to `useDashboardRuntime`'s `gridDrill` state for drill-through;
+  `data-core` is adding a minimal `POST /api/assets` / `GET /api/assets/{id}` image-asset endpoint
+  for the dashboard Image widget (reassigned from the widget's own `TODO(platform)` comment, since
+  binary asset storage fits `data-core`'s `storage/`/`exports/` lane better than `platform`'s
+  project/share/auth lane).
+  - `ui-data`'s half landed on its branch (commit `ffb8f6c`): lazy-loaded `/dashboards`,
+    `/dashboards/:id` (inside `AppShell`), `/share/:token`, `/embed/:token` (outside, no nav
+    chrome) in `App.tsx`; a new `data/drillFilters.ts` maps a drilled `Predicate[]` onto grid
+    columns, silently dropping any field that isn't one (the pipeline-vs-dataset field-name gap
+    noted above); `DataScreen.tsx` consumes `gridDrill` once on mount and clears it so a refresh
+    doesn't replay it. This branch can't build standalone yet — it imports from
+    `dashboard/`, which only exists in `ui-dashboard`'s unmerged worktree; the agent verified it
+    by temporarily copying that directory in (74 files passed/1 skipped, 821 tests passed/4
+    skipped; biome and `tsc -b` clean), without merging anything. **After `ui-dashboard` merges**:
+    confirm its actual `DashboardPage`/`SharePage`/`EmbedPage` export shapes still match what
+    `ui-data` guessed (no props, each reads its own route param), and ask `ui-dashboard` to remove
+    the now-done `TODO(ui-data)` comment near `runtimeStore.ts:52`.
+  - `data-core`'s half merged: `POST /api/assets` (multipart, sniffs PNG/JPEG/GIF/WebP/SVG from
+    bytes, never trusts the client's declared type or file name, 10 MB default cap via the new
+    `VIZ_MAX_ASSET_MB`) and `GET /api/assets/{id}` (sandboxed CSP + `nosniff` on the response, so
+    an SVG opened directly can't run script on this origin). **Two xhigh review rounds** on top of
+    the lead's own direct fixes, because the first round found a real, exploitable blocker: the
+    SVG-sniff regex's lazy comment match could backtrack catastrophically, so a crafted ~300-byte
+    upload could freeze the *entire* process (not just the request) for hours, since `re` holds
+    the GIL while matching — fixed by making each comment match one way and the repeated group
+    possessive; confirmed afterwards to scale linearly, not exponentially, against the original
+    payload and 24+ other adversarial patterns, and fuzzed 100k cases against `expat` with no
+    bypass found. Same round also found: two ways to sneak an XXE-style entity block past the
+    "no internal subset" DOCTYPE rule (not exploitable today — nothing parses these bytes as XML
+    server-side — but the rule should hold for a future server-side consumer, e.g. report
+    rasterization); a client filename reaching the staging path could crash the request on a
+    reserved Windows device name (`NUL`, `CON`, ...) or a >255-char component; a multipart `file`
+    part with no `filename=` crashed both this endpoint and the *existing* dataset-upload endpoint
+    with an `IndexError`/500 (shared `ingest/upload.py` code, fixed for both); the committed
+    `openapi.json`/`schema.d.ts` were stale (contract-drift blocker). Round 2 confirmed every fix
+    (including re-fuzzing the new regex) and found three nits, also fixed: `EXTENSIONS` and
+    `sniff_image_type` are now typed by a shared `ImageContentType` Literal so mypy catches a
+    sniffed type that isn't in the contract instead of a 500 at request time; `Upload.file_name`
+    now reports the client's name even when a caller overrides the on-disk name; the ReDoS
+    regression test uses a small `k` so a future regression fails in seconds, not hours. 1153
+    backend passed/6 skipped, 691 frontend passed/1 skipped, ruff/mypy/biome/tsc clean.
+    - **Deferred, not blockers**: no asset deletion/GC (an unreferenced image stays in `assets/`
+      forever); `.vizproj` export doesn't bundle asset files yet; `GET /api/assets/{id}` requires
+      `auth.current_user`, so once OIDC replaces the local stub, Image widgets on a shared/embedded
+      dashboard will 401 without a token-scoped asset route (same hosted-mode gap already tracked
+      for share/embed's chart data above). Also noted, pre-existing and unrelated to this branch:
+      the dataset-upload endpoint's own filename handling 500s on a >255-char name too (same root
+      cause, different code path since it doesn't use `stage_name`) — a `TODO` for whoever next
+      touches `ingest/upload.py`'s dataset-facing callers.
+- 2026-10-31: `ui-dashboard`'s Wave 3 branch — **not yet merged**, 3 review rounds so far, all real
+  findings. Round 1 (blocker): click-to-filter was built from ECharts' *formatted display labels*
+  (`params.name`) instead of raw values, so integer categories, blanks, and time-bucketed labels
+  all produced wrong or empty predicates; fixed with a label-to-raw-value lookup against the
+  chart's own cached data, since `ui-charts`' raw-value callbacks hadn't merged yet. Round 1
+  should-fixes: horizontal-chart brush, tab-switch wiping a chart's selection, the report's
+  "Filtered by" line, KPI widget quantile-scan cost (measured: ~150-200ms per KPI on the 10M
+  fixture, within budget but flagged as a watch-item for a dashboard with many KPIs). Round 2:
+  once `ui-charts`' `onPointClick`/`onBrushSelected`/`onLegendChange`/`slot` landed on `main`
+  (Wave 3 ui-charts merge), swapped the round-1 label-lookup workaround for the real raw-value
+  callbacks, deleting `chartEvents.ts`/`useChartInstance.ts`/`RangeBrush.tsx` and the old
+  label-mapping code. Round 3 (CHANGES REQUIRED, 3 blockers): the swap dropped the brush
+  plot-type gate, so plots whose x channel isn't the brushed screen axis (Q-Q, lag, PCA/cluster
+  scores, event study) could silently build a wrong predicate from a brush drag; a React
+  parent-before-child unmount-cleanup ordering issue let a tab switch schedule a debounced
+  "cleared" filter update that fires ~150ms *after* the chart unmounts, silently wiping a linked
+  chart's selection; and `brushMode: "multiple"`'s several time-bucketed bands were collapsed into
+  one over-wide contiguous range instead of either covering only the actual buckets or failing
+  closed. All three sent back for round 4, along with should-fixes (the Image widget still can't
+  upload even though `/api/assets` is live on `main` now — stale `TODO(platform)`; legend-toggle
+  predicates lost their fail-closed behavior on an unresolvable hidden value; drill context is
+  dropped from published clicks/drill-through; a millisecond-precision raw-temporal click
+  regressed from the old half-open date range; `timeUnit` lookup can grab the wrong encoding when
+  one field is both a measure and bucketed on x).
+  - `TODO(ui-charts)`: a stale `TODO(ui-dashboard): wire these to the cross-filter bus` comment in
+    `charts/core/ChartView.tsx` (the wiring is done, this is ui-charts' file to clean up); add the
+    raw color value to `ChartPointClick` so `ui-dashboard`'s interim `chartLookup.ts` cache-read
+    workaround can be removed; a controlled-clear mechanism for the native brush (an imperative
+    handle or `brushClearKey` prop) so clearing a dashboard-side selection can also hide the
+    drawn band, which neither side currently does.
+- 2026-10-31: `ui-dashboard` round 3 fixes (all 3 blockers + 7 should-fixes from the round-3
+  review) landed as `b2ce267`, confirmed independently against the actual renderer code (not just
+  the agent's own claims) in round 4 — brush plot-type allowlist checked plot-by-plot, the
+  `disposed`-ref unmount fix checked against React's actual parent-before-child cleanup order, the
+  bucket-contiguity check confirmed to use real UTC calendar boundaries (handles 28/29/31-day
+  months and DST-free since the engine runs in UTC). One unplanned fix landed with it: the Image
+  widget can now actually upload (`POST /api/assets` through a typed client), closing a real
+  MVP §7 gap. Round 4 found one new blocker introduced by the "band outliving its filter" fix: a
+  click that replaces a brush selection gets silently wiped ~150ms later by the outgoing chart's
+  own unmount-time "cleared" report racing the click's publish — reproduced in a scratch test
+  harness, sent back with a precise fix (gate the "cleared" handling on the selection's actual
+  origin, cancel a pending brush-settle on click). Also sent back: the same remount loses the
+  chart's drill path, so a click after "Clear all" post-drill can publish a stale+wrong predicate
+  pair; and a fail-closed brush (non-contiguous buckets, multiple value-axis ranges, an
+  unresolvable category) leaves a visibly drawn band with silently no active filter, which breaks
+  the round-3 invariant that there's never a band with no filter behind it. Round 5 in progress.
 
 ## MVP.md
 
