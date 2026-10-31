@@ -219,6 +219,16 @@ def test_violin_clamps_grid_size_to_the_mark_cap(table_relation: Any) -> None:
     assert set(out.table.column("x").to_pylist()) == set(groups)
 
 
+def test_violin_grid_size_clamp_handles_a_null_group(table_relation: Any) -> None:
+    # The grid-size clamp counted distinct groups with np.unique, which sorts its input and
+    # raises a TypeError comparing None to str/bool - reservoir_sample keeps NULL as its own
+    # group, so any violin grouped by a column with at least one null value crashed.
+    g = [None] * 4 + ["a"] * 4 + ["b"] * 4
+    rel = table_relation({"v": [float(i) for i in range(12)], "g": g})
+    out = _run(PlotType.VIOLIN, rel, {"gridSize": 2048}, x=["g"], y=["v"], mark_cap=300)
+    assert set(out.table.column("x").to_pylist()) == {None, "a", "b"}
+
+
 # ---------------------------------------------------------------- strip / swarm
 
 

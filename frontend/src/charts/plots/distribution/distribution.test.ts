@@ -248,10 +248,33 @@ describe("violin", () => {
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
   });
+
+  it("labels numeric and null categories as strings, so a category axis can look them up", () => {
+    // A bare number as a category-axis data value is read by ECharts as an ordinal *index*,
+    // not a value to look up, and null has no category of its own - both must become strings.
+    const numeric = makeData(
+      { x: [10, 20], y: [0, 0], density: [1, 1], n: [5, 5] },
+      { x: "rating", y: "v" },
+    );
+    const withNull = makeData(
+      { x: [null, "a"], y: [0, 0], density: [1, 1], n: [5, 5] },
+      { x: "g", y: "v" },
+    );
+    expect(render("violin", {}, numeric).xAxis.data).toEqual(["10", "20"]);
+    expect(render("violin", {}, numeric).series[0].data[0]?.[0]).toBe("10");
+    expect(render("violin", {}, withNull).xAxis.data).toEqual(["(null)", "a"]);
+  });
 });
 
 describe("strip and swarm", () => {
   const data = makeData({ x: ["a", "a", "b"], y: [1, 2, 3] }, { x: "g", y: "v" });
+
+  it("labels numeric and null categories as strings", () => {
+    const numeric = makeData({ x: [10, 20], y: [0, 0] }, { x: "rating", y: "v" });
+    const withNull = makeData({ x: [null, "a"], y: [0, 0] }, { x: "g", y: "v" });
+    expect(render("strip", {}, numeric).xAxis.data).toEqual(["10", "20"]);
+    expect(render("strip", {}, withNull).xAxis.data).toEqual(["(null)", "a"]);
+  });
 
   it("strip jitters within the category, allowing overlap", () => {
     const o = render("strip", {}, data);

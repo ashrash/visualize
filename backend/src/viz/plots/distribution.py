@@ -358,7 +358,9 @@ def violin(req: PlotRequest) -> TableOutput:
     # Output rows are groups x grid_size (up to 100 x 2048 = 204,800): clamp the resolution so
     # the whole violin set fits the mark cap, instead of letting the generic cap guard slice the
     # table mid-curve (the last kept group's polygon would be cut off partway through).
-    n_groups = max(1, len(np.unique(groups)))
+    # Not np.unique: it sorts, and a None mixed with str/bool (reservoir_sample keeps NULL as
+    # its own group) raises "'<' not supported between instances of 'NoneType' and ...".
+    n_groups = max(1, len(set(groups.tolist())))
     grid_size = max(2, min(params.grid_size, req.mark_cap // n_groups))
     grouped = kde_by_group(
         sample.column(y_field),

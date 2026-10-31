@@ -45,8 +45,13 @@ function pointPlot(key: PlotType, label: string, description: string, swarm: boo
     styleSections: ["title", "legend", "axes", "tooltip", "numberFormat", "palette"],
     defaults: {},
     render(spec, data, theme, ctx) {
-      const xs = (data.columns.x ?? []) as string[];
+      const rawXs = (data.columns.x ?? []) as unknown[];
       const ys = (data.columns.y ?? []) as number[];
+      // A category axis's ordinal lookup is only reliable for string data: a bare number is
+      // read as an ordinal *index* rather than a value to look up, and null has no category of
+      // its own. Label every x consistently, whether it's a numeric ordinal column or has a
+      // missing (null) group.
+      const xs = rawXs.map((x) => (x == null ? "(null)" : String(x)));
       const option: Obj = {
         xAxis: {
           type: "category",

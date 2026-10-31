@@ -146,10 +146,15 @@ export const violin: PlotEntry = definePlot({
   styleSections: ["title", "legend", "axes", "tooltip", "numberFormat", "palette"],
   defaults: {},
   render(spec, data, theme, ctx) {
-    const xs = (data.columns.x ?? []) as string[];
+    const rawXs = (data.columns.x ?? []) as unknown[];
     const ys = (data.columns.y ?? []) as number[];
     const densities = (data.columns.density ?? []) as number[];
     const ns = (data.columns.n ?? []) as number[];
+    // A category axis's ordinal lookup is only reliable for string data: a bare number is read
+    // as an ordinal *index* rather than a value to look up, and null has no category of its own
+    // (it silently lands on category 0). Label every x consistently so lookups are unambiguous,
+    // whether the field is a numeric ordinal column or has a missing (null) group.
+    const xs = rawXs.map((x) => (x == null ? "(null)" : String(x)));
     const categories = [...new Set(xs)];
     const seriesData = xs.map((x, i) => [x, ys[i], densities[i], ns[i]]);
 
