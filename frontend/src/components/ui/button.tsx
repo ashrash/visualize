@@ -2,15 +2,22 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type { ButtonHTMLAttributes, Ref } from "react";
 import { cn } from "./cn";
 
+// primary/danger hover mixes the background 15% toward --color-fg (not --color-accent-fg, the
+// button's own text color) because fg and accent-fg sit at opposite luminance extremes in both
+// themes today, so moving toward fg reliably moves away from the text and raises contrast. This
+// relies on that pairing holding; a future theme that puts a light accent-fg in light mode (or a
+// dark one in dark mode) would need its hover mixed toward a dedicated token instead of fg.
 export const buttonVariants = cva(
   "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-40 aria-disabled:cursor-not-allowed aria-disabled:opacity-40",
   {
     variants: {
       variant: {
-        primary: "bg-accent text-accent-fg hover:opacity-90",
+        primary:
+          "bg-accent text-accent-fg hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]",
         outline: "border border-line bg-transparent hover:bg-surface-2",
         ghost: "bg-transparent hover:bg-surface-2",
-        danger: "bg-danger text-accent-fg hover:opacity-90",
+        danger:
+          "bg-danger text-accent-fg hover:bg-[color-mix(in_srgb,var(--color-danger),var(--color-fg)_15%)]",
       },
       size: {
         sm: "h-7 px-2",

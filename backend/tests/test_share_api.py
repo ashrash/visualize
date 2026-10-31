@@ -220,7 +220,7 @@ def test_empty_project_report_and_kind(client: TestClient) -> None:
     assert report.json()["charts"] == []
 
 
-def test_only_share_and_embed_resolution_are_public(client: TestClient) -> None:
+def test_only_share_embed_and_health_are_public(client: TestClient) -> None:
     from fastapi import HTTPException
 
     from viz.auth import current_user
@@ -240,4 +240,8 @@ def test_only_share_and_embed_resolution_are_public(client: TestClient) -> None:
             response = client.request(method.upper(), concrete)
             if response.status_code != 401:
                 public.add((method.upper(), path))
-    assert public == {("GET", "/api/share/{token}"), ("GET", "/api/embed/{token}")}
+    assert public == {
+        ("GET", "/api/share/{token}"),
+        ("GET", "/api/embed/{token}"),
+        ("GET", "/api/health"),
+    }
