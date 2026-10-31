@@ -64,7 +64,7 @@ function tileHtml(tile: ReportTile): string {
   if (tile.image && PNG_DATA_URL.test(tile.image)) {
     body = `<img src="${tile.image}" alt="${escapeHtml(tile.title)}">`;
   } else if (tile.html) {
-    body = `<div class="report-text">${sanitizeHtml(tile.html)}</div>`;
+    body = `<div class="report-text">${sanitizeHtml(tile.html, { noImages: true })}</div>`;
   } else if (tile.lines?.length) {
     body = tile.lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("");
   }

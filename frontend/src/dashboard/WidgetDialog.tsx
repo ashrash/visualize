@@ -265,7 +265,7 @@ function WidgetForm({ kind, onSubmit }: { kind: NewWidgetKind; onSubmit: (v: New
         <>
           <Field
             label="Asset id"
-            hint="TODO(platform): image upload is not available yet; enter the id of an uploaded asset."
+            hint="Uploading images is not available yet. Enter the id of an image already stored on the server."
           >
             {(p) => <Input {...p} value={assetId} onChange={(e) => setAssetId(e.target.value)} />}
           </Field>

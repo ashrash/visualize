@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import type { ECharts } from "echarts/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChartSpec, Predicate } from "../api/types";
+import { dataIdentity } from "../charts/core/data";
 import { createDashboard } from "./model";
 import { useDashboardRuntime } from "./runtimeStore";
 import type { Dashboard } from "./types";
@@ -27,7 +28,7 @@ function fakeChart(id: string): ECharts {
       listeners.get(name)?.add(fn);
     },
     off: (name: string, fn: Listener) => listeners.get(name)?.delete(fn),
-    getOption: () => ({ xAxis: [{ type: "category", data: ["N", "S", "E", "W"] }] }),
+    getOption: () => ({ xAxis: [{ type: "category", data: ["North", "South", "East", "West"] }] }),
     getDom: () => document.createElement("div"),
     convertFromPixel: (_finder: unknown, x: number) => x / 10,
     setOption: () => {},
@@ -61,12 +62,23 @@ vi.mock("../api/pipelines", () => ({ inspectPipeline: vi.fn() }));
 
 import { DashboardView } from "./DashboardView";
 
+// One query client per test. Each chart spec made by `spec()` gets cached data, like a chart
+// that has already been drawn: clicks are mapped back to raw values through it.
+let queryClient = new QueryClient();
 const wrap = (ui: React.ReactNode) => (
-  <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>
+  <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
 );
+function seed(chart: ChartSpec): ChartSpec {
+  queryClient.setQueryData(["chart-data", dataIdentity(chart), [], null, null], {
+    columns: { x: ["North", "South", "East", "West"], color: ["web", "app", "store"] },
+    kinds: { x: "string", color: "string" },
+    rowCount: 4,
+  });
+  return chart;
+}
 
 const spec = (id: string, over: Partial<ChartSpec> = {}): ChartSpec =>
-  ({
+  seed({
     id,
     name: `Chart ${id}`,
     plotType: "bar",
@@ -80,7 +92,7 @@ const spec = (id: string, over: Partial<ChartSpec> = {}): ChartSpec =>
       linkGroup: "g",
     },
     ...over,
-  }) as ChartSpec;
+  } as ChartSpec);
 
 function dashboardWith(chartIds: string[]): Dashboard {
   const d = createDashboard("Test");
@@ -122,6 +134,7 @@ function renderDashboard(chartSpecs: ChartSpec[], mode: "view" | "edit" | "embed
 }
 
 beforeEach(() => {
+  queryClient = new QueryClient();
   charts.clear();
   useDashboardRuntime.setState({ globalValues: {}, gridDrill: null });
   useDashboardRuntime.getState().open("fresh");
@@ -232,7 +245,9 @@ describe("cross-filtering a dashboard", () => {
     fireEvent.pointerUp(layer, { clientX: 30, pointerId: 1 });
     expect(filtersOf("b")).toEqual([]); // nothing yet: waiting for the pause
     act(() => vi.advanceTimersByTime(200));
-    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["S", "E", "W"] }]);
+    expect(filtersOf("b")).toEqual([
+      { op: "in", field: "region", values: ["South", "East", "West"] },
+    ]);
     expect(filtersOf("a")).toEqual([]); // a chart is not filtered by its own range
     vi.restoreAllMocks();
   });
@@ -339,6 +354,36 @@ describe("tabs and embed", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Second" }));
     expect(screen.getByRole("tab", { name: "Second" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.queryByTestId("chart-a")).toBeNull();
+  });
+
+  it("keeps a chart's selection while another tab is showing", () => {
+    const base = dashboardWith(["a"]);
+    const first = base.tabs?.[0];
+    if (!first) throw new Error("no tab");
+    const second = {
+      id: "t2",
+      name: "Second",
+      items: [
+        { i: "w-b", x: 0, y: 0, w: 6, h: 4, widget: { kind: "chart" as const, chartId: "b" } },
+      ],
+    };
+    const dashboard: Dashboard = { ...base, tabs: [first, second] };
+    render(
+      wrap(
+        <DashboardView
+          dashboard={dashboard}
+          charts={[spec("a"), spec("b")]}
+          pipelines={[]}
+          mode="view"
+        />,
+      ),
+    );
+    click("a", "North");
+    fireEvent.click(screen.getByRole("tab", { name: "Second" }));
+    // 'a' is unmounted now, but it is still on the dashboard: its click still filters 'b'.
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
+    fireEvent.click(screen.getByRole("tab", { name: "Tab 1" }));
+    expect(screen.getByRole("status", { name: "Active filters" })).toBeTruthy();
   });
 
   it("shows no edit tools in view or embed mode", () => {

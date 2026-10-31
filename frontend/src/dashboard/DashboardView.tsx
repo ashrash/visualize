@@ -110,6 +110,7 @@ export function DashboardView({
   const setDrill = useDashboardRuntime((s) => s.setDrill);
   const resetAll = useDashboardRuntime((s) => s.resetAll);
   const clearSelection = useDashboardRuntime((s) => s.clearSelection);
+  const prune = useDashboardRuntime((s) => s.prune);
   const [adding, setAdding] = useState<NewWidgetKind | null>(null);
 
   // A dashboard opened without going through a drill-through starts clean.
@@ -118,6 +119,12 @@ export function DashboardView({
   }, [dashboard.id, openId, open]);
 
   const tabs = dashboard.tabs ?? [];
+  // A chart removed from the document stops filtering the others. Judged from the document, not
+  // from what is mounted, so switching tabs keeps every chart's selection.
+  const widgetKey = tabs.flatMap((t) => (t.items ?? []).map((i) => i.i)).join("|");
+  useEffect(() => {
+    prune(new Set(widgetKey === "" ? [] : widgetKey.split("|")));
+  }, [widgetKey, prune]);
   const tab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
   const saveFilterDefault = useCallback(
@@ -331,16 +338,18 @@ export function DashboardView({
             aria-label="Active filters"
           >
             <span className="text-muted">Filtered by</span>
-            {drill.map((p) => (
+            {drill.map((p, i) => (
               <Chip
-                key={`drill:${p.field}:${p.op}`}
+                // biome-ignore lint/suspicious/noArrayIndexKey: predicates have no identity of their own
+                key={`drill:${i}:${p.field}:${p.op}`}
                 label={describePredicate(p)}
                 onClear={() => setDrill(drill.filter((q) => q !== p))}
               />
             ))}
-            {selections.map(({ group, widgetId, predicate }) => (
+            {selections.map(({ group, widgetId, predicate }, i) => (
               <Chip
-                key={`${group}:${widgetId}:${predicate.field}:${predicate.op}`}
+                // biome-ignore lint/suspicious/noArrayIndexKey: predicates have no identity of their own
+                key={`${group}:${widgetId}:${i}:${predicate.field}:${predicate.op}`}
                 label={describePredicate(predicate)}
                 onClear={() => clearSelection(group, widgetId)}
               />

@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link2, Table2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChartSpec, Predicate } from "../../api/types";
@@ -11,11 +12,18 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { groupOf, selectionOf } from "../bus";
 import { attachChartEvents, hasXAxis } from "../chartEvents";
+import { chartLookup } from "../chartLookup";
 import { BRUSH_DEBOUNCE_MS, debounce } from "../debounce";
 import { describePredicate } from "../describe";
 import { useDashboardEnv, useWidgetFilters } from "../env";
 import { datasetOfSource } from "../filterControls";
-import { brushPredicates, legendPredicates, pointPredicates } from "../predicates";
+import {
+  brushPredicates,
+  canBrush,
+  canClickFilter,
+  legendPredicates,
+  pointPredicates,
+} from "../predicates";
 import { RangeBrushLayer, RangeBrushToggle } from "../RangeBrush";
 import { useDashboardRuntime } from "../runtimeStore";
 import { useChartInstance } from "../useChartInstance";
@@ -43,9 +51,9 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   const filters = useWidgetFilters(widgetId, spec);
   const group = groupOf(env.dashboard, spec);
   const own = useDashboardRuntime((s) => selectionOf(s.bus, group, widgetId));
+  const client = useQueryClient();
   const interact = useDashboardRuntime((s) => s.interact);
   const clearSelection = useDashboardRuntime((s) => s.clearSelection);
-  const forgetWidget = useDashboardRuntime((s) => s.forgetWidget);
 
   // The chart wrapper syncs tooltips and zoom across a link group (echarts.connect) from the
   // spec; the dashboard link group decides, so hand it the effective group.
@@ -77,25 +85,29 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   }, [interact]);
   useEffect(() => () => publish.brush.cancel(), [publish]);
 
-  const clickable = spec.interactions?.clickFilter !== false;
+  const clickable = spec.interactions?.clickFilter !== false && canClickFilter(spec);
   const [brushOn, setBrushOn] = useState(false);
   const brushable =
-    spec.interactions?.brush === true && env.mode !== "edit" && chart !== null && hasXAxis(chart);
+    spec.interactions?.brush === true &&
+    canBrush(spec) &&
+    env.mode !== "edit" &&
+    chart !== null &&
+    hasXAxis(chart);
   useEffect(() => {
     if (!chart || env.mode === "edit") return;
     return attachChartEvents(chart, () => ({
       onPoint: (click, extend) => {
         const { spec: s } = latest.current;
         if (!clickable) return;
-        const predicates = pointPredicates(s, click);
+        const predicates = pointPredicates(s, click, chartLookup(client, s));
         if (predicates.length > 0) publish.send(predicates, extend ? "extend" : "toggle");
       },
-      onLegend: (selected) => publish.brush(legendPredicates(latest.current.spec, selected)),
+      onLegend: (selected) =>
+        publish.brush(
+          legendPredicates(latest.current.spec, selected, chartLookup(client, latest.current.spec)),
+        ),
     }));
-  }, [chart, env.mode, clickable, publish]);
-
-  // A chart that leaves the dashboard must not keep filtering the others.
-  useEffect(() => () => forgetWidget(widgetId), [forgetWidget, widgetId]);
+  }, [chart, env.mode, clickable, publish, client]);
 
   const drillTargets = (env.onDrillThrough ? (env.otherDashboards ?? []) : []).slice(0, 12);
   const drillPredicates = [...filters, ...own];
@@ -178,7 +190,17 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
             chart={chart}
             frame={frame}
             selected={own.length > 0}
-            onSpan={(span) => publish.brush(span ? brushPredicates(latest.current.spec, span) : [])}
+            onSpan={(span) =>
+              publish.brush(
+                span
+                  ? brushPredicates(
+                      latest.current.spec,
+                      span,
+                      chartLookup(client, latest.current.spec),
+                    )
+                  : [],
+              )
+            }
           />
         ) : null}
       </div>

@@ -42,15 +42,15 @@ export function useFilterValue(filter: DashboardFilter, scope: FilterScope): Pre
   return live === undefined ? (filter.predicate ?? null) : live;
 }
 
-function useCommit(filter: DashboardFilter, scope: FilterScope) {
+function useCommit(filter: DashboardFilter, scope: FilterScope, delayMs = BRUSH_DEBOUNCE_MS) {
   const setFilter = useDashboardRuntime((s) => s.setFilter);
   const setGlobal = useDashboardRuntime((s) => s.setGlobal);
   const set = scope === "global" ? setGlobal : setFilter;
   const id = filter.id;
   // Sliders and typed dates change many times in a row: commit once, after a pause.
   const debounced = useMemo(
-    () => debounce((p: Predicate | null) => set(id, p), BRUSH_DEBOUNCE_MS),
-    [set, id],
+    () => debounce((p: Predicate | null) => set(id, p), delayMs),
+    [set, id, delayMs],
   );
   useEffect(() => () => debounced.flush(), [debounced]);
   return debounced;
@@ -100,7 +100,7 @@ function DropdownControl({ filter, scope }: { filter: DashboardFilter; scope: Fi
   const datasetId = useFilterDataset(filter);
   const predicate = useFilterValue(filter, scope);
   const selected = membershipValue(predicate);
-  const commit = useCommit(filter, scope);
+  const commit = useCommit(filter, scope, 0);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const values = useQuery({
@@ -241,8 +241,14 @@ function SliderControl({ filter, scope }: { filter: DashboardFilter; scope: Filt
           step={step}
           value={shown[0]}
           onChange={(e) => change([Math.min(Number(e.target.value), shown[1]), shown[1]])}
-          onPointerUp={() => setDraft(null)}
-          onKeyUp={() => setDraft(null)}
+          onPointerUp={() => {
+            commit.flush();
+            setDraft(null);
+          }}
+          onKeyUp={() => {
+            commit.flush();
+            setDraft(null);
+          }}
           className="w-32 accent-[var(--viz-accent,currentColor)]"
         />
         <input
@@ -253,8 +259,14 @@ function SliderControl({ filter, scope }: { filter: DashboardFilter; scope: Filt
           step={step}
           value={shown[1]}
           onChange={(e) => change([shown[0], Math.max(Number(e.target.value), shown[0])])}
-          onPointerUp={() => setDraft(null)}
-          onKeyUp={() => setDraft(null)}
+          onPointerUp={() => {
+            commit.flush();
+            setDraft(null);
+          }}
+          onKeyUp={() => {
+            commit.flush();
+            setDraft(null);
+          }}
           className="w-32 accent-[var(--viz-accent,currentColor)]"
         />
       </div>

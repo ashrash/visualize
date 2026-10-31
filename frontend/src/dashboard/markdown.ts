@@ -55,9 +55,12 @@ const SANITIZE = {
 };
 
 /** Sanitize HTML with the text widget allowlist. */
-export function sanitizeHtml(html: string): string {
+export function sanitizeHtml(html: string, options: { noImages?: boolean } = {}): string {
   ensureHooks();
-  return DOMPurify.sanitize(html, SANITIZE);
+  return DOMPurify.sanitize(
+    html,
+    options.noImages ? { ...SANITIZE, FORBID_TAGS: ["img"] } : SANITIZE,
+  );
 }
 
 /** Markdown to sanitized HTML, safe to inject into the page. */

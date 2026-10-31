@@ -126,3 +126,19 @@ describe("paginateTiles", () => {
     expect(paginateTiles([], 10)).toEqual([]);
   });
 });
+
+describe("report text tiles", () => {
+  it("drop images, so the document makes no external requests when opened", () => {
+    const html = buildReportHtml(
+      model([
+        tile({
+          kind: "text",
+          html: '<p>see</p><img src="https://host.example/p.png" alt="x"><a href="https://ok.example">link</a>',
+        }),
+      ]),
+    );
+    expect(html).not.toContain("host.example");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("<p>see</p>");
+  });
+});

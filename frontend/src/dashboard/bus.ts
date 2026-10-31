@@ -59,6 +59,21 @@ export function forget(state: BusState, widgetId: string): BusState {
 /** One shared empty list: zustand selectors must return a stable value when nothing changed. */
 const NO_PREDICATES: Predicate[] = [];
 
+/**
+ * Drop the selections of widgets that are no longer in the dashboard document. This is decided
+ * from the document, not from what is mounted: a widget on another tab is unmounted but still
+ * part of the dashboard, and its selection keeps filtering the rest.
+ */
+export function pruneBus(state: BusState, liveWidgetIds: ReadonlySet<string>): BusState {
+  let next = state;
+  for (const group of Object.keys(state)) {
+    for (const widgetId of Object.keys(state[group] ?? {})) {
+      if (!liveWidgetIds.has(widgetId)) next = publish(next, group, widgetId, null);
+    }
+  }
+  return next;
+}
+
 export function selectionOf(
   state: BusState,
   groupId: string | null,

@@ -181,6 +181,7 @@ export default function DashboardPage() {
   const report = useReport({
     root: viewRoot,
     dashboard,
+    globalFilters: project?.globalFilters ?? [],
     projectName: project?.name ?? "",
   });
 

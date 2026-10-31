@@ -1,6 +1,8 @@
 /**
- * KPI card logic. The headline value is exact: it comes from `/api/stats/describe` (one scan,
- * no modes or quantiles). The sparkline and the period-over-period delta come from an ordinary
+ * KPI card logic. The headline value is exact: it comes from `/api/stats/describe` for one field
+ * (modes and extra percentiles off). The endpoint still computes the quartiles and median of that
+ * field, so a KPI costs one full scan with a sort-like step per refresh: a perf watch-item (STATUS).
+ * A lighter aggregate-only request would need an ungrouped aggregate on the chart-data side. The sparkline and the period-over-period delta come from an ordinary
  * time-bucketed line chart request, so cross-filters and the 50k-mark cap apply unchanged.
  */
 import type { ChartSpec, DescribeRequest, FieldSummary, Pipeline, Predicate } from "../api/types";

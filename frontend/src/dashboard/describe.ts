@@ -1,4 +1,6 @@
 import type { Predicate } from "../api/types";
+import type { BusState } from "./bus";
+import type { Dashboard, DashboardFilter } from "./types";
 
 /** A short human label for a predicate, for selection chips and filter summaries. */
 export function describePredicate(p: Predicate): string {
@@ -20,4 +22,35 @@ export function describePredicate(p: Predicate): string {
       return `${p.field}: ${lo} to ${hi}`;
     }
   }
+}
+
+/**
+ * Every filter in effect on a dashboard, as labels: global and dashboard filter controls (the
+ * viewer's live value, else the saved default), drill-through predicates and chart selections.
+ * This is the "Filtered by" line of a report.
+ */
+export function activeFilterLabels(args: {
+  dashboard: Dashboard;
+  globalFilters: DashboardFilter[];
+  filterValues: Record<string, Predicate | null>;
+  globalValues: Record<string, Predicate | null>;
+  drill: Predicate[];
+  bus: BusState;
+}): string[] {
+  const labels: string[] = [];
+  const controls = (filters: DashboardFilter[], live: Record<string, Predicate | null>) => {
+    for (const f of filters) {
+      const p = live[f.id] === undefined ? (f.predicate ?? null) : live[f.id];
+      if (p) labels.push(describePredicate(p));
+    }
+  };
+  controls(args.globalFilters, args.globalValues);
+  controls(args.dashboard.filters ?? [], args.filterValues);
+  labels.push(...args.drill.map(describePredicate));
+  for (const group of Object.values(args.bus)) {
+    for (const selection of Object.values(group)) {
+      labels.push(...selection.predicates.map(describePredicate));
+    }
+  }
+  return [...new Set(labels)];
 }

@@ -5,7 +5,7 @@
  */
 import { create } from "zustand";
 import type { Predicate } from "../api/types";
-import { type BusState, EMPTY_BUS, forget, publish, selectionOf } from "./bus";
+import { type BusState, EMPTY_BUS, forget, pruneBus, publish, selectionOf } from "./bus";
 import { extendSelection, sameSelection } from "./predicates";
 
 export type InteractMode =
@@ -39,11 +39,16 @@ interface RuntimeState {
   }) => void;
   clearSelection: (groupId: string, widgetId: string) => void;
   forgetWidget: (widgetId: string) => void;
+  /** Drop selections of widgets that are not in `liveWidgetIds` (removed from the document). */
+  prune: (liveWidgetIds: ReadonlySet<string>) => void;
   setFilter: (filterId: string, value: Predicate | null) => void;
   setGlobal: (filterId: string, value: Predicate | null) => void;
   setDrill: (predicates: Predicate[]) => void;
   /**
-   * A drill-through to the data grid: the dataset and predicates to show. TODO(ui-data): the
+   * A drill-through to the data grid: the dataset and predicates to show. The predicates use the
+   * field names of the chart's own source: for a pipeline source those can be calculated or
+   * renamed fields that the underlying dataset does not have (TODO(ui-data): drop or translate
+   * those when applying them to the grid, or open the pipeline's preview instead). TODO(ui-data): the
    * grid should read this on mount, apply the predicates and call `setGridDrill(null)`.
    */
   gridDrill: { datasetId: string; predicates: Predicate[] } | null;
@@ -85,6 +90,11 @@ export const useDashboardRuntime = create<RuntimeState>((set) => ({
   forgetWidget: (widgetId) =>
     set((state) => {
       const bus = forget(state.bus, widgetId);
+      return bus === state.bus ? state : { bus };
+    }),
+  prune: (liveWidgetIds) =>
+    set((state) => {
+      const bus = pruneBus(state.bus, liveWidgetIds);
       return bus === state.bus ? state : { bus };
     }),
   setFilter: (filterId, value) =>

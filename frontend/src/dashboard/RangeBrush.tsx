@@ -1,6 +1,6 @@
 import type { ECharts } from "echarts/core";
 import { MoveHorizontal } from "lucide-react";
-import { type RefObject, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { cn } from "../components/ui/cn";
 import { brushSpanFromPixels } from "./chartEvents";
 import type { BrushSpan } from "./predicates";
@@ -43,6 +43,15 @@ export function RangeBrushLayer({ chart, frame, onSpan, selected }: LayerProps) 
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const [shown, setShown] = useState<{ from: number; to: number } | null>(null);
   const layer = useRef<HTMLDivElement>(null);
+  // Re-measure when the frame resizes (the layer's box is read at render time).
+  const [, setSize] = useState(0);
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setSize((n) => n + 1));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [frame]);
 
   const dom = chart?.getDom();
   const outer = frame.current?.getBoundingClientRect();
@@ -80,6 +89,7 @@ export function RangeBrushLayer({ chart, frame, onSpan, selected }: LayerProps) 
         setDrag(next);
         if (Math.abs(next.to - next.from) >= 3) emit(next.from, next.to);
       }}
+      onPointerCancel={() => setDrag(null)}
       onPointerUp={(e) => {
         if (!drag) return;
         const to = local(e.clientX);

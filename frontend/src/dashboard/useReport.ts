@@ -1,10 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { type RefObject, useCallback, useState } from "react";
 import { useExportSink } from "../export/sinkContext";
-import { describePredicate } from "./describe";
+import { activeFilterLabels } from "./describe";
 import { buildReportHtml, buildReportPdf, captureTiles, type ReportModel } from "./report";
 import { useDashboardRuntime } from "./runtimeStore";
-import type { Dashboard } from "./types";
+import type { Dashboard, DashboardFilter } from "./types";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const frames = (n: number) =>
@@ -33,9 +33,10 @@ export type ReportFormat = "html" | "pdf";
 export function useReport(args: {
   root: RefObject<HTMLElement | null>;
   dashboard: Dashboard | undefined;
+  globalFilters: DashboardFilter[];
   projectName: string;
 }) {
-  const { root, dashboard, projectName } = args;
+  const { root, dashboard, globalFilters, projectName } = args;
   const client = useQueryClient();
   const sink = useExportSink();
   const [busy, setBusy] = useState(false);
@@ -49,6 +50,13 @@ export function useReport(args: {
       setError(null);
       const runtime = useDashboardRuntime.getState();
       const original = runtime.activeTabId;
+      // What the viewer had in effect when they asked: taken once, before tabs are switched.
+      const snapshot = {
+        filterValues: runtime.filterValues,
+        globalValues: runtime.globalValues,
+        drill: runtime.drill,
+        bus: runtime.bus,
+      };
       try {
         const background =
           getComputedStyle(document.documentElement).getPropertyValue("--viz-bg").trim() ||
@@ -67,17 +75,11 @@ export function useReport(args: {
           }));
           tabs.push({ name: tab.name, tiles: captureTiles(container, items, background) });
         }
-        const live = useDashboardRuntime.getState();
         const model: ReportModel = {
           title: dashboard.name,
           subtitle: projectName,
           generatedAt: new Date().toLocaleString(),
-          filters: [
-            ...live.drill.map(describePredicate),
-            ...Object.values(live.bus).flatMap((group) =>
-              Object.values(group).flatMap((s) => s.predicates.map(describePredicate)),
-            ),
-          ],
+          filters: activeFilterLabels({ dashboard, globalFilters, ...snapshot }),
           tabs,
         };
         const base = dashboard.name.replace(/[^\w.-]+/g, "_") || "dashboard";
@@ -96,7 +98,7 @@ export function useReport(args: {
         setBusy(false);
       }
     },
-    [root, dashboard, projectName, client, sink],
+    [root, dashboard, globalFilters, projectName, client, sink],
   );
 
   return { run, busy, error };

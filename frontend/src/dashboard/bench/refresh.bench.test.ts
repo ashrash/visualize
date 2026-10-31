@@ -105,6 +105,37 @@ function refresh(round: number, signal?: AbortSignal) {
   );
 }
 
+/** A KPI card's headline request: /api/stats/describe for one field, with the same filters. */
+function kpi(round: number) {
+  const filters = [
+    { op: "eq", field: "country", value: `Country ${String((round % 40) + 1).padStart(2, "0")}` },
+    {
+      op: "range",
+      field: "sales",
+      min: -1 - RUN_SALT - round,
+      max: null,
+      includeMin: true,
+      includeMax: true,
+    },
+  ];
+  return fetch(new URL("/api/stats/describe", URL_BASE), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: { kind: "dataset", id: DATASET },
+      fields: ["sales"],
+      filters,
+      includeOverall: true,
+      includeMode: false,
+      percentiles: [],
+      maxGroups: 1,
+    }),
+  }).then(async (r) => {
+    if (!r.ok) throw new Error(`describe ${r.status}: ${await r.text()}`);
+    return r.json();
+  });
+}
+
 const percentile = (sorted: number[], p: number) =>
   sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)] ?? Number.NaN;
 
@@ -137,6 +168,37 @@ describe.skipIf(!enabled)("6-chart cross-filter refresh against a live server", 
     console.log(`REFRESH_BENCH ${JSON.stringify(report)}`);
     expect(cached).toBe(0);
     expect(report.p95).toBeLessThanOrEqual(BUDGET_MS);
+  }, 120_000);
+
+  it(`6 charts plus one KPI card finish within ${BUDGET_MS} ms (p95)`, async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", (input: string | URL, init?: RequestInit) =>
+      realFetch(new URL(input, URL_BASE), init),
+    );
+    const times: number[] = [];
+    const kpiOnly: number[] = [];
+    for (let round = 100; round < 100 + ROUNDS; round++) {
+      const started = performance.now();
+      const [results] = await Promise.all([
+        refresh(round),
+        kpi(round).then(() => kpiOnly.push(performance.now() - started)),
+      ]);
+      times.push(performance.now() - started);
+      expect(results).toHaveLength(6);
+    }
+    const sorted = [...times].sort((a, b) => a - b);
+    const sortedKpi = [...kpiOnly].sort((a, b) => a - b);
+    console.log(
+      `REFRESH_BENCH_KPI ${JSON.stringify({
+        rounds: ROUNDS,
+        p50: Math.round(percentile(sorted, 50)),
+        p95: Math.round(percentile(sorted, 95)),
+        max: Math.round(sorted.at(-1) ?? 0),
+        kpiDoneP50: Math.round(percentile(sortedKpi, 50)),
+        kpiDoneP95: Math.round(percentile(sortedKpi, 95)),
+      })}`,
+    );
+    expect(percentile(sorted, 95)).toBeLessThanOrEqual(BUDGET_MS);
   }, 120_000);
 
   it("a newer interaction aborts the in-flight round, and the newer round still completes", async () => {

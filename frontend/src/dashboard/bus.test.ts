@@ -7,6 +7,7 @@ import {
   filtersForChart,
   forget,
   groupOf,
+  pruneBus,
   publish,
   selectionOf,
 } from "./bus";
@@ -218,5 +219,19 @@ describe("filtersForChart: followAllGroups", () => {
     expect(
       filtersForChart(inputs({ spec: kpi, widgetId: "k", bus, followAllGroups: true })),
     ).toEqual([inP("region", "N"), inP("channel", "web")]);
+  });
+});
+
+describe("pruneBus", () => {
+  it("drops selections of widgets that left the document and keeps the rest", () => {
+    let bus: BusState = publish(EMPTY_BUS, "g", "w1", sel("ds1", inP("a", "x")));
+    bus = publish(bus, "g", "w2", sel("ds1", inP("b", "y")));
+    bus = publish(bus, "h", "w3", sel("ds1", inP("c", "z")));
+    expect(pruneBus(bus, new Set(["w2", "w3"]))).toEqual({
+      g: { w2: sel("ds1", inP("b", "y")) },
+      h: { w3: sel("ds1", inP("c", "z")) },
+    });
+    expect(pruneBus(bus, new Set(["w1", "w2", "w3"]))).toBe(bus);
+    expect(pruneBus(bus, new Set())).toEqual({});
   });
 });
