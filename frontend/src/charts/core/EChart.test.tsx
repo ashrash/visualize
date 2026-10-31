@@ -3,6 +3,11 @@ import { cleanup, render } from "@testing-library/react";
 import type { ECharts } from "echarts/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const zrHandlers = new Map<string, () => void>();
+const zr = {
+  on: (e: string, h: () => void) => zrHandlers.set(e, h),
+  off: (e: string) => zrHandlers.delete(e),
+};
 const chart = {
   setOption: vi.fn(),
   setTheme: vi.fn(),
@@ -10,7 +15,11 @@ const chart = {
   on: vi.fn(),
   resize: vi.fn(),
   dispose: vi.fn(),
+  dispatchAction: vi.fn(),
+  getZr: () => zr,
+  group: "",
 };
+const { connect, disconnect } = vi.hoisted(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
 
 // The real list of component main types is exercised in render.test.ts; here a stand-in.
 const COMPONENTS = [
@@ -28,6 +37,8 @@ vi.mock("./echarts", () => ({
   echarts: {
     init: vi.fn(() => chart),
     ComponentModel: { hasClass: (type: string) => COMPONENTS.includes(type) },
+    connect,
+    disconnect,
   },
 }));
 
@@ -41,7 +52,11 @@ beforeEach(() => {
       disconnect() {}
     },
   );
-  for (const fn of Object.values(chart)) fn.mockClear();
+  for (const fn of Object.values(chart)) if (vi.isMockFunction(fn)) fn.mockClear();
+  zrHandlers.clear();
+  chart.group = "";
+  connect.mockClear();
+  disconnect.mockClear();
   chart.getOption.mockImplementation(() => ({}));
 });
 afterEach(() => {
@@ -183,5 +198,74 @@ describe("EChart", () => {
     expect(chart.setTheme).not.toHaveBeenCalled();
     rerender(<EChart option={{}} theme={{ ...theme, mode: "dark", text: "#fff" }} />);
     expect(chart.setTheme).toHaveBeenCalledTimes(1);
+  });
+
+  const handler = (name: string) =>
+    (chart.on.mock.calls as unknown as [string, (e: unknown) => void][]).find(
+      ([event]) => event === name,
+    )?.[1];
+
+  it("joins its link group, follows a change of group, and leaves on unmount", () => {
+    const { rerender, unmount } = render(<EChart option={{}} linkGroup="g1" />);
+    expect(chart.group).toBe("g1");
+    expect(connect).toHaveBeenCalledWith("g1");
+    rerender(<EChart option={{}} linkGroup="g2" />);
+    expect(chart.group).toBe("g2");
+    expect(disconnect).toHaveBeenCalledWith("g1");
+    unmount();
+    expect(disconnect).toHaveBeenCalledWith("g2");
+  });
+
+  it("is in no group without one", () => {
+    render(<EChart option={{}} />);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("reports series clicks, legend toggles and brushes to its callbacks", () => {
+    chart.getOption.mockImplementation(() => ({
+      xAxis: [{ type: "category", data: ["a", "b", "c"] }],
+    }));
+    const onPointClick = vi.fn();
+    const onLegendChange = vi.fn();
+    const onBrush = vi.fn();
+    render(
+      <EChart
+        option={{}}
+        onPointClick={onPointClick}
+        onLegendChange={onLegendChange}
+        onBrush={onBrush}
+      />,
+    );
+    // Legend and brush events only count while the pointer is on this chart.
+    handler("legendselectchanged")?.({ name: "s", selected: { s: true } });
+    handler("brushEnd")?.({ areas: [{ brushType: "lineX", coordRange: [0, 1] }] });
+    expect(onLegendChange).not.toHaveBeenCalled();
+    expect(onBrush).not.toHaveBeenCalled();
+    zrHandlers.get("mousedown")?.();
+    handler("click")?.({ componentType: "series", seriesName: "s", name: "b", dataIndex: 1 });
+    handler("click")?.({ componentType: "title" });
+    expect(onPointClick).toHaveBeenCalledTimes(1);
+    expect(onPointClick).toHaveBeenCalledWith(expect.objectContaining({ name: "b", dataIndex: 1 }));
+
+    handler("legendselectchanged")?.({ name: "s", selected: { s: false } });
+    expect(onLegendChange).toHaveBeenCalledWith(expect.objectContaining({ hidden: ["s"] }));
+
+    handler("brushEnd")?.({ areas: [{ brushType: "lineX", coordRange: [1, 2] }] });
+    expect(onBrush).toHaveBeenCalledWith(expect.objectContaining({ categories: ["b", "c"] }));
+    // `brush` fires while dragging: only its "removed" case counts.
+    handler("brush")?.({ areas: [{ brushType: "lineX", coordRange: [0, 1] }] });
+    expect(onBrush).toHaveBeenCalledTimes(1);
+    handler("brush")?.({ areas: [] });
+    expect(onBrush).toHaveBeenLastCalledWith(expect.objectContaining({ cleared: true }));
+  });
+
+  it("switches the brush tool on when the option has a brush", () => {
+    render(<EChart option={{ brush: { brushType: "lineY" } }} />);
+    expect(chart.dispatchAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "takeGlobalCursor",
+        brushOption: expect.objectContaining({ brushType: "lineY" }),
+      }),
+    );
   });
 });

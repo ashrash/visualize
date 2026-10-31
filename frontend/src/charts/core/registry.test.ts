@@ -70,4 +70,28 @@ describe("validateEntry", () => {
     expect(problems.join("\n")).toContain('param "a" default does not match');
     expect(problems.join("\n")).toContain('unknown param "zzz"');
   });
+
+  it("flags a drill channel the plot does not have", () => {
+    if (!base) throw new Error("bar missing");
+    const problems = validateEntry({ ...base, drill: { channel: "nope" } });
+    expect(problems.join("\n")).toContain('drill.channel "nope" is not a channel');
+    expect(validateEntry({ ...base, drill: { channel: "x" } })).toEqual([]);
+  });
+
+  it("lets the basic category plots drill, and leaves treemap and sunburst to ECharts", () => {
+    for (const key of [
+      "bar",
+      "horizontal_bar",
+      "grouped_bar",
+      "stacked_bar",
+      "line",
+      "area",
+      "pie",
+      "donut",
+    ] as const) {
+      expect(getPlot(key)?.drill).toEqual({ channel: "x" });
+    }
+    expect(getPlot("treemap")?.drill).toBeUndefined();
+    expect(getPlot("sunburst")?.drill).toBeUndefined();
+  });
 });

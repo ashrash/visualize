@@ -320,12 +320,13 @@ built but gated behind a `statsTests` flag pending a ui-data wiring pass, the sa
 used for pipelines; several ui-charts bugs were found by plot agents and documented below as
 follow-ups rather than fixed (outside those agents' owned paths).
 
-### ui-charts follow-ups found during Wave 2 (not yet fixed; see entries above for detail)
-- Axis title gap sizing from unrounded data instead of tick labels (can clip off-screen).
+### ui-charts follow-ups found during Wave 2 (fixed in the Wave 3 `ui-charts` merge below)
+- Axis title gap sizing from unrounded data instead of tick labels (can clip off-screen). Fixed.
 - A log-x-axis filter drops array rows whose first element is <=0 (breaks some error-bar layouts).
-- "View as table" shows raw JSON for StatResult-based plots instead of a real table.
+  Fixed.
+- "View as table" shows raw JSON for StatResult-based plots instead of a real table. Fixed.
 - `ChartView` keys map-readiness on a plot's registry key, not the prepare inputs, so switching a
-  choropleth's map resolution leaves the chart blank after the new map loads.
+  choropleth's map resolution leaves the chart blank after the new map loads. Fixed.
 
 ## Wave 3 log
 
@@ -380,6 +381,63 @@ follow-ups rather than fixed (outside those agents' owned paths).
     rest; share list/revoke/report don't check per-project access (matches the rest of the
     projects API today); a future migration that rebuilds the `projects` table would cascade-
     delete `share_tokens` too (pre-existing SQLite rebuild-migration risk, noted in `0002`).
+- 2026-10-31: `ui-charts` drill-down/linked-charts/interaction-callbacks merged (Wave 3): chart-
+  level drill-down, `echarts.connect`-based linking, raw `onPointClick`/`onBrushSelected`/
+  `onLegendChange` callbacks and a `slot` prop for `ui-dashboard`'s cross-filter bus, plus 4 Wave
+  2 bug fixes (y-axis title gap, a log-x-axis filter's first-element-is-x assumption, StatResult
+  "view as table" raw-JSON, map-readiness keying). **Four review rounds**, each finding a real
+  issue in the stateful brush/legend event-forwarding logic — `echarts.connect` forwards brush
+  and legend actions between linked charts by design, which is exactly right for visual sync but
+  wrong for the filter-predicate callbacks layered on top. Round 1: 2 blockers (a gesture on one
+  linked chart could get misreported as another's, reading its coordRange against the wrong
+  chart's axis; a brush had no way to be cleared in multi-select mode, and some chart rebuilds
+  silently dropped one with no signal to the bus) plus 2 should-fix (temporal values went out as
+  epoch-ms the backend's eq/in predicates reject for date columns — fixed with ISO strings for
+  point values, kept as epoch ms for ranges since the backend accepts that directly; the axis-gap
+  fix's own measurement regressed large-number axes). Round 2 found the clear-selection fix still
+  let the clear dispatch itself get forwarded, so clearing one chart's brush could silently clear
+  a linked chart's too. Round 3 verified the fix by tracing ECharts' own source (not just the
+  agent's tests): the connect/`escapeConnect` event cycle terminates after exactly one restore
+  dispatch, and a cross-filter refetch can't spuriously trigger a false "cleared" (`TanStack
+  Query`'s `keepPreviousData` prevents the data flicker that would cause it). One documented perf
+  follow-up remains (a linked chart without its own brush does one extra, harmless visual-update
+  pass per mousemove during another chart's drag). vitest 691 passed/1 skipped, biome/tsc/build
+  clean.
+  - `TODO(plots-geo)` left in `charts/core/types.ts`: geo plots (choropleth, bubble map, cartogram,
+    dot density) should declare the new `PlotEntry.prepareParams` (e.g. `["level", "resolution"]`
+    on choropleth) so changing those `affectsData: false` params doesn't force an unnecessary
+    `prepare()` re-wait — not yet done, a follow-up for whoever next touches `plots/geo.py`'s
+    frontend renderers.
+  - `TODO(ui-data)`: grid drill-through (a dashboard chart drilling into the data grid) carries
+    *pipeline-output* field names in its predicates, which won't always match the *underlying
+    dataset's* column names shown in the grid (e.g. a calc/renamed column). Dispatched to ui-data
+    alongside the dashboard route wiring; for now, predicates whose field doesn't match a grid
+    column should be silently skipped rather than crashing the grid. The general pipeline-to-
+    dataset field-mapping problem is left for later.
+  - `TODO(data-core)`: `backend/src/viz/ingest/rows.py`'s grid filter path calls `where_sql(...)`
+    without passing `duck_type`, so an epoch-ms range/`between_dates` bound on a DATE/TIMESTAMP
+    grid column compiles as a bare integer literal instead of a cast timestamp. Only matters once
+    a temporal drill-through predicate reaches the grid (see the `ui-data` item above) — not yet
+    fixed, flagged for whoever next touches the grid's filter compilation.
+- 2026-10-31: Two Wave 3 integration gaps dispatched in parallel: `ui-data` is wiring
+  `/dashboards`, `/dashboards/:id`, `/share/:token`, `/embed/:token` routes into the app shell and
+  hooking the data grid up to `useDashboardRuntime`'s `gridDrill` state for drill-through;
+  `data-core` is adding a minimal `POST /api/assets` / `GET /api/assets/{id}` image-asset endpoint
+  for the dashboard Image widget (reassigned from the widget's own `TODO(platform)` comment, since
+  binary asset storage fits `data-core`'s `storage/`/`exports/` lane better than `platform`'s
+  project/share/auth lane).
+  - `ui-data`'s half landed on its branch (commit `ffb8f6c`): lazy-loaded `/dashboards`,
+    `/dashboards/:id` (inside `AppShell`), `/share/:token`, `/embed/:token` (outside, no nav
+    chrome) in `App.tsx`; a new `data/drillFilters.ts` maps a drilled `Predicate[]` onto grid
+    columns, silently dropping any field that isn't one (the pipeline-vs-dataset field-name gap
+    noted above); `DataScreen.tsx` consumes `gridDrill` once on mount and clears it so a refresh
+    doesn't replay it. This branch can't build standalone yet — it imports from
+    `dashboard/`, which only exists in `ui-dashboard`'s unmerged worktree; the agent verified it
+    by temporarily copying that directory in (74 files passed/1 skipped, 821 tests passed/4
+    skipped; biome and `tsc -b` clean), without merging anything. **After `ui-dashboard` merges**:
+    confirm its actual `DashboardPage`/`SharePage`/`EmbedPage` export shapes still match what
+    `ui-data` guessed (no props, each reads its own route param), and ask `ui-dashboard` to remove
+    the now-done `TODO(ui-data)` comment near `runtimeStore.ts:52`.
 
 ## MVP.md
 
@@ -467,7 +525,7 @@ Tracked per plot under Plots.md below.
 | Hover tooltips | ui-charts | done |  |
 | Click-to-filter | ui-dashboard | todo |  |
 | Cross-filtering | ui-dashboard | todo |  |
-| Drill-down | ui-dashboard | todo |  |
+| Drill-down | ui-charts | done | Chart-level hierarchy drilling (`PlotEntry.drill`, breadcrumb nav, keyboard "Drill into X" in the table view). Declared on bar/line/area/pie/donut; treemap/sunburst keep native ECharts drill. Reports via `onDrillChange`, doesn't publish to any bus itself. |
 | Drill-through | ui-dashboard | todo |  |
 | Data point selection | ui-dashboard | todo |  |
 | Multi-select | ui-dashboard | todo |  |
@@ -475,7 +533,7 @@ Tracked per plot under Plots.md below.
 | Range sliders | ui-charts | partial | Slider dataZoom; xDomain from server after transform merges. |
 | Date range filters | ui-dashboard | todo |  |
 | Dynamic chart updates | ui-dashboard | todo |  |
-| Linked visualizations | ui-dashboard | todo |  |
+| Linked visualizations | ui-charts · ui-dashboard | partial | `echarts.connect` done (ui-charts): refcounted by `linkGroup` membership, synced tooltip/zoom/legend, with a per-chart gesture gate so a brush/legend gesture made on one linked chart never gets misreported as another's. ui-dashboard wires `interactions.linkGroup` from the dashboard's own link groups (in progress). |
 
 ### 7. Dashboard
 
