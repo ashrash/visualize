@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { describeFields, runStatTest } from "./stats";
+import { describeFields, runStatTest, valuesOf } from "./stats";
 import type { DescribeRequest, StatResult } from "./types";
 
 const json = (body: unknown, status = 200) =>
@@ -49,29 +49,65 @@ describe("describeFields", () => {
   });
 });
 
-describe("runStatTest (TODO(stats) stub)", () => {
-  it("posts to /api/stats/<kind> with the test request", async () => {
-    const result: StatResult = {
-      values: { estimate: 0.5, statistic: 2.1, pValue: 0.04 },
-      method: "Pearson correlation",
-      n: 100,
-      sampled: false,
-      warnings: [],
-      nMissing: 0,
-    };
-    const fn = vi.fn(
-      async (_url: string, _init?: RequestInit) =>
-        new Response(JSON.stringify(result), { status: 200 }),
-    );
-    vi.stubGlobal("fetch", fn);
+describe("runStatTest", () => {
+  const result: StatResult = {
+    values: { fields: ["x", "y"] },
+    method: "Pearson correlation",
+    n: 100,
+    sampled: false,
+    warnings: [],
+    nMissing: 0,
+  };
+
+  it("routes a correlation call to /api/stats/correlation", async () => {
+    const fn = mockFetch(json(result));
     const got = await runStatTest({
       kind: "correlation",
-      source: { kind: "dataset", id: "d1" },
-      fields: ["x", "y"],
+      body: {
+        source: { kind: "dataset", id: "d1" },
+        fields: ["x", "y"],
+        method: "pearson",
+        missing: "pairwise",
+        ciLevel: 0.95,
+      },
     });
     expect(got).toEqual(result);
-    const [url, init] = fn.mock.calls.at(-1) ?? ["", undefined];
-    expect(url).toBe("/api/stats/correlation");
-    expect((init as RequestInit).method).toBe("POST");
+    const sent = await call(fn);
+    expect(sent.url).toBe("/api/stats/correlation");
+    expect(sent.method).toBe("POST");
+    expect(JSON.parse(sent.text)).toMatchObject({ fields: ["x", "y"] });
+  });
+
+  it("routes chi-square to /api/stats/chisquare and ttest to /api/stats/ttest", async () => {
+    const fn = mockFetch(json(result));
+    await runStatTest({
+      kind: "chisquare",
+      body: {
+        source: { kind: "dataset", id: "d1" },
+        kind: "independence",
+        field: "a",
+        columnField: "b",
+        correction: true,
+        maxLevels: 50,
+      },
+    });
+    expect((await call(fn)).url).toBe("/api/stats/chisquare");
+    await runStatTest({
+      kind: "ttest",
+      body: {
+        source: { kind: "dataset", id: "d1" },
+        kind: "welch",
+        field: "v",
+        mu: 0,
+        groupField: "g",
+        alternative: "two_sided",
+        ciLevel: 0.95,
+      },
+    });
+    expect((await call(fn)).url).toBe("/api/stats/ttest");
+  });
+
+  it("narrows values with valuesOf", () => {
+    expect(valuesOf<{ fields: string[] }>(result).fields).toEqual(["x", "y"]);
   });
 });

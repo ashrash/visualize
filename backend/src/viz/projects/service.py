@@ -17,7 +17,7 @@ from viz.config import Settings
 from viz.contracts import Project, ProjectSummary, ProjectVersion, migrations, new_id
 from viz.contracts.migrations import NewerSchemaError, upgrade_project
 from viz.errors import ConflictError, InvalidSpecError, NotFoundError
-from viz.meta.models import ProjectRow, ProjectVersionRow, as_utc, utcnow
+from viz.meta.models import ProjectRow, ProjectVersionRow, ShareTokenRow, as_utc, utcnow
 from viz.projects.validate import validate_project
 
 # Fields the server owns; ignored when deciding whether an autosave changed anything.
@@ -133,6 +133,7 @@ def get_project(db: Session, project_id: str) -> Project:
 def delete_project(db: Session, project_id: str) -> None:
     row = _row(db, project_id)
     db.execute(delete(ProjectVersionRow).where(ProjectVersionRow.project_id == project_id))
+    db.execute(delete(ShareTokenRow).where(ShareTokenRow.project_id == project_id))
     db.delete(row)
     db.commit()
 
