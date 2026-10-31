@@ -65,11 +65,12 @@ def test_treemap_leaves_are_capped_above_the_mark_cap(
         )
     }
     table, meta = chart(body)
-    # 4 leaf rows over a mark cap of 2: chartdata's generic payload guard (not the plot's own
-    # `maxLeaves` rollup, since 4 < the default 50) truncates the response and warns.
+    # 4 leaf rows over a mark cap of 2, well under the default `maxLeaves` of 50: the plot's own
+    # mark_cap-based parent rollup (not maxLeaves, a separate per-parent tidiness setting) now
+    # catches this before the generic payload guard would need to.
     assert table.num_rows <= 2
     assert meta["warnings"]
-    assert meta["params"].get("truncatedGroups") is True
+    assert meta["params"].get("rolledUpParents") is not None
 
 
 def test_treemap_rolls_up_small_leaves_via_its_own_param(

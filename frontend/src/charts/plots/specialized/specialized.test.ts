@@ -139,13 +139,40 @@ describe("gantt", () => {
     try {
       chart.setOption({ animation: false, ...o });
       const svg = chart.renderToSVGString();
-      // The SSR'd SVG should contain visible rects, not ones placed far off the 400x200 canvas.
-      const xs = [...svg.matchAll(/<rect[^>]*\sx="(-?[\d.e+]+)"/g)].map((m) => Number(m[1]));
-      expect(xs.length).toBeGreaterThan(0);
-      for (const x of xs) expect(Math.abs(x)).toBeLessThan(10_000);
+      // ECharts' SVG renderer draws a custom series' "rect" shapes as <path> elements (an
+      // earlier version of this test matched <rect> instead, which only exists for the
+      // background/grid and would have passed even against the original broken renderer).
+      // Pulling out each path's starting "M x,y" and checking it lands on the 400x200 canvas is
+      // what actually catches a bar placed off-canvas near the 1970 epoch.
+      const starts = [...svg.matchAll(/<path[^>]*\sd="M\s*(-?[\d.]+)[ ,]\s*(-?[\d.]+)/g)].map(
+        (m) => [Number(m[1]), Number(m[2])] as const,
+      );
+      expect(starts.length).toBeGreaterThan(0);
+      for (const [x, y] of starts) {
+        expect(x).toBeGreaterThanOrEqual(-10);
+        expect(x).toBeLessThanOrEqual(410);
+        expect(y).toBeGreaterThanOrEqual(-10);
+        expect(y).toBeLessThanOrEqual(210);
+      }
     } finally {
       chart.dispose();
     }
+  });
+
+  it("drops a task with an unparseable start/end instead of placing it at the epoch", () => {
+    const data = makeData(
+      {
+        label: ["Design", "Bad"],
+        start: ["2024-01-01", "not-a-date"],
+        end: ["2024-01-09", "2024-01-20"],
+      },
+      { label: "task" },
+    );
+    const o = render("gantt", data);
+    expect(o.yAxis.data).toEqual(["Design"]);
+    expect(o.series[0].data).toHaveLength(1);
+    expect(o.xAxis.min).toBe(Date.parse("2024-01-01"));
+    expect(o.xAxis.max).toBe(Date.parse("2024-01-09"));
   });
 });
 

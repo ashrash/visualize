@@ -104,6 +104,35 @@ def test_stacked_area_categorical_x_keeps_top_x_values_not_top_rows(
     assert out.params.get("truncatedGroups") is True
 
 
+def test_stacked_area_categorical_x_with_color_stays_under_mark_cap(
+    table_relation: MakeRelation,
+) -> None:
+    # A regression: each kept x can carry one row per color, so capping by x values alone
+    # (ignoring how many colors multiply each one) could still return n_series x the cap.
+    n_x, n_colors = 50, 10
+    rel = table_relation(
+        {
+            "product": [f"p{i}" for i in range(n_x) for _ in range(n_colors)],
+            "region": [f"r{c}" for _ in range(n_x) for c in range(n_colors)],
+            "sales": [float((n_x - i) * 10 + c) for i in range(n_x) for c in range(n_colors)],
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.STACKED_AREA,
+        {
+            "x": [Encoding(field="product")],
+            "y": [Encoding(field="sales")],
+            "color": [Encoding(field="region")],
+        },
+        StackedAreaParams,
+        mark_cap=100,
+    )
+    out = stacked_area(req)
+    assert out.table.num_rows <= 100
+    assert out.params.get("truncatedGroups") is True
+
+
 def test_stacked_area_ordered_x_downsamples_with_m4(table_relation: MakeRelation) -> None:
     n = 500
     rel = table_relation({"t": list(range(n)), "v": [float(i % 7) for i in range(n)]})
@@ -397,6 +426,70 @@ def test_treemap_clamps_negative_sizes_and_warns(table_relation: MakeRelation) -
     assert any("clamped" in w for w in out.warnings)
 
 
+def test_treemap_bounds_total_rows_when_a_high_cardinality_parent_exceeds_mark_cap(
+    table_relation: MakeRelation,
+) -> None:
+    # A regression: relabeling only the last level bounds leaves *within* each parent, not the
+    # total row count. Many distinct, low-cardinality parents (each with 1-2 children) used to
+    # return roughly one row per parent regardless of max_leaves, caught only by the generic
+    # payload guard (which truncates mid-table rather than rolling up the smallest paths).
+    n = 200
+    rel = table_relation(
+        {
+            "parent": [f"p{i}" for i in range(n)],
+            "child": ["only"] * n,
+            "revenue": [float(n - i) for i in range(n)],
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.TREEMAP,
+        {
+            "label": [Encoding(field="parent"), Encoding(field="child")],
+            "size": [Encoding(field="revenue")],
+        },
+        HierarchyParams,
+        params={"maxLeaves": 2000},  # no per-parent rollup triggers; only the total is at risk
+        mark_cap=50,
+    )
+    out = treemap(req)
+    assert out.table.num_rows <= 50
+    assert out.params.get("rolledUpParents") == n - 49
+    assert any("more paths are grouped" in w for w in out.warnings)
+    # The biggest parent must survive the rollup, not an arbitrary row-order prefix.
+    rows = out.table.to_pylist()
+    assert any(r["label0"] == "p0" and r["size"] == float(n) for r in rows)
+
+
+def test_treemap_does_not_roll_up_parents_when_well_under_mark_cap(
+    table_relation: MakeRelation,
+) -> None:
+    # The parent rollup is keyed on mark_cap (an actual size budget), not max_leaves (a per-
+    # parent tidiness setting): a handful of parents, each with a couple of children, must not
+    # be collapsed just because the total happens to exceed max_leaves.
+    rel = table_relation(
+        {
+            "region": ["N", "N", "N", "S"],
+            "product": ["Widget", "Gadget", "Gizmo", "Widget"],
+            "revenue": [100.0, 50.0, 1.0, 20.0],
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.TREEMAP,
+        {
+            "label": [Encoding(field="region"), Encoding(field="product")],
+            "size": [Encoding(field="revenue")],
+        },
+        HierarchyParams,
+        params={"maxLeaves": 2},
+    )
+    out = treemap(req)
+    assert out.params.get("rolledUpParents") is None
+    by_product = {r["label1"]: r["size"] for r in out.table.to_pylist() if r["label0"] == "N"}
+    assert by_product["Gadget"] == 50.0
+
+
 def test_sunburst_uses_count_without_a_size_field(table_relation: MakeRelation) -> None:
     rel = table_relation({"region": ["N", "N", "S"], "product": ["A", "B", "A"]})
     req = _request(
@@ -483,4 +576,43 @@ def test_mosaic_rolls_up_both_dimensions_with_a_numeric_x(table_relation: MakeRe
     rows = out.table.to_pylist()
     assert any(r["x"] == "(Other)" for r in rows)
     assert all(isinstance(r["x"], str) for r in rows)
+    assert out.params.get("rolledUp") is True
+
+
+def test_mosaic_cap_holds_when_every_x_total_ties(table_relation: MakeRelation) -> None:
+    # A regression: dense_rank() with no tie-breaker gives every tied x the same rank, so all of
+    # them pass the "<= max_x" filter and the cap doesn't hold at all. Every row here has the
+    # same count (1), so every x's total ties.
+    n = 500
+    rel = table_relation({"region": [f"r{i}" for i in range(n)], "channel": ["Online"] * n})
+    req = _request(
+        rel,
+        PlotType.MOSAIC,
+        {"x": [Encoding(field="region")], "color": [Encoding(field="channel")]},
+        CrosstabParams,
+        params={"maxX": 20},
+    )
+    out = mosaic(req)
+    rows = out.table.to_pylist()
+    kept_x = {r["x"] for r in rows if r["x"] != "(Other)"}
+    assert len(kept_x) == 20
+    assert any(r["x"] == "(Other)" for r in rows)
+    assert out.params.get("rolledUp") is True
+
+
+def test_mosaic_color_cap_holds_when_every_color_total_ties(table_relation: MakeRelation) -> None:
+    n = 500
+    rel = table_relation({"region": ["North"] * n, "channel": [f"c{i}" for i in range(n)]})
+    req = _request(
+        rel,
+        PlotType.MOSAIC,
+        {"x": [Encoding(field="region")], "color": [Encoding(field="channel")]},
+        CrosstabParams,
+        params={"maxColor": 15},
+    )
+    out = mosaic(req)
+    rows = out.table.to_pylist()
+    kept_color = {r["color"] for r in rows if r["color"] != "(Other)"}
+    assert len(kept_color) == 15
+    assert any(r["color"] == "(Other)" for r in rows)
     assert out.params.get("rolledUp") is True

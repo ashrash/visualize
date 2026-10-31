@@ -29,7 +29,18 @@ from sqlglot import exp
 
 from viz.chartdata.basic import measure_label
 from viz.chartdata.reduce import aggregate_query, over_groups
-from viz.chartdata.sql import alias, cast, col, default_agg, fn, lit, measure_sql, ordered, subquery
+from viz.chartdata.sql import (
+    alias,
+    cast,
+    col,
+    default_agg,
+    fn,
+    lit,
+    measure_sql,
+    ordered,
+    subquery,
+    window,
+)
 from viz.contracts import AggFn, Encoding, PlotType, Reduction, StatResult
 from viz.errors import InvalidSpecError
 from viz.plots.base import (
@@ -106,28 +117,40 @@ def _cap_graph(
     max_nodes: int,
     *,
     other_names: Callable[[Any, Any], tuple[Any, Any]] = _DEFAULT_OTHER_NAMES,
-) -> tuple[pa.Table, int]:
+) -> tuple[pa.Table, int, int]:
     """Keep the `max_nodes` highest-total nodes; the rest collapse into one or more "(Other)"
     buckets, named by `other_names(source, target)` per edge (a source and a target bucket, so
     capping alone can't fuse unrelated dropped nodes into a single node that then looks cyclic:
-    sankey buckets its sources and targets separately, alluvial buckets per stage)."""
+    sankey buckets its sources and targets separately, alluvial buckets per stage).
+
+    Returns `(edges, nodes_rolled_up, self_loops_dropped)`: a self-loop (source == target, real
+    or created by two dropped nodes landing in the same bucket) carries no information for a
+    sankey/network drawing and is dropped, but the caller should still say so -- a real self-loop
+    (e.g. a "retried itself" edge) can be meaningful and silently vanishing it is a real loss,
+    not just cosmetic rollup.
+    """
     totals: dict[Any, float] = {}
     for row in edges.to_pylist():
         totals[row["source"]] = totals.get(row["source"], 0.0) + (row["value"] or 0.0)
         totals[row["target"]] = totals.get(row["target"], 0.0) + (row["value"] or 0.0)
-    if len(totals) <= max_nodes:
-        return edges, 0
-    keep = {k for k, _ in sorted(totals.items(), key=lambda kv: -kv[1])[:max_nodes]}
+    rolled = max(0, len(totals) - max_nodes)
+    keep = (
+        {k for k, _ in sorted(totals.items(), key=lambda kv: -kv[1])[:max_nodes]}
+        if rolled
+        else set(totals)
+    )
     merged: dict[tuple[Any, Any], float] = {}
+    self_loops = 0
     for row in edges.to_pylist():
         s_other, t_other = other_names(row["source"], row["target"])
         s = row["source"] if row["source"] in keep else s_other
         t = row["target"] if row["target"] in keep else t_other
         if s == t:
-            continue  # a bucket -> itself self-loop carries no information
+            self_loops += 1
+            continue
         merged[(s, t)] = merged.get((s, t), 0.0) + (row["value"] or 0.0)
     rows = [{"source": s, "target": t, "value": v} for (s, t), v in merged.items()]
-    return pa.Table.from_pylist(rows) if rows else edges.slice(0, 0), len(totals) - max_nodes
+    return pa.Table.from_pylist(rows) if rows else edges.slice(0, 0), rolled, self_loops
 
 
 def _drop_cycles(edges: list[tuple[str, str, float]]) -> tuple[list[tuple[str, str, float]], int]:
@@ -141,16 +164,18 @@ def _drop_cycles(edges: list[tuple[str, str, float]]) -> tuple[list[tuple[str, s
     heuristic: minimum feedback edge set is NP-hard in general).
     """
     adjacency: dict[str, list[tuple[str, float, int]]] = {}
-    nodes: list[str] = []
+    weight: dict[str, float] = {}
     seen_nodes: set[str] = set()
     for i, (s, t, v) in enumerate(edges):
         adjacency.setdefault(s, []).append((t, v, i))
         for n in (s, t):
-            if n not in seen_nodes:
-                seen_nodes.add(n)
-                nodes.append(n)
+            seen_nodes.add(n)
+            weight[n] = weight.get(n, 0.0) + v
     for out in adjacency.values():
         out.sort(key=lambda e: -e[1])
+    # Deterministic start order: by total weight then name, not by GROUP BY/insertion order,
+    # which is unspecified and can flip which edge of a tied cycle gets dropped between runs.
+    nodes = sorted(seen_nodes, key=lambda n: (-weight.get(n, 0.0), n))
 
     dropped: set[int] = set()
     UNVISITED, IN_STACK, DONE = 0, 1, 2
@@ -188,6 +213,13 @@ def _drop_cycles(edges: list[tuple[str, str, float]]) -> tuple[list[tuple[str, s
 def _stage_of(name: Any) -> str:
     prefix, sep, _ = str(name).partition("⁣")
     return prefix if sep else "?"
+
+
+def _self_loop_warning(count: int) -> str:
+    return (
+        f"{count:,} self-referencing edge{'s' if count != 1 else ''} "
+        f"{'were' if count != 1 else 'was'} left out."
+    )
 
 
 def _sankey_other_names(_s: Any, _t: Any) -> tuple[str, str]:
@@ -249,10 +281,12 @@ def sankey(req: PlotRequest) -> StatResult:
     if source_field is None or target_field is None:
         raise InvalidSpecError("Choose fields for 'source' and 'target'.")
     edges = _edges(req, source_field, target_field, _first_encoding(req, "size"))
-    edges, rolled = _cap_graph(edges, params.max_nodes, other_names=_sankey_other_names)
+    edges, rolled, self_loops = _cap_graph(edges, params.max_nodes, other_names=_sankey_other_names)
     nodes, links, warnings = _graph_result(edges, directed=True, mark_cap=req.mark_cap)
     if rolled:
         warnings.append(f"The {rolled} smallest nodes are grouped into '(Other)'.")
+    if self_loops:
+        warnings.append(_self_loop_warning(self_loops))
     return stat_result(
         {"nodes": nodes, "links": links},
         method="source_target_aggregate",
@@ -304,7 +338,9 @@ def alluvial(req: PlotRequest) -> StatResult:
         if link_rows
         else pa.table({"source": [], "target": [], "value": []})
     )
-    edges, rolled = _cap_graph(edges, params.max_nodes, other_names=_alluvial_other_names)
+    edges, rolled, self_loops = _cap_graph(
+        edges, params.max_nodes, other_names=_alluvial_other_names
+    )
     nodes, links, warnings = _graph_result(edges, directed=True, mark_cap=req.mark_cap)
     for node in nodes:
         stage_str, _, label = node["name"].partition("⁣")
@@ -312,6 +348,8 @@ def alluvial(req: PlotRequest) -> StatResult:
         node["depth"] = int(stage_str) if stage_str.isdigit() else 0
     if rolled:
         warnings.append(f"The {rolled} smallest nodes are grouped into '(Other)'.")
+    if self_loops:
+        warnings.append(_self_loop_warning(self_loops))
     return stat_result(
         {"nodes": nodes, "links": links, "stages": len(stages)},
         method="stage_aggregate",
@@ -339,10 +377,12 @@ def network(req: PlotRequest) -> StatResult:
     if source_field is None or target_field is None:
         raise InvalidSpecError("Choose fields for 'source' and 'target'.")
     edges = _edges(req, source_field, target_field, _first_encoding(req, "size"))
-    edges, rolled = _cap_graph(edges, params.max_nodes)
+    edges, rolled, self_loops = _cap_graph(edges, params.max_nodes)
     nodes, links, warnings = _graph_result(edges, directed=False, mark_cap=req.mark_cap)
     if rolled:
         warnings.append(f"The {rolled} smallest nodes are grouped into '(Other)'.")
+    if self_loops:
+        warnings.append(_self_loop_warning(self_loops))
     return stat_result(
         {"nodes": nodes, "links": links},
         method="edge_aggregate",
@@ -380,6 +420,29 @@ def gantt(req: PlotRequest) -> TableOutput:
     color_field = req.field("color")
     progress_field = req.field("progress")
 
+    warnings: list[str] = []
+    params_out: dict[str, Any] = {}
+    # A task with no start or end has nowhere to draw a bar; a null start/end slipping through
+    # (rather than being dropped here) would otherwise set the time axis's auto-computed extent
+    # to 1970, squeezing every real bar into a sliver.
+    has_both = exp.and_(
+        exp.Not(this=exp.Is(this=col(start_field), expression=exp.Null())),
+        exp.Not(this=exp.Is(this=col(end_field), expression=exp.Null())),
+    )
+    stats_row = req.relation.arrow(
+        req.relation.select(
+            alias(exp.Count(this=exp.Star()), "n"),
+            alias(exp.Count(this=exp.Case(ifs=[exp.If(this=has_both, true=lit(1))])), "with_dates"),
+        )
+    ).to_pylist()[0]
+    n_dropped = int(stats_row["n"] or 0) - int(stats_row["with_dates"] or 0)
+    relation = req.relation.narrow(has_both) if n_dropped else req.relation
+    if n_dropped:
+        warnings.append(
+            f"{n_dropped:,} task{'s' if n_dropped != 1 else ''} with no start or end date "
+            f"{'were' if n_dropped != 1 else 'was'} left out."
+        )
+
     selects: list[exp.Expr] = [
         alias(col(label_field), "label"),
         alias(col(start_field), "start"),
@@ -390,10 +453,8 @@ def gantt(req: PlotRequest) -> TableOutput:
     if progress_field is not None:
         selects.append(alias(cast(col(progress_field), "DOUBLE"), "progress"))
     cap = max(1, min(params.max_tasks, req.mark_cap))
-    query = req.relation.select(*selects).order_by(ordered(col("start"))).limit(cap + 1)
-    table = req.relation.arrow(query)
-    warnings: list[str] = []
-    params_out: dict[str, Any] = {}
+    query = relation.select(*selects).order_by(ordered(col("start"))).limit(cap + 1)
+    table = relation.arrow(query)
     if table.num_rows > cap:
         table = table.slice(0, cap)
         params_out["truncatedGroups"] = True
@@ -403,9 +464,12 @@ def gantt(req: PlotRequest) -> TableOutput:
         fields["color"] = color_field
     if progress_field is not None:
         fields["progress"] = progress_field
+    # "None" means every eligible task made it through (eligible = has both dates); tasks
+    # dropped for missing dates are already called out in their own warning above.
+    eligible = int(stats_row["with_dates"] or 0)
     return TableOutput(
         table=table,
-        reduction=Reduction.NONE if table.num_rows == req.relation.row_count else Reduction.SAMPLED,
+        reduction=Reduction.NONE if table.num_rows == eligible else Reduction.SAMPLED,
         method="rows",
         fields=fields,
         params=params_out,
@@ -433,28 +497,30 @@ def pareto(req: PlotRequest) -> TableOutput:
         raise InvalidSpecError(f"{default_agg(y0).value} needs a field")
     dims = [("x", col(x_field))]
     measures = [("y0", measure_sql(y0))]
-    # A separate, fresh query for the grand total: cumPercent must read 100% at the last bar
-    # actually drawn only when nothing was cut off, not whenever the cap truncates the table.
-    total_query = aggregate_query(req.relation, dims, measures)
-    total_row = req.relation.arrow(
-        exp.select(alias(fn("sum", col("y0")), "total")).from_(subquery(total_query, "__viz_t"))
-    ).to_pylist()[0]
-    grand_total = float(total_row["total"] or 0.0) or 1.0
-
     grouped = aggregate_query(req.relation, dims, measures)
-    cap = max(1, req.mark_cap)
-    table = req.relation.arrow(
-        over_groups(grouped).order_by(ordered(col("y0"), desc=True)).limit(cap + 1)
+    # The grand total rides along as a window function in the same query (one GROUP BY instead
+    # of two): cumPercent must read 100% at the last bar actually drawn only when nothing was
+    # cut off, not whenever the cap truncates the table, so it needs the *un-truncated* total.
+    scored = exp.select(exp.Star(), alias(window(fn("sum", col("y0"))), "__viz_total")).from_(
+        subquery(grouped, "__viz_g")
     )
+    cap = max(1, req.mark_cap)
+    table = req.relation.arrow(scored.order_by(ordered(col("y0"), desc=True)).limit(cap + 1))
     warnings: list[str] = []
     params_out: dict[str, Any] = {}
     if table.num_rows > cap:
         table = table.slice(0, cap)
         params_out["truncatedGroups"] = True
         warnings.append(_truncation_warning(cap))
+    grand_total = 1.0
+    if table.num_rows:
+        grand_total = float(pc.cast(table.column("__viz_total"), pa.float64())[0].as_py() or 0.0)
+        grand_total = grand_total or 1.0
     values = pc.cast(table.column("y0"), pa.float64()).to_numpy(zero_copy_only=False)
     cum_percent = np.cumsum(np.where(np.isfinite(values), values, 0.0)) / grand_total * 100.0
-    table = table.append_column("cumPercent", pa.array(cum_percent, pa.float64()))
+    table = table.drop_columns(["__viz_total"]).append_column(
+        "cumPercent", pa.array(cum_percent, pa.float64())
+    )
     fields = {"x": x_enc.label or x_field, "y0": measure_label(y0), "cumPercent": "Cumulative %"}
     return TableOutput(
         table=table,

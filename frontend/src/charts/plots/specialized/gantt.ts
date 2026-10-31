@@ -61,10 +61,13 @@ interface RenderApi {
   size(point: [number, number]): [number, number];
 }
 
+/** A finite epoch-ms value, or NaN for null/unparseable input. Never defaults to 0 (1970): the
+ * backend already drops rows with no start/end, but a value that reaches here and fails to
+ * parse (e.g. an unexpected format) must be skipped too, not silently placed at the epoch. */
 function toMs(v: unknown): number {
   if (typeof v === "number") return v;
-  const t = Date.parse(String(v));
-  return Number.isNaN(t) ? 0 : t;
+  if (v === null || v === undefined) return Number.NaN;
+  return Date.parse(String(v));
 }
 
 export const gantt = definePlot({
@@ -95,7 +98,7 @@ export const gantt = definePlot({
     const colorCol = data.columns.color;
     const progressCol = data.columns.progress;
     const n = data.rowCount;
-    const categories = labels.map((l) => categoryLabel(l, data.kinds.label, null, ctx?.locale));
+    const allLabels = labels.map((l) => categoryLabel(l, data.kinds.label, null, ctx?.locale));
 
     const colorOf = new Map<unknown, string>();
     const palette = theme.palette;
@@ -104,15 +107,18 @@ export const gantt = definePlot({
         if (!colorOf.has(c)) colorOf.set(c, palette[colorOf.size % palette.length] ?? theme.text);
       }
     }
+    // Rows with no parseable start/end are skipped entirely, never placed at the epoch (1970),
+    // which would otherwise drag the whole axis extent down to a sliver at the right edge.
     const items = Array.from({ length: n }, (_, i) => ({
-      task: categories[i] ?? "",
+      task: allLabels[i] ?? "",
       start: toMs(starts[i]),
       end: toMs(ends[i]),
       color: colorCol ? (colorOf.get(colorCol[i]) ?? theme.text) : (palette[0] ?? theme.text),
       progress:
         progressCol && typeof progressCol[i] === "number" ? (progressCol[i] as number) : null,
       colorLabel: colorCol ? categoryLabel(colorCol[i], data.kinds.color, null, ctx?.locale) : null,
-    }));
+    })).filter((item) => Number.isFinite(item.start) && Number.isFinite(item.end));
+    const categories = items.map((item) => item.task);
 
     const series: Obj = {
       type: "custom",

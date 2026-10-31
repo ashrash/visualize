@@ -20,6 +20,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.compute as pc
 from pydantic import Field
 from sqlglot import exp
 
@@ -246,7 +247,9 @@ def stacked_area(req: PlotRequest) -> TableOutput:
                 reduction, method = Reduction.DOWNSAMPLED, "m4+minmaxlttb"
                 params_out["nOut"] = n_out
     else:
-        cap = per_measure_cap
+        # Each kept x can carry up to n_series rows (one per color), so the x cap itself must
+        # be divided by n_series or a wide color cardinality can still blow past mark_cap.
+        cap = max(1, per_measure_cap // n_series)
         keep_x, more_x = _top_values(req, x_dim, ys[0], cap, dim_name="x")
         if more_x:
             relation = relation.narrow(_dim_condition(x_dim, keep_x))
@@ -528,10 +531,18 @@ def _hierarchy_stat(req: PlotRequest, max_leaves: int) -> TableOutput:
     """GROUP BY every hierarchy level, then rank and roll up the smallest leaves into "(Other)"
     entirely in SQL: a window `row_number()` over the leaf totals, a `CASE` that relabels the
     last level past the cap, and a re-aggregate. Capping in SQL (rather than pulling every leaf
-    into Python first) keeps this interruptible and bounded by `max_leaves`, not by the number
-    of distinct leaf paths, which can be far larger. The last level is always cast to VARCHAR,
-    so a boolean or numeric last level never collides with the literal "(Other)" string even
-    when nothing is rolled up.
+    into Python first) keeps this interruptible, and bounds leaves *within each parent path* by
+    `max_leaves`, not by the number of distinct leaf paths under that parent, which can be far
+    larger. `max_leaves` is a per-parent tidiness setting, not a total-size budget, so it does
+    not by itself bound the *total* row count: a parent-level field with high cardinality on its
+    own (many parents, each with only a few children) can still return roughly one row per
+    parent. That is already safe -- chartdata's generic payload guard truncates any oversized
+    plot response to `mark_cap` -- but a mid-table cut there would drop arbitrary parents rather
+    than the smallest ones; a second pass below instead collapses whatever is past `mark_cap`
+    (not `max_leaves`) into one root-level "(Other)" row, in Python, on the already-leaf-capped
+    (and therefore usually small) result. The last level is always cast to VARCHAR, so a boolean
+    or numeric last level never collides with the literal "(Other)" string even when nothing is
+    rolled up.
     """
     levels = req.fields("label")
     if not levels:
@@ -561,7 +572,11 @@ def _hierarchy_stat(req: PlotRequest, max_leaves: int) -> TableOutput:
     leaf_count = int(stats_row["n"] or 0)
     neg_count = int(stats_row["neg"] or 0)
 
-    rank = row_number(order_by=[ordered(col("size"), desc=True)])
+    # A tie-breaker on the label columns themselves: without one, which tied-value leaf survives
+    # the cap is arbitrary and can flip between otherwise-identical requests.
+    rank = row_number(
+        order_by=[ordered(col("size"), desc=True), *(ordered(col(n)) for n in label_cols)]
+    )
     ranked = exp.select(exp.Star(), alias(rank, "__viz_rank")).from_(
         subquery(leaves, "__viz_leaves")
     )
@@ -574,8 +589,13 @@ def _hierarchy_stat(req: PlotRequest, max_leaves: int) -> TableOutput:
         ],
         default=lit("(Other)"),
     )
+    # Every level (not just the last) is cast to VARCHAR: the later, parent-level rollup below
+    # also needs to write the literal "(Other)" string into any of these columns, and a column
+    # left as e.g. BOOLEAN or INTEGER would hit the same type-mismatch crash the last level's
+    # own VARCHAR cast was added to avoid.
     relabel_select = [
-        alias(relabeled_last, last) if name == last else col(name) for name in label_cols
+        alias(relabeled_last, last) if name == last else alias(cast(col(name), "VARCHAR"), name)
+        for name in label_cols
     ] + [alias(fn("greatest", col("size"), lit(0.0)), "size")]
     relabeled = exp.select(*relabel_select).from_(subquery(ranked, "__viz_ranked"))
     final = (
@@ -591,6 +611,27 @@ def _hierarchy_stat(req: PlotRequest, max_leaves: int) -> TableOutput:
         rolled = leaf_count - max_leaves
         params_out["rolledUpLeaves"] = rolled
         warnings.append(f"The {rolled} smallest leaves are grouped into '(Other)'.")
+    if len(levels) > 1 and table.num_rows > req.mark_cap:
+        # Relabeling only the last level bounds leaves *within* each parent path, not the total
+        # row count: a parent field with high cardinality on its own (many parents, each with
+        # only a few children per parent) can still return roughly one row per parent. That's
+        # already safe (chartdata's generic payload guard truncates any oversized plot response
+        # to mark_cap), but truncating mid-table there would cut off arbitrary parents rather
+        # than the smallest ones. Only kick in here for genuinely oversized results -- not
+        # whenever row count merely exceeds max_leaves, which is a per-parent tidiness setting,
+        # not a total-size budget -- and collapse the smallest paths into one root "(Other)" row.
+        order = pc.sort_indices(table, sort_keys=[("size", "descending")])
+        keep_n = req.mark_cap - 1
+        kept = table.take(order[:keep_n]) if keep_n > 0 else table.slice(0, 0)
+        rest = table.take(order[keep_n:])
+        rest_total = float(pc.sum(rest.column("size")).as_py() or 0.0)
+        other_row = pa.Table.from_pylist(
+            [{**{name: "(Other)" for name in label_cols}, "size": rest_total}],
+            schema=table.schema,
+        )
+        table = pa.concat_tables([kept, other_row])
+        params_out["rolledUpParents"] = rest.num_rows
+        warnings.append(f"{rest.num_rows:,} more paths are grouped into a single '(Other)' row.")
     if neg_count:
         warnings.append(
             f"{neg_count:,} negative value{'s' if neg_count != 1 else ''} clamped to 0."
@@ -680,8 +721,20 @@ def _crosstab_stat(req: PlotRequest) -> TableOutput:
     ).from_(subquery(cells, "__viz_cells"))
     ranked = exp.select(
         exp.Star(),
-        alias(window(fn("dense_rank"), order_by=[ordered(col("__viz_xt"), desc=True)]), "__viz_xr"),
-        alias(window(fn("dense_rank"), order_by=[ordered(col("__viz_ct"), desc=True)]), "__viz_cr"),
+        alias(
+            window(
+                fn("dense_rank"),
+                order_by=[ordered(col("__viz_xt"), desc=True), ordered(col("x"))],
+            ),
+            "__viz_xr",
+        ),
+        alias(
+            window(
+                fn("dense_rank"),
+                order_by=[ordered(col("__viz_ct"), desc=True), ordered(col("color"))],
+            ),
+            "__viz_cr",
+        ),
     ).from_(subquery(scored, "__viz_scored"))
     x_relabel = exp.Case(
         ifs=[

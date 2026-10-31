@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 import pytest
 
-from viz.contracts import ChartSpec, Encoding, PlotType, SourceRef, Viewport
+from viz.contracts import ChartSpec, Encoding, PlotType, Reduction, SourceRef, Viewport
 from viz.plots.base import PlotParams, PlotRequest
 from viz.plots.specialized import (
     AlluvialParams,
@@ -17,6 +17,7 @@ from viz.plots.specialized import (
     GraphParams,
     RaincloudParams,
     SortableBarParams,
+    _drop_cycles,
     alluvial,
     dumbbell,
     error_bar,
@@ -146,6 +147,9 @@ def test_sankey_drops_only_the_cycle_not_the_rest_of_the_graph(
 
 
 def test_sankey_self_loop_only_drops_itself(table_relation: MakeRelation) -> None:
+    # The self-loop is dropped by _cap_graph (a sankey can't draw A -> A), not by the cycle
+    # detector, so it must still be called out in a warning rather than silently vanishing --
+    # a real self-loop (e.g. a "retried itself" edge) can be meaningful.
     rel = table_relation(
         {"source": ["A", "A"], "target": ["A", "B"], "value": [1.0, 1.0]},
     )
@@ -158,6 +162,19 @@ def test_sankey_self_loop_only_drops_itself(table_relation: MakeRelation) -> Non
     out = sankey(req)
     links = {(link["source"], link["target"]) for link in out.values["links"]}
     assert links == {("A", "B")}
+    assert any("self-referencing" in w for w in out.warnings)
+
+
+def test_drop_cycles_is_deterministic_regardless_of_input_order() -> None:
+    # A tied 2-cycle (A <-> B, equal weight): which edge gets dropped must depend only on the
+    # graph itself, not on the order edges happen to arrive in (e.g. from GROUP BY), which is
+    # unspecified and can otherwise flip the result between refreshes.
+    forward = [("A", "B", 1.0), ("B", "A", 1.0), ("B", "C", 1.0)]
+    backward = list(reversed(forward))
+    kept_forward, dropped_forward = _drop_cycles(forward)
+    kept_backward, dropped_backward = _drop_cycles(backward)
+    assert dropped_forward == dropped_backward == 1
+    assert set(kept_forward) == set(kept_backward)
 
 
 def test_network_is_undirected_and_keeps_cycles(table_relation: MakeRelation) -> None:
@@ -251,6 +268,33 @@ def test_gantt_returns_rows_sorted_by_start(table_relation: MakeRelation) -> Non
     )
     out = gantt(req)
     assert out.table.column("label").to_pylist() == ["A", "B", "C"]
+
+
+def test_gantt_drops_tasks_with_no_start_or_end_and_warns(table_relation: MakeRelation) -> None:
+    # A regression: a null start/end slipping through used to set the time axis's auto-computed
+    # extent to 1970 on the frontend, squeezing every real bar into a sliver.
+    rel = table_relation(
+        {
+            "task": ["A", "Unfinished", "B"],
+            "start": ["2024-01-01", "2024-02-01", None],
+            "end": ["2024-01-10", None, "2024-03-10"],
+        },
+        semantics=None,
+    )
+    req = _request(
+        rel,
+        PlotType.GANTT,
+        {
+            "label": [Encoding(field="task")],
+            "start": [Encoding(field="start")],
+            "end": [Encoding(field="end")],
+        },
+        GanttParams,
+    )
+    out = gantt(req)
+    assert out.table.column("label").to_pylist() == ["A"]
+    assert any("no start or end" in w for w in out.warnings)
+    assert out.reduction == Reduction.NONE
 
 
 def test_pareto_sorts_descending_with_cumulative_percent(table_relation: MakeRelation) -> None:
