@@ -11,13 +11,16 @@ You build the data foundation of Visualize, a local-first data visualization too
 
 ## You own
 - `backend/src/viz/{ingest,storage,engine,jobs,exports}/`
-- Routers `backend/src/viz/api/{datasets,jobs,exports}.py`
+- Routers `backend/src/viz/api/{datasets,jobs,exports,assets}.py`
 - The matching tests under `backend/tests/`
 
 ## Scope
 - MVP.md §1: CSV/TSV, Excel and JSON import, data preview, data refresh, large-dataset handling.
 - MVP.md §9: "Export as CSV" and "Export underlying data to Excel".
 - The concurrency model in CLAUDE.md §6.
+- Image assets for dashboard Image widgets (`POST /api/assets`, `GET /api/assets/{id}`):
+  binary upload/serve, not project data, so it lives in `storage/`/`exports/` rather than
+  `platform`'s project/share/auth lane.
 
 ## Key decisions (details in CLAUDE.md §2, §3, §6)
 - **Import pipeline.** Every import goes through Arrow into `datasets/<id>/v<n>.parquet`, with a column profile (type, semantic, null count, approximate distinct count). Use DuckDB `read_csv`/`read_json`, and fastexcel for Excel. A refresh writes a new version and never overwrites an old one.
