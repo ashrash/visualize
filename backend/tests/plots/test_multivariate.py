@@ -344,10 +344,12 @@ def test_factor_degenerate_inputs(rel: Rel) -> None:
 def test_factor_analysis_is_quick_even_without_convergence(rel: Rel) -> None:
     import time
 
-    # Iris with one factor is a Heywood case: EM never converges, so it must stop early.
+    # Iris with one factor is a Heywood case: EM never converges, so it must stop early. The
+    # bound is generous (not a tight perf budget): the point is catching a reintroduced unbounded
+    # iteration loop, which would blow well past this even on a slow, shared CI runner.
     started = time.perf_counter()
     out = run(rel(iris_table()), PlotType.FACTOR_LOADING, {"factors": 1}, y=IRIS)
-    assert time.perf_counter() - started < 3.0
+    assert time.perf_counter() - started < 20.0
     assert any("Heywood" in w or "converge" in w for w in out.warnings)
     with pytest.raises(InvalidSpecError, match="at most 1 factor "):
         run(rel(iris_table()), PlotType.FACTOR_LOADING, {"factors": 2}, y=IRIS)

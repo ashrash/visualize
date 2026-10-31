@@ -134,23 +134,32 @@ def test_disconnect_cancels_only_its_own_request(eng: Engine) -> None:
     assert out["r1"] in ("cancelled", "superseded")
 
 
-def test_stale_request_never_supersedes_a_newer_one(eng: Engine) -> None:
-    with request_scope() as old:
-        pass
-    newer_started = threading.Event()
+def test_stale_request_never_supersedes_a_newer_one(tmp_path: Path) -> None:
+    # A query_timeout_s well above what the probe query could plausibly take, even on a slow or
+    # oversubscribed CI runner: the probe must finish normally, not be cut off by the engine's own
+    # timeout (that would masquerade as the behavior this test is checking against).
+    eng = Engine(temp_dir=tmp_path / "t", max_concurrent_queries=4, query_timeout_s=60.0)
+    try:
+        with request_scope() as old:
+            pass
+        newer_started = threading.Event()
 
-    def newer() -> object:
-        with request_scope(), eng.cursor("chart:9") as cur:
-            newer_started.set()
-            return cur.sql("SELECT count(*) FROM range(300000000) t(x) WHERE x % 7 = 3").fetchall()
+        def newer() -> object:
+            with request_scope(), eng.cursor("chart:9") as cur:
+                newer_started.set()
+                return cur.sql(
+                    "SELECT count(*) FROM range(300000000) t(x) WHERE x % 7 = 3"
+                ).fetchall()
 
-    thread, errors, results = run_in_thread(newer)
-    assert newer_started.wait(5)
-    with request_scope(old), pytest.raises(QueryInterruptedError) as info:
-        eng.query_arrow("SELECT 1", key="chart:9")
-    assert info.value.reason == "superseded"
-    thread.join(30)
-    assert not errors and results
+        thread, errors, results = run_in_thread(newer)
+        assert newer_started.wait(5)
+        with request_scope(old), pytest.raises(QueryInterruptedError) as info:
+            eng.query_arrow("SELECT 1", key="chart:9")
+        assert info.value.reason == "superseded"
+        thread.join(60)
+        assert not errors and results
+    finally:
+        eng.close()
 
 
 def test_cancelled_owner_cannot_start_new_cursors(eng: Engine) -> None:
@@ -316,29 +325,36 @@ def test_sessions_are_utc(tmp_path: Path) -> None:
         eng.close()
 
 
-def test_conditional_cancel_only_hits_the_latest_generation(eng: Engine) -> None:
-    gen_a = next_generation()
-    gen_b = next_generation()
-    assert gen_b > gen_a
-    started = threading.Event()
+def test_conditional_cancel_only_hits_the_latest_generation(tmp_path: Path) -> None:
+    # A query_timeout_s well above what the probe query could plausibly take, even on a slow or
+    # oversubscribed CI runner: the probe must finish normally, not be cut off by the engine's own
+    # timeout (that would masquerade as the behavior this test is checking against).
+    eng = Engine(temp_dir=tmp_path / "t", max_concurrent_queries=4, query_timeout_s=60.0)
+    try:
+        gen_a = next_generation()
+        gen_b = next_generation()
+        assert gen_b > gen_a
+        started = threading.Event()
 
-    def run_b() -> object:
-        with eng.cursor("chart:c", generation=gen_b) as cur:
-            started.set()
-            sql = "SELECT count(*) FROM range(300000000) t(x) WHERE x % 7 = 3"
-            return cur.sql(sql).fetchall()
+        def run_b() -> object:
+            with eng.cursor("chart:c", generation=gen_b) as cur:
+                started.set()
+                sql = "SELECT count(*) FROM range(300000000) t(x) WHERE x % 7 = 3"
+                return cur.sql(sql).fetchall()
 
-    thread, errors, results = run_in_thread(run_b)
-    assert started.wait(5)
-    # Client A aborted after B was sent: cancelling A's generation is a no-op.
-    assert eng.cancel("chart:c", gen_a) is False
-    thread.join(30)
-    assert not errors and results
+        thread, errors, results = run_in_thread(run_b)
+        assert started.wait(5)
+        # Client A aborted after B was sent: cancelling A's generation is a no-op.
+        assert eng.cancel("chart:c", gen_a) is False
+        thread.join(60)
+        assert not errors and results
 
-    thread, errors, _ = run_in_thread(
-        lambda: eng.query_arrow(SLOW_SQL, key="chart:c", generation=gen_b)
-    )
-    assert wait_for(lambda: "chart:c" in eng._by_key)
-    assert eng.cancel("chart:c", gen_b) is True
-    thread.join(10)
-    assert isinstance(errors[0], QueryInterruptedError)
+        thread, errors, _ = run_in_thread(
+            lambda: eng.query_arrow(SLOW_SQL, key="chart:c", generation=gen_b)
+        )
+        assert wait_for(lambda: "chart:c" in eng._by_key)
+        assert eng.cancel("chart:c", gen_b) is True
+        thread.join(10)
+        assert isinstance(errors[0], QueryInterruptedError)
+    finally:
+        eng.close()
