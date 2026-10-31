@@ -31,7 +31,7 @@ export function DatasetList({ datasets, selectedId, onSelect, onDeleted }: Datas
                   aria-current={selected ? "true" : undefined}
                   onClick={() => onSelect(dataset.id)}
                   className={`flex min-w-0 flex-1 flex-col rounded-md px-2 py-1 text-left text-sm ${
-                    selected ? "bg-surface-2 font-medium" : "hover:bg-surface-2"
+                    selected ? "bg-surface-2 font-medium text-fg" : "hover:bg-surface-2"
                   }`}
                 >
                   <span className="block truncate">{dataset.name}</span>
