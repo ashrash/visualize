@@ -125,3 +125,42 @@ def make_relation(engine: Engine, tmp_path: Path) -> MakeRelation:
         )
 
     return make
+
+
+# ---------------------------------------------------------------- published datasets
+
+# R `sleep` (Student 1908): extra hours of sleep for 10 patients under two drugs.
+SLEEP_1 = [0.7, -1.6, -0.2, -1.2, -0.1, 3.4, 3.7, 0.8, 0.0, 2.0]
+SLEEP_2 = [1.9, 0.8, 1.1, 0.1, -0.1, 4.4, 5.5, 1.6, 4.6, 3.4]
+
+# R `PlantGrowth`: dried plant weight under a control and two treatments.
+PLANT_CTRL = [4.17, 5.58, 5.18, 6.11, 4.50, 4.61, 5.17, 4.53, 5.33, 5.14]
+PLANT_TRT1 = [4.81, 4.17, 4.41, 3.59, 5.87, 3.83, 6.03, 4.89, 4.32, 4.69]
+PLANT_TRT2 = [6.31, 5.12, 5.54, 5.50, 5.37, 5.29, 4.92, 6.15, 5.80, 5.26]
+
+
+@pytest.fixture
+def sleep_long() -> pa.Table:
+    return pa.table(
+        {
+            "extra": SLEEP_1 + SLEEP_2,
+            "group": ["1"] * 10 + ["2"] * 10,
+            "drug": [1] * 10 + [2] * 10,
+            "id": list(range(1, 11)) * 2,
+        }
+    )
+
+
+@pytest.fixture
+def sleep_wide() -> pa.Table:
+    return pa.table({"drug1": SLEEP_1, "drug2": SLEEP_2})
+
+
+@pytest.fixture
+def plant_growth() -> pa.Table:
+    return pa.table(
+        {
+            "weight": PLANT_CTRL + PLANT_TRT1 + PLANT_TRT2,
+            "group": ["ctrl"] * 10 + ["trt1"] * 10 + ["trt2"] * 10,
+        }
+    )

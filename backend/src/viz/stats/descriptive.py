@@ -24,20 +24,25 @@ import math
 import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 import duckdb
 from cachetools import LRUCache
 from sqlglot import exp
 
-from viz.contracts import ColumnSemantic, DescribeRequest, FieldSummary, Quantile, StatResult
+from viz.contracts import DescribeRequest, FieldSummary, Quantile, StatResult
 from viz.stats.errors import StatsInputError
+from viz.stats.fields import Kind, field_kind
+from viz.stats.fields import has_zone as _has_zone
+from viz.stats.fields import iso_text as _iso
+from viz.stats.fields import json_scalar as _scalar
 from viz.stats.groups import cap_groups
 from viz.stats.relation import Relation, col
 from viz.stats.results import dedupe, finite_or_none, stat_result
-from viz.stats.sql import alias, count_star, fn, is_boolean, is_float, num_list
+from viz.stats.sql import alias, count_star, fn, is_float, num_list
 
-Kind = Literal["numeric", "temporal", "categorical", "boolean"]
+__all__ = ["clear_cache", "describe", "describe_cached", "field_kind"]
+
 GroupKey = tuple[Any, ...] | None  # None = the overall row
 ModeInfo = tuple[int, int, list[Any], bool]  # distinct, mode count, first modes, more tie
 
@@ -47,23 +52,6 @@ _MAX_MODES = 5
 # overflows from about 1e77, skewness from about 1e103; below ~1e-50 x^4 underflows).
 _RESCALE_ABOVE = 1e50
 _RESCALE_BELOW = 1e-50
-_NUMERIC_PREFIXES = (
-    "TINYINT",
-    "SMALLINT",
-    "INTEGER",
-    "BIGINT",
-    "HUGEINT",
-    "UTINYINT",
-    "USMALLINT",
-    "UINTEGER",
-    "UBIGINT",
-    "UHUGEINT",
-    "FLOAT",
-    "DOUBLE",
-    "REAL",
-    "DECIMAL",
-)
-_TEMPORAL_PREFIXES = ("DATE", "TIMESTAMP", "TIME")
 _MOMENTS = (
     ("mean", "avg"),
     ("std", "stddev_samp"),
@@ -76,23 +64,6 @@ _MOMENTS = (
 )
 # How each moment scales when the values are divided by s.
 _SCALE_POWER = {"mean": 1, "std": 1, "variance": 2, "sum": 1, "min": 1, "max": 1}
-
-
-def field_kind(rel: Relation, name: str) -> Kind:
-    column = rel.columns[name]
-    upper = column.type.upper()
-    if is_boolean(column):
-        return "boolean"
-    if upper.startswith(_TEMPORAL_PREFIXES):
-        return "temporal"
-    if upper.startswith(_NUMERIC_PREFIXES) and column.semantic != ColumnSemantic.NOMINAL:
-        return "numeric"
-    return "categorical"
-
-
-def _has_zone(rel: Relation, name: str) -> bool:
-    upper = rel.columns[name].type.upper()
-    return upper.startswith("TIMESTAMP WITH TIME ZONE") or upper == "TIMESTAMPTZ"
 
 
 def _value(rel: Relation, name: str, kind: Kind) -> exp.Expr:
@@ -114,26 +85,6 @@ def _value(rel: Relation, name: str, kind: Kind) -> exp.Expr:
 
 def _text(expr: exp.Expr) -> exp.Expr:
     return exp.cast(expr, "VARCHAR")
-
-
-def _iso(value: Any, zoned: bool = False) -> Any:
-    """DuckDB's text form of a date/timestamp, made ISO-8601 ("T" separator, UTC offset)."""
-    if not isinstance(value, str):
-        return value
-    if len(value) > 10 and value[10] == " ":
-        value = value[:10] + "T" + value[11:]
-    return value + "+00:00" if zoned else value
-
-
-def _scalar(value: Any) -> Any:
-    if value is None or isinstance(value, bool | int | str):
-        return value
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return str(value)
 
 
 @dataclass
@@ -165,16 +116,19 @@ class _Groups:
     # Groups found, and how many were dropped (0 = all kept).
     n_groups: int
     dropped: int
+    # What GROUP BY uses: the columns, with NaN/+-inf float keys as NULL (missing), since
+    # DuckDB groups NaNs together but NaN != NaN when the rows are matched up in Python.
+    keys: list[exp.Expr]
 
     @staticmethod
     def none(rel: Relation) -> _Groups:
-        return _Groups([], [], [], rel, 1, 0)
+        return _Groups([], [], [], rel, 1, 0, [])
 
     def exprs(self, rel: Relation) -> list[exp.Expr]:
         """Group keys as output: native values, except dates/times as text."""
         out: list[exp.Expr] = []
-        for b, temporal in zip(self.by, self.temporal, strict=True):
-            out.append(_text(_value(rel, b, "temporal")) if temporal else col(b))
+        for b, temporal, key in zip(self.by, self.temporal, self.keys, strict=True):
+            out.append(_text(_value(rel, b, "temporal")) if temporal else key.copy())
         return out
 
     def key(self, row: dict[str, Any]) -> GroupKey:
@@ -210,6 +164,7 @@ def describe(rel: Relation, request: DescribeRequest) -> StatResult:
         capped.relation,
         capped.n_groups,
         capped.dropped,
+        [_group_key(rel, b) for b in by],
     )
     warnings = _Warnings()
     if capped.warning:
@@ -268,8 +223,14 @@ def _sort_key(key: GroupKey) -> tuple[Any, ...]:
     return tuple((v is None, "" if v is None else v) for v in key)
 
 
+def _group_key(rel: Relation, name: str) -> exp.Expr:
+    if is_float(rel.columns[name]):
+        return exp.If(this=fn("isfinite", col(name)), true=col(name), false=exp.Null())
+    return col(name)
+
+
 def _group_clause(groups: _Groups, extra: list[exp.Expr], grouping_sets: bool) -> list[exp.Expr]:
-    cols: list[exp.Expr] = [col(b) for b in groups.by]
+    cols: list[exp.Expr] = [k.copy() for k in groups.keys]
     if grouping_sets:
         return [
             exp.GroupingSets(
@@ -285,7 +246,7 @@ def _group_clause(groups: _Groups, extra: list[exp.Expr], grouping_sets: bool) -
 def _key_selects(rel: Relation, groups: _Groups) -> list[exp.Expr]:
     selects: list[exp.Expr] = [alias(e, f"_g{i}") for i, e in enumerate(groups.exprs(rel))]
     if groups.by:
-        selects.append(alias(fn("grouping", *[col(b) for b in groups.by]), "_gid"))
+        selects.append(alias(fn("grouping", *[k.copy() for k in groups.keys]), "_gid"))
     return selects
 
 
