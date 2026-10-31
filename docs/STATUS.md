@@ -438,6 +438,38 @@ follow-ups rather than fixed (outside those agents' owned paths).
     confirm its actual `DashboardPage`/`SharePage`/`EmbedPage` export shapes still match what
     `ui-data` guessed (no props, each reads its own route param), and ask `ui-dashboard` to remove
     the now-done `TODO(ui-data)` comment near `runtimeStore.ts:52`.
+  - `data-core`'s half merged: `POST /api/assets` (multipart, sniffs PNG/JPEG/GIF/WebP/SVG from
+    bytes, never trusts the client's declared type or file name, 10 MB default cap via the new
+    `VIZ_MAX_ASSET_MB`) and `GET /api/assets/{id}` (sandboxed CSP + `nosniff` on the response, so
+    an SVG opened directly can't run script on this origin). **Two xhigh review rounds** on top of
+    the lead's own direct fixes, because the first round found a real, exploitable blocker: the
+    SVG-sniff regex's lazy comment match could backtrack catastrophically, so a crafted ~300-byte
+    upload could freeze the *entire* process (not just the request) for hours, since `re` holds
+    the GIL while matching — fixed by making each comment match one way and the repeated group
+    possessive; confirmed afterwards to scale linearly, not exponentially, against the original
+    payload and 24+ other adversarial patterns, and fuzzed 100k cases against `expat` with no
+    bypass found. Same round also found: two ways to sneak an XXE-style entity block past the
+    "no internal subset" DOCTYPE rule (not exploitable today — nothing parses these bytes as XML
+    server-side — but the rule should hold for a future server-side consumer, e.g. report
+    rasterization); a client filename reaching the staging path could crash the request on a
+    reserved Windows device name (`NUL`, `CON`, ...) or a >255-char component; a multipart `file`
+    part with no `filename=` crashed both this endpoint and the *existing* dataset-upload endpoint
+    with an `IndexError`/500 (shared `ingest/upload.py` code, fixed for both); the committed
+    `openapi.json`/`schema.d.ts` were stale (contract-drift blocker). Round 2 confirmed every fix
+    (including re-fuzzing the new regex) and found three nits, also fixed: `EXTENSIONS` and
+    `sniff_image_type` are now typed by a shared `ImageContentType` Literal so mypy catches a
+    sniffed type that isn't in the contract instead of a 500 at request time; `Upload.file_name`
+    now reports the client's name even when a caller overrides the on-disk name; the ReDoS
+    regression test uses a small `k` so a future regression fails in seconds, not hours. 1153
+    backend passed/6 skipped, 691 frontend passed/1 skipped, ruff/mypy/biome/tsc clean.
+    - **Deferred, not blockers**: no asset deletion/GC (an unreferenced image stays in `assets/`
+      forever); `.vizproj` export doesn't bundle asset files yet; `GET /api/assets/{id}` requires
+      `auth.current_user`, so once OIDC replaces the local stub, Image widgets on a shared/embedded
+      dashboard will 401 without a token-scoped asset route (same hosted-mode gap already tracked
+      for share/embed's chart data above). Also noted, pre-existing and unrelated to this branch:
+      the dataset-upload endpoint's own filename handling 500s on a >255-char name too (same root
+      cause, different code path since it doesn't use `stage_name`) — a `TODO` for whoever next
+      touches `ingest/upload.py`'s dataset-facing callers.
 
 ## MVP.md
 
