@@ -701,7 +701,8 @@ def _summary(
     elif kind == "temporal" and count > 0:
         stats["min"] = _iso(row[f"_{i}_min"], zoned)
         stats["max"] = _iso(row[f"_{i}_max"], zoned)
-        by_prob = dict(zip(probs, (_iso(q, zoned) for q in row[f"_{i}_q"]), strict=True))
+        quantile_text = row.get(f"_{i}_q") or [None] * len(probs)
+        by_prob = dict(zip(probs, (_iso(q, zoned) for q in quantile_text), strict=True))
     elif kind == "boolean" and count > 0:
         stats["mean"] = finite_or_none(row[f"_{i}_mean"])
 
