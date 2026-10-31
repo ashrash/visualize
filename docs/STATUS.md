@@ -320,12 +320,13 @@ built but gated behind a `statsTests` flag pending a ui-data wiring pass, the sa
 used for pipelines; several ui-charts bugs were found by plot agents and documented below as
 follow-ups rather than fixed (outside those agents' owned paths).
 
-### ui-charts follow-ups found during Wave 2 (not yet fixed; see entries above for detail)
-- Axis title gap sizing from unrounded data instead of tick labels (can clip off-screen).
+### ui-charts follow-ups found during Wave 2 (fixed in the Wave 3 `ui-charts` merge below)
+- Axis title gap sizing from unrounded data instead of tick labels (can clip off-screen). Fixed.
 - A log-x-axis filter drops array rows whose first element is <=0 (breaks some error-bar layouts).
-- "View as table" shows raw JSON for StatResult-based plots instead of a real table.
+  Fixed.
+- "View as table" shows raw JSON for StatResult-based plots instead of a real table. Fixed.
 - `ChartView` keys map-readiness on a plot's registry key, not the prepare inputs, so switching a
-  choropleth's map resolution leaves the chart blank after the new map loads.
+  choropleth's map resolution leaves the chart blank after the new map loads. Fixed.
 
 ## Wave 3 log
 
@@ -407,6 +408,24 @@ follow-ups rather than fixed (outside those agents' owned paths).
     on choropleth) so changing those `affectsData: false` params doesn't force an unnecessary
     `prepare()` re-wait — not yet done, a follow-up for whoever next touches `plots/geo.py`'s
     frontend renderers.
+  - `TODO(ui-data)`: grid drill-through (a dashboard chart drilling into the data grid) carries
+    *pipeline-output* field names in its predicates, which won't always match the *underlying
+    dataset's* column names shown in the grid (e.g. a calc/renamed column). Dispatched to ui-data
+    alongside the dashboard route wiring; for now, predicates whose field doesn't match a grid
+    column should be silently skipped rather than crashing the grid. The general pipeline-to-
+    dataset field-mapping problem is left for later.
+  - `TODO(data-core)`: `backend/src/viz/ingest/rows.py`'s grid filter path calls `where_sql(...)`
+    without passing `duck_type`, so an epoch-ms range/`between_dates` bound on a DATE/TIMESTAMP
+    grid column compiles as a bare integer literal instead of a cast timestamp. Only matters once
+    a temporal drill-through predicate reaches the grid (see the `ui-data` item above) — not yet
+    fixed, flagged for whoever next touches the grid's filter compilation.
+- 2026-10-31: Two Wave 3 integration gaps dispatched in parallel, not yet merged: `ui-data` is
+  wiring `/dashboards`, `/dashboards/:id`, `/share/:token`, `/embed/:token` routes into the app
+  shell and hooking the data grid up to `useDashboardRuntime`'s `gridDrill` state for
+  drill-through; `data-core` is adding a minimal `POST /api/assets` / `GET /api/assets/{id}`
+  image-asset endpoint for the dashboard Image widget (reassigned from the widget's own
+  `TODO(platform)` comment, since binary asset storage fits `data-core`'s `storage/`/`exports/`
+  lane better than `platform`'s project/share/auth lane).
 
 ## MVP.md
 
