@@ -23,7 +23,14 @@ import numpy as np
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import ColumnSemantic, Scalar, StatResult
+from viz.contracts import (
+    ColumnSemantic,
+    RankSampleSummary,
+    RankTestRequest,
+    RankTestValues,
+    Scalar,
+    StatResult,
+)
 from viz.stats.errors import StatsInputError
 from viz.stats.fields import (
     check_distinct,
@@ -35,7 +42,6 @@ from viz.stats.fields import (
     match_case,
     measure_expr,
 )
-from viz.stats.models import RankSampleSummary, RankTestRequest, RankTestValues
 from viz.stats.relation import Relation
 from viz.stats.results import stat_result
 from viz.stats.sampling import DEFAULT_SEED, MODEL_CAP, reservoir_sample

@@ -14,11 +14,10 @@ import statsmodels.formula.api as smf
 from statsmodels.stats.diagnostic import het_breuschpagan
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
-from viz.contracts import SourceRef
+from viz.contracts import RegressionRequest, RegressionValues, SourceRef
 from viz.stats import linear_model
 from viz.stats.errors import StatsInputError
 from viz.stats.linear_model import linear_regression
-from viz.stats.models import RegressionRequest, RegressionValues
 
 SOURCE = SourceRef(kind="dataset", id="d")
 NIST = Path(__file__).parents[1] / "data" / "stats" / "nist"

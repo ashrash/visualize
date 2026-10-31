@@ -16,7 +16,7 @@ import warnings as py_warnings
 import numpy as np
 from scipy import stats as sps
 
-from viz.stats.models import AssumptionCheck
+from viz.contracts import AssumptionCheck
 from viz.stats.moments import Levene
 
 ALPHA = 0.05

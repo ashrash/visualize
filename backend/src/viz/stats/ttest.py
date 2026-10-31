@@ -19,11 +19,18 @@ import numpy as np
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import Scalar, StatResult
+from viz.contracts import (
+    Alternative,
+    AssumptionCheck,
+    SampleSummary,
+    Scalar,
+    StatResult,
+    TTestRequest,
+    TTestValues,
+)
 from viz.stats.checks import levene_check, normality_warning, p_text, shapiro
 from viz.stats.errors import StatsInputError
 from viz.stats.fields import check_distinct, match_case, measure_expr
-from viz.stats.models import Alternative, AssumptionCheck, SampleSummary, TTestRequest, TTestValues
 from viz.stats.moments import cell_moments, levene
 from viz.stats.relation import Relation
 from viz.stats.results import stat_result

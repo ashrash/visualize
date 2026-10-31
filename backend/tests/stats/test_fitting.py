@@ -7,11 +7,10 @@ import numpy as np
 import pytest
 from scipy import stats as sps
 
-from viz.contracts import SourceRef
+from viz.contracts import DistributionFitRequest, DistributionFitValues, SourceRef
 from viz.stats import fitting
 from viz.stats.errors import StatsInputError
 from viz.stats.fitting import fit_distributions
-from viz.stats.models import DistributionFitRequest, DistributionFitValues
 
 SOURCE = SourceRef(kind="dataset", id="d")
 

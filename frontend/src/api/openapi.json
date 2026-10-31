@@ -1895,6 +1895,384 @@
           }
         }
       }
+    },
+    "/api/stats/correlation": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Correlation Endpoint",
+        "description": "Correlation matrix; `values` is CorrelationValues. Pearson is exact; Spearman and\nKendall run on a sample when the data are large.",
+        "operationId": "correlation_endpoint_api_stats_correlation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrelationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/regression": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Regression Endpoint",
+        "description": "Linear or multiple OLS regression (sampled above 1M rows); `values` is\nRegressionValues.",
+        "operationId": "regression_endpoint_api_stats_regression_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegressionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/ttest": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Ttest Endpoint",
+        "description": "One-sample, Welch, Student or paired t-test (exact); `values` is TTestValues.",
+        "operationId": "ttest_endpoint_api_stats_ttest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/ranktest": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Ranktest Endpoint",
+        "description": "Mann-Whitney U, Wilcoxon signed-rank or Kruskal-Wallis test; `values` is\nRankTestValues.",
+        "operationId": "ranktest_endpoint_api_stats_ranktest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RankTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/anova": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Anova Endpoint",
+        "description": "One- or two-way ANOVA (exact); `values` is AnovaValues.",
+        "operationId": "anova_endpoint_api_stats_anova_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnovaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/chisquare": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Chisquare Endpoint",
+        "description": "Chi-square test of independence or goodness of fit (exact counts); `values` is\nChiSquareValues.",
+        "operationId": "chisquare_endpoint_api_stats_chisquare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChiSquareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/fit": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Fit Endpoint",
+        "description": "Maximum-likelihood distribution fits ranked by AIC; `values` is\nDistributionFitValues.",
+        "operationId": "fit_endpoint_api_stats_fit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DistributionFitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/outliers": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Outliers Endpoint",
+        "description": "Outliers by IQR fences, z-scores or modified z-scores (exact); `values` is\nOutlierValues.",
+        "operationId": "outliers_endpoint_api_stats_outliers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutlierRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/ci": {
+      "post": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Ci Endpoint",
+        "description": "Confidence intervals (t or bootstrap); `values` is ConfidenceIntervalValues.",
+        "operationId": "ci_endpoint_api_stats_ci_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfidenceIntervalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2028,6 +2406,107 @@
           "kind"
         ],
         "title": "Annotation"
+      },
+      "AnovaRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "factors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Factors"
+          },
+          "interaction": {
+            "type": "boolean",
+            "title": "Interaction",
+            "default": true
+          },
+          "ssType": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "title": "Sstype",
+            "default": 2
+          },
+          "postHoc": {
+            "type": "boolean",
+            "title": "Posthoc",
+            "default": true
+          },
+          "ciLevel": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cilevel",
+            "default": 0.95
+          },
+          "maxLevels": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 2.0,
+            "title": "Maxlevels",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "field",
+          "factors"
+        ],
+        "title": "AnovaRequest",
+        "description": "One- or two-way ANOVA of `field`, exact on the full data (from per-cell aggregates)."
       },
       "AxisStyle": {
         "properties": {
@@ -2754,6 +3233,111 @@
         ],
         "title": "ChartWidget"
       },
+      "ChiSquareRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "independence",
+              "goodness_of_fit"
+            ],
+            "title": "Kind",
+            "default": "independence"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "columnField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columnfield"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExpectedProportion"
+                },
+                "type": "array",
+                "maxItems": 200,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected"
+          },
+          "correction": {
+            "type": "boolean",
+            "title": "Correction",
+            "default": true
+          },
+          "maxLevels": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 2.0,
+            "title": "Maxlevels",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "field"
+        ],
+        "title": "ChiSquareRequest",
+        "description": "Pearson's chi-square on counts computed in SQL.\n\n- independence: `field` x `column_field` contingency table\n- goodness_of_fit: counts of `field` vs `expected` proportions (uniform when omitted)"
+      },
       "Column": {
         "properties": {
           "name": {
@@ -2888,6 +3472,222 @@
           "field"
         ],
         "title": "ColumnValuesRequest"
+      },
+      "ConfidenceIntervalRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Fields"
+          },
+          "statistic": {
+            "type": "string",
+            "enum": [
+              "mean",
+              "median",
+              "std",
+              "quantile"
+            ],
+            "title": "Statistic",
+            "default": "mean"
+          },
+          "quantile": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantile"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "t",
+              "bootstrap"
+            ],
+            "title": "Method",
+            "default": "auto"
+          },
+          "ciLevel": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cilevel",
+            "default": 0.95
+          },
+          "groupBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupby"
+          },
+          "maxGroups": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Maxgroups",
+            "default": 50
+          },
+          "nResamples": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 100.0,
+            "title": "Nresamples",
+            "default": 2000
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "fields"
+        ],
+        "title": "ConfidenceIntervalRequest",
+        "description": "Confidence intervals; estimates are exact on all values.\n\n`auto`: t for the mean, order statistics (distribution-free) for the median and\nquantiles, and for the SD the bootstrap up to 10,000 values per group and the\nkurtosis-adjusted asymptotic interval above. `bootstrap` bootstraps groups of up to\n10,000 values (all of them, never a subsample) and uses the statistic's exact interval\nabove. `t` is for the mean only."
+      },
+      "CorrelationRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 2,
+            "title": "Fields"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "pearson",
+              "spearman",
+              "kendall"
+            ],
+            "title": "Method",
+            "default": "pearson"
+          },
+          "missing": {
+            "type": "string",
+            "enum": [
+              "pairwise",
+              "listwise"
+            ],
+            "title": "Missing",
+            "default": "pairwise"
+          },
+          "ciLevel": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cilevel",
+            "default": 0.95
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "fields"
+        ],
+        "title": "CorrelationRequest",
+        "description": "Correlation matrix of numeric fields (booleans count 0/1, dates count days)."
       },
       "Dashboard": {
         "properties": {
@@ -3343,6 +4143,99 @@
         ],
         "title": "DescribeRequest"
       },
+      "DistributionFitRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "distributions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "norm",
+                    "lognorm",
+                    "gamma",
+                    "weibull_min",
+                    "expon",
+                    "logistic",
+                    "laplace",
+                    "uniform",
+                    "beta",
+                    "gumbel_r",
+                    "t",
+                    "cauchy"
+                  ]
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distributions"
+          },
+          "gridSize": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 10.0,
+            "title": "Gridsize",
+            "default": 200
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "field"
+        ],
+        "title": "DistributionFitRequest",
+        "description": "Maximum-likelihood fits of continuous distributions, ranked by AIC (on a sample)."
+      },
       "DropMissingStep": {
         "properties": {
           "id": {
@@ -3546,6 +4439,42 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ErrorBars"
+      },
+      "ExpectedProportion": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "proportion": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Proportion"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "proportion"
+        ],
+        "title": "ExpectedProportion"
       },
       "ExportFile": {
         "properties": {
@@ -5194,6 +6123,123 @@
         ],
         "title": "NormalizeStep"
       },
+      "OutlierRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Fields"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "iqr",
+              "zscore",
+              "mad"
+            ],
+            "title": "Method",
+            "default": "iqr"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "groupBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupby"
+          },
+          "maxGroups": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Maxgroups",
+            "default": 50
+          },
+          "maxRows": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Maxrows",
+            "default": 100
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Include"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "fields"
+        ],
+        "title": "OutlierRequest",
+        "description": "Outliers by Tukey's fences (iqr), z-scores or modified z-scores (mad), exact in SQL.\n\nA value is an outlier when |score| > threshold; defaults are 1.5 (iqr), 3 (zscore) and\n3.5 (mad, Iglewicz-Hoaglin)."
+      },
       "OverlayResult": {
         "properties": {
           "kind": {
@@ -6112,6 +7158,149 @@
         "title": "RangePredicate",
         "description": "Numeric range, or date range when op is `between_dates`. A missing bound is open."
       },
+      "RankTestRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mann_whitney",
+              "wilcoxon",
+              "kruskal"
+            ],
+            "title": "Kind",
+            "default": "mann_whitney"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "mu": {
+            "type": "number",
+            "title": "Mu",
+            "default": 0.0
+          },
+          "groupField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupfield"
+          },
+          "groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array",
+                "maxItems": 200,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groups"
+          },
+          "pairedField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pairedfield"
+          },
+          "alternative": {
+            "type": "string",
+            "enum": [
+              "two_sided",
+              "less",
+              "greater"
+            ],
+            "title": "Alternative",
+            "default": "two_sided"
+          },
+          "maxGroups": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 2.0,
+            "title": "Maxgroups",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "field"
+        ],
+        "title": "RankTestRequest",
+        "description": "Rank-based tests (SciPy, on a sample above 1M rows).\n\n- mann_whitney: `field` in groups[0] vs groups[1] of `group_field`\n- wilcoxon: signed-rank test of `field - paired_field` (or of `field - mu` without a\n  paired field)\n- kruskal: `field` across the groups of `group_field` (`groups` picks a subset)"
+      },
       "RefLine": {
         "properties": {
           "axis": {
@@ -6190,6 +7379,97 @@
         "additionalProperties": false,
         "type": "object",
         "title": "RefreshRequest"
+      },
+      "RegressionRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "y": {
+            "type": "string",
+            "title": "Y"
+          },
+          "x": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "X"
+          },
+          "intercept": {
+            "type": "boolean",
+            "title": "Intercept",
+            "default": true
+          },
+          "robust": {
+            "type": "boolean",
+            "title": "Robust",
+            "default": false
+          },
+          "ciLevel": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cilevel",
+            "default": 0.95
+          },
+          "maxLevels": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 2.0,
+            "title": "Maxlevels",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "y",
+          "x"
+        ],
+        "title": "RegressionRequest",
+        "description": "OLS of `y` on `x`: numeric, boolean (0/1), date (days) or categorical (dummies)."
       },
       "RenameStep": {
         "properties": {
@@ -6760,6 +8040,150 @@
         "title": "StepSchema",
         "description": "Server-produced."
       },
+      "TTestRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          },
+          "filters": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "one_sample",
+              "welch",
+              "student",
+              "paired"
+            ],
+            "title": "Kind",
+            "default": "welch"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "mu": {
+            "type": "number",
+            "title": "Mu",
+            "default": 0.0
+          },
+          "groupField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupfield"
+          },
+          "groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groups"
+          },
+          "pairedField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pairedfield"
+          },
+          "alternative": {
+            "type": "string",
+            "enum": [
+              "two_sided",
+              "less",
+              "greater"
+            ],
+            "title": "Alternative",
+            "default": "two_sided"
+          },
+          "ciLevel": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cilevel",
+            "default": 0.95
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "field"
+        ],
+        "title": "TTestRequest",
+        "description": "t-tests, exact on the full data (they need only counts, means and variances).\n\n- one_sample: mean of `field` vs `mu`\n- welch / student: `field` in groups[0] vs groups[1] of `group_field` (difference a - b)\n- paired: mean of `field - paired_field` vs `mu`, over rows where both are present"
+      },
       "TextWidget": {
         "properties": {
           "kind": {
@@ -7182,6 +8606,269 @@
         "type": "object",
         "title": "Viewport"
       },
+      "AnovaRow": {
+        "additionalProperties": false,
+        "properties": {
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "df": {
+            "title": "Df",
+            "type": "number"
+          },
+          "sumSq": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sumsq"
+          },
+          "meanSq": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meansq"
+          },
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "pValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pvalue"
+          },
+          "partialEtaSq": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partialetasq"
+          }
+        },
+        "required": [
+          "term",
+          "df",
+          "sumSq",
+          "meanSq",
+          "statistic",
+          "pValue",
+          "partialEtaSq"
+        ],
+        "title": "AnovaRow",
+        "type": "object"
+      },
+      "AnovaValues": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "factors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Factors",
+            "type": "array"
+          },
+          "ssType": {
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "title": "Sstype",
+            "type": "integer"
+          },
+          "interaction": {
+            "title": "Interaction",
+            "type": "boolean"
+          },
+          "table": {
+            "items": {
+              "$ref": "#/components/schemas/AnovaRow"
+            },
+            "title": "Table",
+            "type": "array"
+          },
+          "etaSq": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Etasq"
+          },
+          "omegaSq": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omegasq"
+          },
+          "welch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WelchAnova"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "postHoc": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TukeyComparison"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posthoc"
+          },
+          "ciLevel": {
+            "title": "Cilevel",
+            "type": "number"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/SampleSummary"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "emptyCells": {
+            "title": "Emptycells",
+            "type": "integer"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "field",
+          "factors",
+          "ssType",
+          "interaction",
+          "table",
+          "etaSq",
+          "omegaSq",
+          "welch",
+          "postHoc",
+          "ciLevel",
+          "cells",
+          "emptyCells",
+          "checks"
+        ],
+        "title": "AnovaValues",
+        "type": "object"
+      },
+      "AssumptionCheck": {
+        "additionalProperties": false,
+        "description": "An assumption check that ran (or couldn't) alongside a test. Server-produced.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "pValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pvalue"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "name",
+          "statistic",
+          "pValue",
+          "passed",
+          "note"
+        ],
+        "title": "AssumptionCheck",
+        "type": "object"
+      },
       "ChartDataMeta": {
         "additionalProperties": false,
         "description": "Server-produced only, so every field is required (and non-optional in TypeScript).",
@@ -7316,6 +9003,713 @@
           "meta"
         ],
         "title": "ChartStatResponse",
+        "type": "object"
+      },
+      "ChiSquareValues": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "independence",
+              "goodness_of_fit"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "df": {
+            "title": "Df",
+            "type": "integer"
+          },
+          "pValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pvalue"
+          },
+          "rows": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Columns"
+          },
+          "observed": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Observed",
+            "type": "array"
+          },
+          "expected": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Expected",
+            "type": "array"
+          },
+          "residuals": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Residuals",
+            "type": "array"
+          },
+          "cramersV": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cramersv"
+          },
+          "yates": {
+            "title": "Yates",
+            "type": "boolean"
+          },
+          "fisherPValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fisherpvalue"
+          },
+          "oddsRatio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oddsratio"
+          },
+          "minExpected": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minexpected"
+          }
+        },
+        "required": [
+          "kind",
+          "statistic",
+          "df",
+          "pValue",
+          "rows",
+          "columns",
+          "observed",
+          "expected",
+          "residuals",
+          "cramersV",
+          "yates",
+          "fisherPValue",
+          "oddsRatio",
+          "minExpected"
+        ],
+        "title": "ChiSquareValues",
+        "type": "object"
+      },
+      "ConfidenceInterval": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "ciLow": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cilow"
+          },
+          "ciHigh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cihigh"
+          },
+          "stdError": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stderror"
+          },
+          "method": {
+            "enum": [
+              "t",
+              "order statistic",
+              "asymptotic",
+              "bca bootstrap",
+              "percentile bootstrap",
+              "basic bootstrap"
+            ],
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "group",
+          "n",
+          "estimate",
+          "ciLow",
+          "ciHigh",
+          "stdError",
+          "method"
+        ],
+        "title": "ConfidenceInterval",
+        "type": "object"
+      },
+      "ConfidenceIntervalValues": {
+        "additionalProperties": false,
+        "properties": {
+          "statistic": {
+            "enum": [
+              "mean",
+              "median",
+              "std",
+              "quantile"
+            ],
+            "title": "Statistic",
+            "type": "string"
+          },
+          "quantile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantile"
+          },
+          "ciLevel": {
+            "title": "Cilevel",
+            "type": "number"
+          },
+          "groupBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupby"
+          },
+          "intervals": {
+            "items": {
+              "$ref": "#/components/schemas/ConfidenceInterval"
+            },
+            "title": "Intervals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "statistic",
+          "quantile",
+          "ciLevel",
+          "groupBy",
+          "intervals"
+        ],
+        "title": "ConfidenceIntervalValues",
+        "type": "object"
+      },
+      "CorrelationValues": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "method": {
+            "enum": [
+              "pearson",
+              "spearman",
+              "kendall"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "missing": {
+            "enum": [
+              "pairwise",
+              "listwise"
+            ],
+            "title": "Missing",
+            "type": "string"
+          },
+          "ciLevel": {
+            "title": "Cilevel",
+            "type": "number"
+          },
+          "coefficient": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Coefficient",
+            "type": "array"
+          },
+          "pValue": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Pvalue",
+            "type": "array"
+          },
+          "ciLow": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Cilow",
+            "type": "array"
+          },
+          "ciHigh": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Cihigh",
+            "type": "array"
+          },
+          "n": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "N",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fields",
+          "method",
+          "missing",
+          "ciLevel",
+          "coefficient",
+          "pValue",
+          "ciLow",
+          "ciHigh",
+          "n"
+        ],
+        "title": "CorrelationValues",
+        "type": "object"
+      },
+      "DistributionFit": {
+        "additionalProperties": false,
+        "properties": {
+          "distribution": {
+            "enum": [
+              "norm",
+              "lognorm",
+              "gamma",
+              "weibull_min",
+              "expon",
+              "logistic",
+              "laplace",
+              "uniform",
+              "beta",
+              "gumbel_r",
+              "t",
+              "cauchy"
+            ],
+            "title": "Distribution",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/FitParameter"
+            },
+            "title": "Params",
+            "type": "array"
+          },
+          "logLikelihood": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loglikelihood"
+          },
+          "aic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aic"
+          },
+          "bic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bic"
+          },
+          "deltaAic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deltaaic"
+          },
+          "aicWeight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aicweight"
+          },
+          "ksStatistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ksstatistic"
+          },
+          "ksPValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kspvalue"
+          },
+          "pdf": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Pdf",
+            "type": "array"
+          }
+        },
+        "required": [
+          "distribution",
+          "label",
+          "params",
+          "logLikelihood",
+          "aic",
+          "bic",
+          "deltaAic",
+          "aicWeight",
+          "ksStatistic",
+          "ksPValue",
+          "pdf"
+        ],
+        "title": "DistributionFit",
+        "type": "object"
+      },
+      "DistributionFitValues": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "fits": {
+            "items": {
+              "$ref": "#/components/schemas/DistributionFit"
+            },
+            "title": "Fits",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedDistribution"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "best": {
+            "anyOf": [
+              {
+                "enum": [
+                  "norm",
+                  "lognorm",
+                  "gamma",
+                  "weibull_min",
+                  "expon",
+                  "logistic",
+                  "laplace",
+                  "uniform",
+                  "beta",
+                  "gumbel_r",
+                  "t",
+                  "cauchy"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best"
+          },
+          "edges": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "density": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Density",
+            "type": "array"
+          },
+          "x": {
+            "items": {
+              "type": "number"
+            },
+            "title": "X",
+            "type": "array"
+          }
+        },
+        "required": [
+          "field",
+          "fits",
+          "skipped",
+          "best",
+          "edges",
+          "density",
+          "x"
+        ],
+        "title": "DistributionFitValues",
         "type": "object"
       },
       "FieldSummary": {
@@ -7612,6 +10006,30 @@
         "title": "FieldSummary",
         "type": "object"
       },
+      "FitParameter": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "fixed": {
+            "title": "Fixed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "fixed"
+        ],
+        "title": "FitParameter",
+        "type": "object"
+      },
       "ImportPreviewMeta": {
         "additionalProperties": false,
         "description": "Arrow metadata of a preview response. Server-produced.",
@@ -7669,6 +10087,273 @@
           "warnings"
         ],
         "title": "ImportPreviewMeta",
+        "type": "object"
+      },
+      "OutlierRow": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "side": {
+            "enum": [
+              "low",
+              "high"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "row": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Row",
+            "type": "object"
+          }
+        },
+        "required": [
+          "field",
+          "group",
+          "value",
+          "score",
+          "side",
+          "row"
+        ],
+        "title": "OutlierRow",
+        "type": "object"
+      },
+      "OutlierSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "center": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Center"
+          },
+          "spread": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spread"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "nLow": {
+            "title": "Nlow",
+            "type": "integer"
+          },
+          "nHigh": {
+            "title": "Nhigh",
+            "type": "integer"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          }
+        },
+        "required": [
+          "field",
+          "group",
+          "n",
+          "center",
+          "spread",
+          "low",
+          "high",
+          "nLow",
+          "nHigh",
+          "share"
+        ],
+        "title": "OutlierSummary",
+        "type": "object"
+      },
+      "OutlierValues": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "enum": [
+              "iqr",
+              "zscore",
+              "mad"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          },
+          "groupBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groupby"
+          },
+          "summaries": {
+            "items": {
+              "$ref": "#/components/schemas/OutlierSummary"
+            },
+            "title": "Summaries",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/OutlierRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "method",
+          "threshold",
+          "groupBy",
+          "summaries",
+          "rows"
+        ],
+        "title": "OutlierValues",
         "type": "object"
       },
       "PipelinePreviewMeta": {
@@ -7758,6 +10443,170 @@
         "title": "Quantile",
         "type": "object"
       },
+      "RankSampleSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "meanRank": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meanrank"
+          }
+        },
+        "required": [
+          "label",
+          "group",
+          "n",
+          "median",
+          "meanRank"
+        ],
+        "title": "RankSampleSummary",
+        "type": "object"
+      },
+      "RankTestValues": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "mann_whitney",
+              "wilcoxon",
+              "kruskal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "alternative": {
+            "enum": [
+              "two_sided",
+              "less",
+              "greater"
+            ],
+            "title": "Alternative",
+            "type": "string"
+          },
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df"
+          },
+          "pValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pvalue"
+          },
+          "effectSize": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectsize"
+          },
+          "effectSizeName": {
+            "title": "Effectsizename",
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/RankSampleSummary"
+            },
+            "title": "Samples",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "alternative",
+          "statistic",
+          "df",
+          "pValue",
+          "effectSize",
+          "effectSizeName",
+          "samples"
+        ],
+        "title": "RankTestValues",
+        "type": "object"
+      },
       "Reduction": {
         "enum": [
           "none",
@@ -7768,6 +10617,338 @@
         ],
         "title": "Reduction",
         "type": "string"
+      },
+      "ReferenceLevel": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          }
+        },
+        "required": [
+          "field",
+          "level"
+        ],
+        "title": "ReferenceLevel",
+        "type": "object"
+      },
+      "RegressionTerm": {
+        "additionalProperties": false,
+        "properties": {
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "stdError": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stderror"
+          },
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "pValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pvalue"
+          },
+          "ciLow": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cilow"
+          },
+          "ciHigh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cihigh"
+          },
+          "vif": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vif"
+          }
+        },
+        "required": [
+          "term",
+          "field",
+          "level",
+          "estimate",
+          "stdError",
+          "statistic",
+          "pValue",
+          "ciLow",
+          "ciHigh",
+          "vif"
+        ],
+        "title": "RegressionTerm",
+        "type": "object"
+      },
+      "RegressionValues": {
+        "additionalProperties": false,
+        "properties": {
+          "y": {
+            "title": "Y",
+            "type": "string"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/RegressionTerm"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "referenceLevels": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceLevel"
+            },
+            "title": "Referencelevels",
+            "type": "array"
+          },
+          "r2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R2"
+          },
+          "adjR2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjr2"
+          },
+          "fStatistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fstatistic"
+          },
+          "fPValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fpvalue"
+          },
+          "dfModel": {
+            "title": "Dfmodel",
+            "type": "number"
+          },
+          "dfResid": {
+            "title": "Dfresid",
+            "type": "number"
+          },
+          "sigma": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sigma"
+          },
+          "logLikelihood": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loglikelihood"
+          },
+          "aic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aic"
+          },
+          "bic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bic"
+          },
+          "conditionNumber": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditionnumber"
+          },
+          "ciLevel": {
+            "title": "Cilevel",
+            "type": "number"
+          },
+          "robust": {
+            "title": "Robust",
+            "type": "boolean"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "y",
+          "terms",
+          "referenceLevels",
+          "r2",
+          "adjR2",
+          "fStatistic",
+          "fPValue",
+          "dfModel",
+          "dfResid",
+          "sigma",
+          "logLikelihood",
+          "aic",
+          "bic",
+          "conditionNumber",
+          "ciLevel",
+          "robust",
+          "checks"
+        ],
+        "title": "RegressionValues",
+        "type": "object"
       },
       "RowsPageMeta": {
         "additionalProperties": false,
@@ -7815,6 +10996,479 @@
           "totalRows"
         ],
         "title": "RowsPageMeta",
+        "type": "object"
+      },
+      "SampleSummary": {
+        "additionalProperties": false,
+        "description": "n, mean and spread of one sample or group. Server-produced.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "std": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Std"
+          },
+          "sem": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sem"
+          }
+        },
+        "required": [
+          "label",
+          "group",
+          "n",
+          "mean",
+          "std",
+          "sem"
+        ],
+        "title": "SampleSummary",
+        "type": "object"
+      },
+      "SkippedDistribution": {
+        "additionalProperties": false,
+        "properties": {
+          "distribution": {
+            "enum": [
+              "norm",
+              "lognorm",
+              "gamma",
+              "weibull_min",
+              "expon",
+              "logistic",
+              "laplace",
+              "uniform",
+              "beta",
+              "gumbel_r",
+              "t",
+              "cauchy"
+            ],
+            "title": "Distribution",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "distribution",
+          "reason"
+        ],
+        "title": "SkippedDistribution",
+        "type": "object"
+      },
+      "StatsSourceRequest": {
+        "additionalProperties": false,
+        "description": "Common part of every statistics request: the data and the filters on it.",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceRef"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "title": "Pipelines",
+            "type": "array"
+          },
+          "filters": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "between_dates": "#/components/schemas/RangePredicate",
+                  "eq": "#/components/schemas/EqPredicate",
+                  "in": "#/components/schemas/InPredicate",
+                  "is_null": "#/components/schemas/IsNullPredicate",
+                  "not_in": "#/components/schemas/InPredicate",
+                  "range": "#/components/schemas/RangePredicate"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/EqPredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/RangePredicate"
+                },
+                {
+                  "$ref": "#/components/schemas/IsNullPredicate"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "StatsSourceRequest",
+        "type": "object"
+      },
+      "TTestValues": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "one_sample",
+              "welch",
+              "student",
+              "paired"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "alternative": {
+            "enum": [
+              "two_sided",
+              "less",
+              "greater"
+            ],
+            "title": "Alternative",
+            "type": "string"
+          },
+          "ciLevel": {
+            "title": "Cilevel",
+            "type": "number"
+          },
+          "mu": {
+            "title": "Mu",
+            "type": "number"
+          },
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df"
+          },
+          "pValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pvalue"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "stdError": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stderror"
+          },
+          "ciLow": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cilow"
+          },
+          "ciHigh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cihigh"
+          },
+          "cohensD": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohensd"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/SampleSummary"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "alternative",
+          "ciLevel",
+          "mu",
+          "statistic",
+          "df",
+          "pValue",
+          "estimate",
+          "stdError",
+          "ciLow",
+          "ciHigh",
+          "cohensD",
+          "samples",
+          "checks"
+        ],
+        "title": "TTestValues",
+        "type": "object"
+      },
+      "TukeyComparison": {
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A"
+          },
+          "b": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B"
+          },
+          "diff": {
+            "title": "Diff",
+            "type": "number"
+          },
+          "ciLow": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cilow"
+          },
+          "ciHigh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cihigh"
+          },
+          "pValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pvalue"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "diff",
+          "ciLow",
+          "ciHigh",
+          "pValue"
+        ],
+        "title": "TukeyComparison",
+        "type": "object"
+      },
+      "WelchAnova": {
+        "additionalProperties": false,
+        "properties": {
+          "statistic": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statistic"
+          },
+          "df1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df1"
+          },
+          "df2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Df2"
+          },
+          "pValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pvalue"
+          }
+        },
+        "required": [
+          "statistic",
+          "df1",
+          "df2",
+          "pValue"
+        ],
+        "title": "WelchAnova",
         "type": "object"
       }
     }

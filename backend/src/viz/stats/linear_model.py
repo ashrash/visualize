@@ -28,17 +28,19 @@ from sqlglot import exp
 from statsmodels.stats.diagnostic import het_breuschpagan
 from statsmodels.stats.stattools import jarque_bera
 
-from viz.contracts import ColumnSemantic, Scalar, StatResult
-from viz.stats.checks import ALPHA, SHAPIRO_MAX, normality_warning, p_text, shapiro
-from viz.stats.errors import StatsInputError
-from viz.stats.fields import derived, field_kind, key_value, measure_expr, measure_note
-from viz.stats.models import (
+from viz.contracts import (
     AssumptionCheck,
+    ColumnSemantic,
     ReferenceLevel,
     RegressionRequest,
     RegressionTerm,
     RegressionValues,
+    Scalar,
+    StatResult,
 )
+from viz.stats.checks import ALPHA, SHAPIRO_MAX, normality_warning, p_text, shapiro
+from viz.stats.errors import StatsInputError
+from viz.stats.fields import derived, field_kind, key_value, measure_expr, measure_note
 from viz.stats.relation import Relation, col
 from viz.stats.results import stat_result
 from viz.stats.sampling import DEFAULT_SEED, MODEL_CAP, Sample, reservoir_sample

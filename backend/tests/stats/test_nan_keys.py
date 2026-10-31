@@ -13,23 +13,25 @@ import pyarrow as pa
 import pytest
 from scipy import stats as sps
 
-from viz.contracts import DescribeRequest, FieldSummary, SourceRef
-from viz.stats.anova import anova
-from viz.stats.chisquare import chi_square
-from viz.stats.descriptive import describe
-from viz.stats.intervals import confidence_intervals
-from viz.stats.models import (
+from viz.contracts import (
     AnovaRequest,
     AnovaValues,
     ChiSquareRequest,
     ChiSquareValues,
     ConfidenceIntervalRequest,
     ConfidenceIntervalValues,
+    DescribeRequest,
+    FieldSummary,
     OutlierRequest,
     OutlierValues,
     RankTestRequest,
     RankTestValues,
+    SourceRef,
 )
+from viz.stats.anova import anova
+from viz.stats.chisquare import chi_square
+from viz.stats.descriptive import describe
+from viz.stats.intervals import confidence_intervals
 from viz.stats.outliers import outliers
 from viz.stats.ranktests import rank_test
 

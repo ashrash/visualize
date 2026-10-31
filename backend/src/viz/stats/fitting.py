@@ -26,17 +26,18 @@ import numpy as np
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import ColumnSemantic, StatResult
-from viz.stats.errors import StatsInputError
-from viz.stats.fields import derived, measure_expr
-from viz.stats.models import (
+from viz.contracts import (
+    ColumnSemantic,
     Distribution,
     DistributionFit,
     DistributionFitRequest,
     DistributionFitValues,
     FitParameter,
     SkippedDistribution,
+    StatResult,
 )
+from viz.stats.errors import StatsInputError
+from viz.stats.fields import derived, measure_expr
 from viz.stats.relation import Relation
 from viz.stats.results import stat_result
 from viz.stats.sampling import DEFAULT_SEED, KDE_CAP, reservoir_sample

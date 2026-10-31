@@ -8,10 +8,9 @@ import pytest
 from pydantic import ValidationError
 from scipy import stats as sps
 
-from viz.contracts import SourceRef
+from viz.contracts import ChiSquareRequest, ChiSquareValues, SourceRef
 from viz.stats.chisquare import chi_square
 from viz.stats.errors import StatsInputError
-from viz.stats.models import ChiSquareRequest, ChiSquareValues
 
 SOURCE = SourceRef(kind="dataset", id="d")
 

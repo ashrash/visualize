@@ -10,11 +10,10 @@ import pyarrow as pa
 import pytest
 from scipy import stats as sps
 
-from viz.contracts import SourceRef
+from viz.contracts import CorrelationRequest, CorrelationValues, SourceRef
 from viz.stats import correlation as corr_module
 from viz.stats.correlation import correlation, fisher_interval
 from viz.stats.errors import StatsInputError
-from viz.stats.models import CorrelationRequest, CorrelationValues
 
 SOURCE = SourceRef(kind="dataset", id="d")
 

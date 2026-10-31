@@ -20,10 +20,9 @@ import numpy as np
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import Scalar, StatResult
+from viz.contracts import ChiSquareRequest, ChiSquareValues, Scalar, StatResult
 from viz.stats.errors import StatsInputError
 from viz.stats.fields import check_distinct, key_expr, key_value, match_case
-from viz.stats.models import ChiSquareRequest, ChiSquareValues
 from viz.stats.relation import Relation
 from viz.stats.results import stat_result
 from viz.stats.sql import alias, count_star

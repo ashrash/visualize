@@ -35,10 +35,15 @@ import numpy as np
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import StatResult
+from viz.contracts import (
+    CorrelationMethod,
+    CorrelationRequest,
+    CorrelationValues,
+    MissingPolicy,
+    StatResult,
+)
 from viz.stats.errors import StatsInputError
 from viz.stats.fields import measure_expr, measure_note
-from viz.stats.models import CorrelationMethod, CorrelationRequest, CorrelationValues, MissingPolicy
 from viz.stats.relation import Relation
 from viz.stats.results import stat_result
 from viz.stats.sampling import DEFAULT_SEED, MODEL_CAP, reservoir_sample

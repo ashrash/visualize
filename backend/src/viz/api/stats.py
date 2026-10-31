@@ -13,7 +13,20 @@ from collections.abc import Callable
 from fastapi import APIRouter
 
 from viz.api.deps import DbDep, EngineDep, StorageDep
-from viz.contracts import DescribeRequest, StatResult
+from viz.contracts import (
+    AnovaRequest,
+    ChiSquareRequest,
+    ConfidenceIntervalRequest,
+    CorrelationRequest,
+    DescribeRequest,
+    DistributionFitRequest,
+    OutlierRequest,
+    RankTestRequest,
+    RegressionRequest,
+    StatResult,
+    StatsSourceRequest,
+    TTestRequest,
+)
 from viz.engine import Engine
 from viz.stats.anova import anova
 from viz.stats.cache import cached
@@ -23,18 +36,6 @@ from viz.stats.descriptive import describe_cached
 from viz.stats.fitting import fit_distributions
 from viz.stats.intervals import confidence_intervals
 from viz.stats.linear_model import linear_regression
-from viz.stats.models import (
-    AnovaRequest,
-    ChiSquareRequest,
-    ConfidenceIntervalRequest,
-    CorrelationRequest,
-    DistributionFitRequest,
-    OutlierRequest,
-    RankTestRequest,
-    RegressionRequest,
-    StatsSourceRequest,
-    TTestRequest,
-)
 from viz.stats.outliers import outliers
 from viz.stats.ranktests import rank_test
 from viz.stats.relation import Relation

@@ -24,16 +24,17 @@ from typing import Any
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import Scalar, StatResult
-from viz.stats.fields import key_expr, key_value, measure_expr
-from viz.stats.groups import cap_groups
-from viz.stats.models import (
+from viz.contracts import (
     OutlierMethod,
     OutlierRequest,
     OutlierRow,
     OutlierSummary,
     OutlierValues,
+    Scalar,
+    StatResult,
 )
+from viz.stats.fields import key_expr, key_value, measure_expr
+from viz.stats.groups import cap_groups
 from viz.stats.relation import Relation
 from viz.stats.results import stat_result
 from viz.stats.sql import alias, lit, num

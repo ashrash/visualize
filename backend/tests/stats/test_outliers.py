@@ -9,8 +9,7 @@ import pyarrow as pa
 import pytest
 from scipy import stats as sps
 
-from viz.contracts import SourceRef
-from viz.stats.models import OutlierRequest, OutlierValues
+from viz.contracts import OutlierRequest, OutlierValues, SourceRef
 from viz.stats.outliers import outliers
 
 SOURCE = SourceRef(kind="dataset", id="d")

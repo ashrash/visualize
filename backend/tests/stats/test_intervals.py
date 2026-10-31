@@ -8,12 +8,11 @@ import pyarrow as pa
 import pytest
 from scipy import stats as sps
 
-from viz.contracts import SourceRef
+from viz.contracts import ConfidenceIntervalRequest, ConfidenceIntervalValues, SourceRef
 from viz.stats import intervals as intervals_module
 from viz.stats.bootstrap import bootstrap_ci, quantile
 from viz.stats.errors import StatsInputError
 from viz.stats.intervals import asymptotic_sd, confidence_intervals, order_ranks
-from viz.stats.models import ConfidenceIntervalRequest, ConfidenceIntervalValues
 
 SOURCE = SourceRef(kind="dataset", id="d")
 

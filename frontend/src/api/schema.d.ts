@@ -658,6 +658,192 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats/correlation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correlation Endpoint
+         * @description Correlation matrix; `values` is CorrelationValues. Pearson is exact; Spearman and
+         *     Kendall run on a sample when the data are large.
+         */
+        post: operations["correlation_endpoint_api_stats_correlation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats/regression": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regression Endpoint
+         * @description Linear or multiple OLS regression (sampled above 1M rows); `values` is
+         *     RegressionValues.
+         */
+        post: operations["regression_endpoint_api_stats_regression_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats/ttest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ttest Endpoint
+         * @description One-sample, Welch, Student or paired t-test (exact); `values` is TTestValues.
+         */
+        post: operations["ttest_endpoint_api_stats_ttest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats/ranktest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ranktest Endpoint
+         * @description Mann-Whitney U, Wilcoxon signed-rank or Kruskal-Wallis test; `values` is
+         *     RankTestValues.
+         */
+        post: operations["ranktest_endpoint_api_stats_ranktest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats/anova": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anova Endpoint
+         * @description One- or two-way ANOVA (exact); `values` is AnovaValues.
+         */
+        post: operations["anova_endpoint_api_stats_anova_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats/chisquare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chisquare Endpoint
+         * @description Chi-square test of independence or goodness of fit (exact counts); `values` is
+         *     ChiSquareValues.
+         */
+        post: operations["chisquare_endpoint_api_stats_chisquare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats/fit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fit Endpoint
+         * @description Maximum-likelihood distribution fits ranked by AIC; `values` is
+         *     DistributionFitValues.
+         */
+        post: operations["fit_endpoint_api_stats_fit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats/outliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Outliers Endpoint
+         * @description Outliers by IQR fences, z-scores or modified z-scores (exact); `values` is
+         *     OutlierValues.
+         */
+        post: operations["outliers_endpoint_api_stats_outliers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats/ci": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ci Endpoint
+         * @description Confidence intervals (t or bootstrap); `values` is ConfidenceIntervalValues.
+         */
+        post: operations["ci_endpoint_api_stats_ci_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -692,6 +878,47 @@ export interface components {
             y2?: number | string | null;
             /** Text */
             text?: string | null;
+        };
+        /**
+         * AnovaRequest
+         * @description One- or two-way ANOVA of `field`, exact on the full data (from per-cell aggregates).
+         */
+        AnovaRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Field */
+            field: string;
+            /** Factors */
+            factors: string[];
+            /**
+             * Interaction
+             * @default true
+             */
+            interaction: boolean;
+            /**
+             * Sstype
+             * @default 2
+             * @enum {integer}
+             */
+            ssType: 1 | 2 | 3;
+            /**
+             * Posthoc
+             * @default true
+             */
+            postHoc: boolean;
+            /**
+             * Cilevel
+             * @default 0.95
+             */
+            ciLevel: number;
+            /**
+             * Maxlevels
+             * @default 50
+             */
+            maxLevels: number;
         };
         /** AxisStyle */
         AxisStyle: {
@@ -908,6 +1135,42 @@ export interface components {
             /** Chartid */
             chartId: string;
         };
+        /**
+         * ChiSquareRequest
+         * @description Pearson's chi-square on counts computed in SQL.
+         *
+         *     - independence: `field` x `column_field` contingency table
+         *     - goodness_of_fit: counts of `field` vs `expected` proportions (uniform when omitted)
+         */
+        ChiSquareRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /**
+             * Kind
+             * @default independence
+             * @enum {string}
+             */
+            kind: "independence" | "goodness_of_fit";
+            /** Field */
+            field: string;
+            /** Columnfield */
+            columnField?: string | null;
+            /** Expected */
+            expected?: components["schemas"]["ExpectedProportion"][] | null;
+            /**
+             * Correction
+             * @default true
+             */
+            correction: boolean;
+            /**
+             * Maxlevels
+             * @default 50
+             */
+            maxLevels: number;
+        };
         /** Column */
         Column: {
             /** Name */
@@ -950,6 +1213,86 @@ export interface components {
              * @default 100
              */
             limit: number;
+        };
+        /**
+         * ConfidenceIntervalRequest
+         * @description Confidence intervals; estimates are exact on all values.
+         *
+         *     `auto`: t for the mean, order statistics (distribution-free) for the median and
+         *     quantiles, and for the SD the bootstrap up to 10,000 values per group and the
+         *     kurtosis-adjusted asymptotic interval above. `bootstrap` bootstraps groups of up to
+         *     10,000 values (all of them, never a subsample) and uses the statistic's exact interval
+         *     above. `t` is for the mean only.
+         */
+        ConfidenceIntervalRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Fields */
+            fields: string[];
+            /**
+             * Statistic
+             * @default mean
+             * @enum {string}
+             */
+            statistic: "mean" | "median" | "std" | "quantile";
+            /** Quantile */
+            quantile?: number | null;
+            /**
+             * Method
+             * @default auto
+             * @enum {string}
+             */
+            method: "auto" | "t" | "bootstrap";
+            /**
+             * Cilevel
+             * @default 0.95
+             */
+            ciLevel: number;
+            /** Groupby */
+            groupBy?: string | null;
+            /**
+             * Maxgroups
+             * @default 50
+             */
+            maxGroups: number;
+            /**
+             * Nresamples
+             * @default 2000
+             */
+            nResamples: number;
+        };
+        /**
+         * CorrelationRequest
+         * @description Correlation matrix of numeric fields (booleans count 0/1, dates count days).
+         */
+        CorrelationRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Fields */
+            fields: string[];
+            /**
+             * Method
+             * @default pearson
+             * @enum {string}
+             */
+            method: "pearson" | "spearman" | "kendall";
+            /**
+             * Missing
+             * @default pairwise
+             * @enum {string}
+             */
+            missing: "pairwise" | "listwise";
+            /**
+             * Cilevel
+             * @default 0.95
+             */
+            ciLevel: number;
         };
         /** Dashboard */
         Dashboard: {
@@ -1103,6 +1446,26 @@ export interface components {
              */
             maxGroups: number;
         };
+        /**
+         * DistributionFitRequest
+         * @description Maximum-likelihood fits of continuous distributions, ranked by AIC (on a sample).
+         */
+        DistributionFitRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Field */
+            field: string;
+            /** Distributions */
+            distributions?: ("norm" | "lognorm" | "gamma" | "weibull_min" | "expon" | "logistic" | "laplace" | "uniform" | "beta" | "gumbel_r" | "t" | "cauchy")[] | null;
+            /**
+             * Gridsize
+             * @default 200
+             */
+            gridSize: number;
+        };
         /** DropMissingStep */
         DropMissingStep: {
             /** Id */
@@ -1174,6 +1537,13 @@ export interface components {
             level: number;
             /** Value */
             value?: number | null;
+        };
+        /** ExpectedProportion */
+        ExpectedProportion: {
+            /** Value */
+            value: string | number | boolean | null;
+            /** Proportion */
+            proportion: number;
         };
         /**
          * ExportFile
@@ -1750,6 +2120,44 @@ export interface components {
             method: "zscore" | "minmax" | "robust";
         };
         /**
+         * OutlierRequest
+         * @description Outliers by Tukey's fences (iqr), z-scores or modified z-scores (mad), exact in SQL.
+         *
+         *     A value is an outlier when |score| > threshold; defaults are 1.5 (iqr), 3 (zscore) and
+         *     3.5 (mad, Iglewicz-Hoaglin).
+         */
+        OutlierRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Fields */
+            fields: string[];
+            /**
+             * Method
+             * @default iqr
+             * @enum {string}
+             */
+            method: "iqr" | "zscore" | "mad";
+            /** Threshold */
+            threshold?: number | null;
+            /** Groupby */
+            groupBy?: string | null;
+            /**
+             * Maxgroups
+             * @default 50
+             */
+            maxGroups: number;
+            /**
+             * Maxrows
+             * @default 100
+             */
+            maxRows: number;
+            /** Include */
+            include?: string[];
+        };
+        /**
          * OverlayResult
          * @description A server-computed trendline or regression fit, with an optional band. Server-produced.
          */
@@ -2025,6 +2433,52 @@ export interface components {
              */
             includeMax: boolean;
         };
+        /**
+         * RankTestRequest
+         * @description Rank-based tests (SciPy, on a sample above 1M rows).
+         *
+         *     - mann_whitney: `field` in groups[0] vs groups[1] of `group_field`
+         *     - wilcoxon: signed-rank test of `field - paired_field` (or of `field - mu` without a
+         *       paired field)
+         *     - kruskal: `field` across the groups of `group_field` (`groups` picks a subset)
+         */
+        RankTestRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /**
+             * Kind
+             * @default mann_whitney
+             * @enum {string}
+             */
+            kind: "mann_whitney" | "wilcoxon" | "kruskal";
+            /** Field */
+            field: string;
+            /**
+             * Mu
+             * @default 0
+             */
+            mu: number;
+            /** Groupfield */
+            groupField?: string | null;
+            /** Groups */
+            groups?: (string | number | boolean | null)[] | null;
+            /** Pairedfield */
+            pairedField?: string | null;
+            /**
+             * Alternative
+             * @default two_sided
+             * @enum {string}
+             */
+            alternative: "two_sided" | "less" | "greater";
+            /**
+             * Maxgroups
+             * @default 50
+             */
+            maxGroups: number;
+        };
         /** RefLine */
         RefLine: {
             /**
@@ -2048,6 +2502,41 @@ export interface components {
             /** Stagedid */
             stagedId?: string | null;
             options?: components["schemas"]["ImportOptions"] | null;
+        };
+        /**
+         * RegressionRequest
+         * @description OLS of `y` on `x`: numeric, boolean (0/1), date (days) or categorical (dummies).
+         */
+        RegressionRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /** Y */
+            y: string;
+            /** X */
+            x: string[];
+            /**
+             * Intercept
+             * @default true
+             */
+            intercept: boolean;
+            /**
+             * Robust
+             * @default false
+             */
+            robust: boolean;
+            /**
+             * Cilevel
+             * @default 0.95
+             */
+            ciLevel: number;
+            /**
+             * Maxlevels
+             * @default 50
+             */
+            maxLevels: number;
         };
         /** RenameStep */
         RenameStep: {
@@ -2279,6 +2768,51 @@ export interface components {
              */
             materialized: "none" | "ready" | "pending";
         };
+        /**
+         * TTestRequest
+         * @description t-tests, exact on the full data (they need only counts, means and variances).
+         *
+         *     - one_sample: mean of `field` vs `mu`
+         *     - welch / student: `field` in groups[0] vs groups[1] of `group_field` (difference a - b)
+         *     - paired: mean of `field - paired_field` vs `mu`, over rows where both are present
+         */
+        TTestRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+            /**
+             * Kind
+             * @default welch
+             * @enum {string}
+             */
+            kind: "one_sample" | "welch" | "student" | "paired";
+            /** Field */
+            field: string;
+            /**
+             * Mu
+             * @default 0
+             */
+            mu: number;
+            /** Groupfield */
+            groupField?: string | null;
+            /** Groups */
+            groups?: (string | number | boolean | null)[] | null;
+            /** Pairedfield */
+            pairedField?: string | null;
+            /**
+             * Alternative
+             * @default two_sided
+             * @enum {string}
+             */
+            alternative: "two_sided" | "less" | "greater";
+            /**
+             * Cilevel
+             * @default 0.95
+             */
+            ciLevel: number;
+        };
         /** TextWidget */
         TextWidget: {
             /**
@@ -2461,6 +2995,70 @@ export interface components {
                 number | string
             ] | null;
         };
+        /** AnovaRow */
+        AnovaRow: {
+            /** Term */
+            term: string;
+            /** Df */
+            df: number;
+            /** Sumsq */
+            sumSq: number | null;
+            /** Meansq */
+            meanSq: number | null;
+            /** Statistic */
+            statistic: number | null;
+            /** Pvalue */
+            pValue: number | null;
+            /** Partialetasq */
+            partialEtaSq: number | null;
+        };
+        /** AnovaValues */
+        AnovaValues: {
+            /** Field */
+            field: string;
+            /** Factors */
+            factors: string[];
+            /**
+             * Sstype
+             * @enum {integer}
+             */
+            ssType: 1 | 2 | 3;
+            /** Interaction */
+            interaction: boolean;
+            /** Table */
+            table: components["schemas"]["AnovaRow"][];
+            /** Etasq */
+            etaSq: number | null;
+            /** Omegasq */
+            omegaSq: number | null;
+            welch: components["schemas"]["WelchAnova"] | null;
+            /** Posthoc */
+            postHoc: components["schemas"]["TukeyComparison"][] | null;
+            /** Cilevel */
+            ciLevel: number;
+            /** Cells */
+            cells: components["schemas"]["SampleSummary"][];
+            /** Emptycells */
+            emptyCells: number;
+            /** Checks */
+            checks: components["schemas"]["AssumptionCheck"][];
+        };
+        /**
+         * AssumptionCheck
+         * @description An assumption check that ran (or couldn't) alongside a test. Server-produced.
+         */
+        AssumptionCheck: {
+            /** Name */
+            name: string;
+            /** Statistic */
+            statistic: number | null;
+            /** Pvalue */
+            pValue: number | null;
+            /** Passed */
+            passed: boolean | null;
+            /** Note */
+            note: string | null;
+        };
         /**
          * ChartDataMeta
          * @description Server-produced only, so every field is required (and non-optional in TypeScript).
@@ -2502,6 +3100,150 @@ export interface components {
         ChartStatResponse: {
             result: components["schemas"]["StatResult"];
             meta: components["schemas"]["ChartDataMeta"];
+        };
+        /** ChiSquareValues */
+        ChiSquareValues: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "independence" | "goodness_of_fit";
+            /** Statistic */
+            statistic: number | null;
+            /** Df */
+            df: number;
+            /** Pvalue */
+            pValue: number | null;
+            /** Rows */
+            rows: (string | number | boolean | null)[];
+            /** Columns */
+            columns: (string | number | boolean | null)[] | null;
+            /** Observed */
+            observed: number[][];
+            /** Expected */
+            expected: number[][];
+            /** Residuals */
+            residuals: (number | null)[][];
+            /** Cramersv */
+            cramersV: number | null;
+            /** Yates */
+            yates: boolean;
+            /** Fisherpvalue */
+            fisherPValue: number | null;
+            /** Oddsratio */
+            oddsRatio: number | null;
+            /** Minexpected */
+            minExpected: number | null;
+        };
+        /** ConfidenceInterval */
+        ConfidenceInterval: {
+            /** Field */
+            field: string;
+            /** Group */
+            group: (string | number | boolean | null)[] | null;
+            /** N */
+            n: number;
+            /** Estimate */
+            estimate: number | null;
+            /** Cilow */
+            ciLow: number | null;
+            /** Cihigh */
+            ciHigh: number | null;
+            /** Stderror */
+            stdError: number | null;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "t" | "order statistic" | "asymptotic" | "bca bootstrap" | "percentile bootstrap" | "basic bootstrap";
+        };
+        /** ConfidenceIntervalValues */
+        ConfidenceIntervalValues: {
+            /**
+             * Statistic
+             * @enum {string}
+             */
+            statistic: "mean" | "median" | "std" | "quantile";
+            /** Quantile */
+            quantile: number | null;
+            /** Cilevel */
+            ciLevel: number;
+            /** Groupby */
+            groupBy: string | null;
+            /** Intervals */
+            intervals: components["schemas"]["ConfidenceInterval"][];
+        };
+        /** CorrelationValues */
+        CorrelationValues: {
+            /** Fields */
+            fields: string[];
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "pearson" | "spearman" | "kendall";
+            /**
+             * Missing
+             * @enum {string}
+             */
+            missing: "pairwise" | "listwise";
+            /** Cilevel */
+            ciLevel: number;
+            /** Coefficient */
+            coefficient: (number | null)[][];
+            /** Pvalue */
+            pValue: (number | null)[][];
+            /** Cilow */
+            ciLow: (number | null)[][];
+            /** Cihigh */
+            ciHigh: (number | null)[][];
+            /** N */
+            n: number[][];
+        };
+        /** DistributionFit */
+        DistributionFit: {
+            /**
+             * Distribution
+             * @enum {string}
+             */
+            distribution: "norm" | "lognorm" | "gamma" | "weibull_min" | "expon" | "logistic" | "laplace" | "uniform" | "beta" | "gumbel_r" | "t" | "cauchy";
+            /** Label */
+            label: string;
+            /** Params */
+            params: components["schemas"]["FitParameter"][];
+            /** Loglikelihood */
+            logLikelihood: number | null;
+            /** Aic */
+            aic: number | null;
+            /** Bic */
+            bic: number | null;
+            /** Deltaaic */
+            deltaAic: number | null;
+            /** Aicweight */
+            aicWeight: number | null;
+            /** Ksstatistic */
+            ksStatistic: number | null;
+            /** Kspvalue */
+            ksPValue: number | null;
+            /** Pdf */
+            pdf: (number | null)[];
+        };
+        /** DistributionFitValues */
+        DistributionFitValues: {
+            /** Field */
+            field: string;
+            /** Fits */
+            fits: components["schemas"]["DistributionFit"][];
+            /** Skipped */
+            skipped: components["schemas"]["SkippedDistribution"][];
+            /** Best */
+            best: ("norm" | "lognorm" | "gamma" | "weibull_min" | "expon" | "logistic" | "laplace" | "uniform" | "beta" | "gumbel_r" | "t" | "cauchy") | null;
+            /** Edges */
+            edges: number[];
+            /** Density */
+            density: number[];
+            /** X */
+            x: number[];
         };
         /**
          * FieldSummary
@@ -2556,6 +3298,15 @@ export interface components {
             /** Modecount */
             modeCount: number | null;
         };
+        /** FitParameter */
+        FitParameter: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
+            /** Fixed */
+            fixed: boolean;
+        };
         /**
          * ImportPreviewMeta
          * @description Arrow metadata of a preview response. Server-produced.
@@ -2573,6 +3324,65 @@ export interface components {
             estimatedRows: number | null;
             /** Warnings */
             warnings: string[];
+        };
+        /** OutlierRow */
+        OutlierRow: {
+            /** Field */
+            field: string;
+            /** Group */
+            group: (string | number | boolean | null)[] | null;
+            /** Value */
+            value: number;
+            /** Score */
+            score: number | null;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "low" | "high";
+            /** Row */
+            row: {
+                [key: string]: string | number | boolean | null;
+            };
+        };
+        /** OutlierSummary */
+        OutlierSummary: {
+            /** Field */
+            field: string;
+            /** Group */
+            group: (string | number | boolean | null)[] | null;
+            /** N */
+            n: number;
+            /** Center */
+            center: number | null;
+            /** Spread */
+            spread: number | null;
+            /** Low */
+            low: number | null;
+            /** High */
+            high: number | null;
+            /** Nlow */
+            nLow: number;
+            /** Nhigh */
+            nHigh: number;
+            /** Share */
+            share: number | null;
+        };
+        /** OutlierValues */
+        OutlierValues: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "iqr" | "zscore" | "mad";
+            /** Threshold */
+            threshold: number;
+            /** Groupby */
+            groupBy: string | null;
+            /** Summaries */
+            summaries: components["schemas"]["OutlierSummary"][];
+            /** Rows */
+            rows: components["schemas"]["OutlierRow"][];
         };
         /**
          * PipelinePreviewMeta
@@ -2601,11 +3411,116 @@ export interface components {
             /** Value */
             value: number | string | null;
         };
+        /** RankSampleSummary */
+        RankSampleSummary: {
+            /** Label */
+            label: string;
+            /** Group */
+            group: (string | number | boolean | null)[] | null;
+            /** N */
+            n: number;
+            /** Median */
+            median: number | null;
+            /** Meanrank */
+            meanRank: number | null;
+        };
+        /** RankTestValues */
+        RankTestValues: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "mann_whitney" | "wilcoxon" | "kruskal";
+            /**
+             * Alternative
+             * @enum {string}
+             */
+            alternative: "two_sided" | "less" | "greater";
+            /** Statistic */
+            statistic: number | null;
+            /** Df */
+            df: number | null;
+            /** Pvalue */
+            pValue: number | null;
+            /** Effectsize */
+            effectSize: number | null;
+            /** Effectsizename */
+            effectSizeName: string;
+            /** Samples */
+            samples: components["schemas"]["RankSampleSummary"][];
+        };
         /**
          * Reduction
          * @enum {string}
          */
         Reduction: "none" | "aggregated" | "binned" | "downsampled" | "sampled";
+        /** ReferenceLevel */
+        ReferenceLevel: {
+            /** Field */
+            field: string;
+            /** Level */
+            level: string | number | boolean | null;
+        };
+        /** RegressionTerm */
+        RegressionTerm: {
+            /** Term */
+            term: string;
+            /** Field */
+            field: string | null;
+            /** Level */
+            level: string | number | boolean | null;
+            /** Estimate */
+            estimate: number | null;
+            /** Stderror */
+            stdError: number | null;
+            /** Statistic */
+            statistic: number | null;
+            /** Pvalue */
+            pValue: number | null;
+            /** Cilow */
+            ciLow: number | null;
+            /** Cihigh */
+            ciHigh: number | null;
+            /** Vif */
+            vif: number | null;
+        };
+        /** RegressionValues */
+        RegressionValues: {
+            /** Y */
+            y: string;
+            /** Terms */
+            terms: components["schemas"]["RegressionTerm"][];
+            /** Referencelevels */
+            referenceLevels: components["schemas"]["ReferenceLevel"][];
+            /** R2 */
+            r2: number | null;
+            /** Adjr2 */
+            adjR2: number | null;
+            /** Fstatistic */
+            fStatistic: number | null;
+            /** Fpvalue */
+            fPValue: number | null;
+            /** Dfmodel */
+            dfModel: number;
+            /** Dfresid */
+            dfResid: number;
+            /** Sigma */
+            sigma: number | null;
+            /** Loglikelihood */
+            logLikelihood: number | null;
+            /** Aic */
+            aic: number | null;
+            /** Bic */
+            bic: number | null;
+            /** Conditionnumber */
+            conditionNumber: number | null;
+            /** Cilevel */
+            ciLevel: number;
+            /** Robust */
+            robust: boolean;
+            /** Checks */
+            checks: components["schemas"]["AssumptionCheck"][];
+        };
         /** RowsPageMeta */
         RowsPageMeta: {
             /** Offset */
@@ -2624,6 +3539,108 @@ export interface components {
              * @default null
              */
             version: number | null;
+        };
+        /**
+         * SampleSummary
+         * @description n, mean and spread of one sample or group. Server-produced.
+         */
+        SampleSummary: {
+            /** Label */
+            label: string;
+            /** Group */
+            group: (string | number | boolean | null)[] | null;
+            /** N */
+            n: number;
+            /** Mean */
+            mean: number | null;
+            /** Std */
+            std: number | null;
+            /** Sem */
+            sem: number | null;
+        };
+        /** SkippedDistribution */
+        SkippedDistribution: {
+            /**
+             * Distribution
+             * @enum {string}
+             */
+            distribution: "norm" | "lognorm" | "gamma" | "weibull_min" | "expon" | "logistic" | "laplace" | "uniform" | "beta" | "gumbel_r" | "t" | "cauchy";
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * StatsSourceRequest
+         * @description Common part of every statistics request: the data and the filters on it.
+         */
+        StatsSourceRequest: {
+            source: components["schemas"]["SourceRef"];
+            /** Pipelines */
+            pipelines?: components["schemas"]["Pipeline"][];
+            /** Filters */
+            filters?: (components["schemas"]["InPredicate"] | components["schemas"]["EqPredicate"] | components["schemas"]["RangePredicate"] | components["schemas"]["IsNullPredicate"])[];
+        };
+        /** TTestValues */
+        TTestValues: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "one_sample" | "welch" | "student" | "paired";
+            /**
+             * Alternative
+             * @enum {string}
+             */
+            alternative: "two_sided" | "less" | "greater";
+            /** Cilevel */
+            ciLevel: number;
+            /** Mu */
+            mu: number;
+            /** Statistic */
+            statistic: number | null;
+            /** Df */
+            df: number | null;
+            /** Pvalue */
+            pValue: number | null;
+            /** Estimate */
+            estimate: number | null;
+            /** Stderror */
+            stdError: number | null;
+            /** Cilow */
+            ciLow: number | null;
+            /** Cihigh */
+            ciHigh: number | null;
+            /** Cohensd */
+            cohensD: number | null;
+            /** Samples */
+            samples: components["schemas"]["SampleSummary"][];
+            /** Checks */
+            checks: components["schemas"]["AssumptionCheck"][];
+        };
+        /** TukeyComparison */
+        TukeyComparison: {
+            /** A */
+            a: string | number | boolean | null;
+            /** B */
+            b: string | number | boolean | null;
+            /** Diff */
+            diff: number;
+            /** Cilow */
+            ciLow: number | null;
+            /** Cihigh */
+            ciHigh: number | null;
+            /** Pvalue */
+            pValue: number | null;
+        };
+        /** WelchAnova */
+        WelchAnova: {
+            /** Statistic */
+            statistic: number | null;
+            /** Df1 */
+            df1: number | null;
+            /** Df2 */
+            df2: number | null;
+            /** Pvalue */
+            pValue: number | null;
         };
     };
     responses: never;
@@ -3934,6 +4951,303 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DescribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correlation_endpoint_api_stats_correlation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrelationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regression_endpoint_api_stats_regression_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegressionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ttest_endpoint_api_stats_ttest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ranktest_endpoint_api_stats_ranktest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RankTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anova_endpoint_api_stats_anova_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnovaRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chisquare_endpoint_api_stats_chisquare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChiSquareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fit_endpoint_api_stats_fit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DistributionFitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    outliers_endpoint_api_stats_outliers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutlierRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ci_endpoint_api_stats_ci_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfidenceIntervalRequest"];
             };
         };
         responses: {

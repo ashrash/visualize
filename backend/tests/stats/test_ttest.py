@@ -8,9 +8,8 @@ import pyarrow as pa
 import pytest
 from scipy import stats as sps
 
-from viz.contracts import SourceRef
+from viz.contracts import SourceRef, TTestRequest, TTestValues
 from viz.stats.errors import StatsInputError
-from viz.stats.models import TTestRequest, TTestValues
 from viz.stats.ttest import t_test
 
 SOURCE = SourceRef(kind="dataset", id="d")

@@ -10,10 +10,9 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from scipy import stats as sps
 
-from viz.contracts import SourceRef
+from viz.contracts import AnovaRequest, AnovaValues, SourceRef
 from viz.stats.anova import anova
 from viz.stats.errors import StatsInputError
-from viz.stats.models import AnovaRequest, AnovaValues
 
 SOURCE = SourceRef(kind="dataset", id="d")
 

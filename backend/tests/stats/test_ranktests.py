@@ -7,10 +7,9 @@ import pyarrow as pa
 import pytest
 from scipy import stats as sps
 
-from viz.contracts import SourceRef
+from viz.contracts import RankTestRequest, RankTestValues, SourceRef
 from viz.stats import ranktests
 from viz.stats.errors import StatsInputError
-from viz.stats.models import RankTestRequest, RankTestValues
 from viz.stats.ranktests import rank_test
 
 SOURCE = SourceRef(kind="dataset", id="d")

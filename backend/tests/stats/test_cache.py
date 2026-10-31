@@ -4,9 +4,8 @@ from typing import Any
 
 import pytest
 
-from viz.contracts import SourceRef, StatResult
+from viz.contracts import CorrelationRequest, SourceRef, StatResult
 from viz.stats import cache
-from viz.stats.models import CorrelationRequest
 
 
 @pytest.fixture(autouse=True)
