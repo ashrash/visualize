@@ -368,7 +368,12 @@ function WidgetForm({ kind, onSubmit }: { kind: NewWidgetKind; onSubmit: (v: New
         <DialogClose asChild>
           <Button type="button">Cancel</Button>
         </DialogClose>
-        <Button type="submit" variant="primary" disabled={!valid}>
+        <Button
+          type="submit"
+          variant="primary"
+          className="hover:opacity-100 hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]"
+          disabled={!valid}
+        >
           Add
         </Button>
       </div>

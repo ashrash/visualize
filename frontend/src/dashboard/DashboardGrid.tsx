@@ -67,6 +67,9 @@ function WidgetFrame({
   const [grabbed, setGrabbed] = useState(false);
   const [said, setSaid] = useState("");
   const origin = useRef<GridPosition | null>(null);
+  // Where the widget is while it is picked up. The item prop lags a render behind, and a key
+  // pressed in between would otherwise start from the old position and undo the last step.
+  const live = useRef<GridPosition | null>(null);
   const here = (): GridPosition => ({ i: item.i, x: item.x, y: item.y, w: item.w, h: item.h });
   const whereIs = (p: GridPosition) =>
     `column ${p.x + 1}, row ${p.y + 1}, ${p.w} wide, ${p.h} high`;
@@ -75,9 +78,11 @@ function WidgetFrame({
       event.preventDefault();
       if (grabbed) {
         setGrabbed(false);
-        setSaid(`Dropped at ${whereIs(here())}.`);
+        setSaid(`Dropped at ${whereIs(live.current ?? here())}.`);
+        live.current = null;
       } else {
         origin.current = here();
+        live.current = here();
         setGrabbed(true);
         setSaid(
           "Picked up. Arrow keys move, Shift and arrow keys resize, Space drops, Escape cancels.",
@@ -87,12 +92,14 @@ function WidgetFrame({
       event.preventDefault();
       event.stopPropagation();
       if (origin.current) onMove?.(origin.current);
+      live.current = null;
       setGrabbed(false);
       setSaid("Cancelled. Back where it was.");
     } else if (grabbed && isArrowKey(event.key)) {
       event.preventDefault();
-      const next = nudge(here(), event.key, event.shiftKey);
+      const next = nudge(live.current ?? here(), event.key, event.shiftKey);
       if (next) {
+        live.current = next;
         onMove?.(next);
         setSaid(whereIs(next));
       } else {
@@ -120,7 +127,10 @@ function WidgetFrame({
             aria-pressed={grabbed}
             aria-describedby={help}
             onKeyDown={onKeyDown}
-            onBlur={() => setGrabbed(false)}
+            onBlur={() => {
+              live.current = null;
+              setGrabbed(false);
+            }}
             className="dash-drag-handle flex flex-1 cursor-grab items-center gap-1 rounded py-1 text-xs text-muted focus-visible:outline-2 focus-visible:outline-accent active:cursor-grabbing"
             title="Drag to move, or press Space and use the arrow keys"
           >

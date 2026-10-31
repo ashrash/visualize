@@ -901,6 +901,31 @@ describe("moving and resizing with the keyboard", () => {
     expect(item().w).toBe(2); // never below the minimum
   });
 
+  it("a key pressed before the last step has rendered builds on it (no re-render in between)", () => {
+    // The dashboard is never updated here, so the item prop stays at its start for every key, as
+    // it does for a moment in the browser when keys arrive faster than React renders.
+    let dash = dashboardWith(["a"]);
+    render(
+      wrap(
+        <DashboardView
+          dashboard={dash}
+          charts={[spec("a")]}
+          pipelines={[]}
+          mode="edit"
+          onChange={(edit) => {
+            dash = edit(dash);
+          }}
+        />,
+      ),
+    );
+    press(" ");
+    press("ArrowRight");
+    press("ArrowRight", false);
+    press("ArrowRight", true); // Shift: resize, from the position the two moves reached
+    const item = dash.tabs?.[0]?.items?.[0];
+    expect({ x: item?.x, w: item?.w }).toEqual({ x: 2, w: 7 });
+  });
+
   it("Escape puts the widget back where it was picked up", () => {
     const { item } = renderEditable();
     press(" ");

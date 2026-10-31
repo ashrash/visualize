@@ -283,7 +283,7 @@ export function DashboardView({
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     ref={addButton}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg hover:brightness-90 focus-visible:outline-2 focus-visible:outline-accent"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)] focus-visible:outline-2 focus-visible:outline-accent"
                   >
                     <Plus size={14} aria-hidden="true" />
                     Add widget
