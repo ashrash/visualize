@@ -470,6 +470,52 @@ follow-ups rather than fixed (outside those agents' owned paths).
       the dataset-upload endpoint's own filename handling 500s on a >255-char name too (same root
       cause, different code path since it doesn't use `stage_name`) — a `TODO` for whoever next
       touches `ingest/upload.py`'s dataset-facing callers.
+- 2026-10-31: `ui-dashboard`'s Wave 3 branch — **not yet merged**, 3 review rounds so far, all real
+  findings. Round 1 (blocker): click-to-filter was built from ECharts' *formatted display labels*
+  (`params.name`) instead of raw values, so integer categories, blanks, and time-bucketed labels
+  all produced wrong or empty predicates; fixed with a label-to-raw-value lookup against the
+  chart's own cached data, since `ui-charts`' raw-value callbacks hadn't merged yet. Round 1
+  should-fixes: horizontal-chart brush, tab-switch wiping a chart's selection, the report's
+  "Filtered by" line, KPI widget quantile-scan cost (measured: ~150-200ms per KPI on the 10M
+  fixture, within budget but flagged as a watch-item for a dashboard with many KPIs). Round 2:
+  once `ui-charts`' `onPointClick`/`onBrushSelected`/`onLegendChange`/`slot` landed on `main`
+  (Wave 3 ui-charts merge), swapped the round-1 label-lookup workaround for the real raw-value
+  callbacks, deleting `chartEvents.ts`/`useChartInstance.ts`/`RangeBrush.tsx` and the old
+  label-mapping code. Round 3 (CHANGES REQUIRED, 3 blockers): the swap dropped the brush
+  plot-type gate, so plots whose x channel isn't the brushed screen axis (Q-Q, lag, PCA/cluster
+  scores, event study) could silently build a wrong predicate from a brush drag; a React
+  parent-before-child unmount-cleanup ordering issue let a tab switch schedule a debounced
+  "cleared" filter update that fires ~150ms *after* the chart unmounts, silently wiping a linked
+  chart's selection; and `brushMode: "multiple"`'s several time-bucketed bands were collapsed into
+  one over-wide contiguous range instead of either covering only the actual buckets or failing
+  closed. All three sent back for round 4, along with should-fixes (the Image widget still can't
+  upload even though `/api/assets` is live on `main` now — stale `TODO(platform)`; legend-toggle
+  predicates lost their fail-closed behavior on an unresolvable hidden value; drill context is
+  dropped from published clicks/drill-through; a millisecond-precision raw-temporal click
+  regressed from the old half-open date range; `timeUnit` lookup can grab the wrong encoding when
+  one field is both a measure and bucketed on x).
+  - `TODO(ui-charts)`: a stale `TODO(ui-dashboard): wire these to the cross-filter bus` comment in
+    `charts/core/ChartView.tsx` (the wiring is done, this is ui-charts' file to clean up); add the
+    raw color value to `ChartPointClick` so `ui-dashboard`'s interim `chartLookup.ts` cache-read
+    workaround can be removed; a controlled-clear mechanism for the native brush (an imperative
+    handle or `brushClearKey` prop) so clearing a dashboard-side selection can also hide the
+    drawn band, which neither side currently does.
+- 2026-10-31: `ui-dashboard` round 3 fixes (all 3 blockers + 7 should-fixes from the round-3
+  review) landed as `b2ce267`, confirmed independently against the actual renderer code (not just
+  the agent's own claims) in round 4 — brush plot-type allowlist checked plot-by-plot, the
+  `disposed`-ref unmount fix checked against React's actual parent-before-child cleanup order, the
+  bucket-contiguity check confirmed to use real UTC calendar boundaries (handles 28/29/31-day
+  months and DST-free since the engine runs in UTC). One unplanned fix landed with it: the Image
+  widget can now actually upload (`POST /api/assets` through a typed client), closing a real
+  MVP §7 gap. Round 4 found one new blocker introduced by the "band outliving its filter" fix: a
+  click that replaces a brush selection gets silently wiped ~150ms later by the outgoing chart's
+  own unmount-time "cleared" report racing the click's publish — reproduced in a scratch test
+  harness, sent back with a precise fix (gate the "cleared" handling on the selection's actual
+  origin, cancel a pending brush-settle on click). Also sent back: the same remount loses the
+  chart's drill path, so a click after "Clear all" post-drill can publish a stale+wrong predicate
+  pair; and a fail-closed brush (non-contiguous buckets, multiple value-axis ranges, an
+  unresolvable category) leaves a visibly drawn band with silently no active filter, which breaks
+  the round-3 invariant that there's never a band with no filter behind it. Round 5 in progress.
 
 ## MVP.md
 
