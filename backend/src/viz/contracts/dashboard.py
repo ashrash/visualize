@@ -78,6 +78,9 @@ class DashboardFilter(Contract):
     field_map: dict[str, str] = Field(default_factory=dict)
     # Current selection; None means no filtering.
     predicate: Predicate | None = None
+    # How to render this filter when it isn't placed as a FilterWidget on the layout (e.g. a
+    # dashboard-level or global toolbar filter). None = this filter only appears via a widget.
+    control: Literal["date_range", "dropdown", "slider"] | None = None
 
 
 class LinkGroup(Contract):

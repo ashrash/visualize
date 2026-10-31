@@ -3795,6 +3795,22 @@
               }
             ],
             "title": "Predicate"
+          },
+          "control": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "date_range",
+                  "dropdown",
+                  "slider"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Control"
           }
         },
         "additionalProperties": false,
@@ -6850,6 +6866,13 @@
             },
             "type": "array",
             "title": "Dashboards"
+          },
+          "globalFilters": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardFilter"
+            },
+            "type": "array",
+            "title": "Globalfilters"
           },
           "folders": {
             "items": {

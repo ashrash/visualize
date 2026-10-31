@@ -327,6 +327,32 @@ follow-ups rather than fixed (outside those agents' owned paths).
 - `ChartView` keys map-readiness on a plot's registry key, not the prepare inputs, so switching a
   choropleth's map resolution leaves the chart blank after the new map loads.
 
+## Wave 3 log
+
+- 2026-10-31: Wave 3 kicked off (`ui-dashboard`, `platform`, `ui-charts`; `ui-data` picked up the
+  Wave 2 `statsTests` follow-up in parallel). Dependencies installed: `react-grid-layout`,
+  `dompurify`, `marked` (all ship their own TS types). Two additive contracts added:
+  `DashboardFilter.control` (lets a dashboard-level/global filter render as a toolbar control
+  without a `FilterWidget` on the layout) and `Project.global_filters` (filters shared across
+  every dashboard in a project).
+- 2026-10-31: `ui-data`'s Wave 2 `statsTests` follow-up merged: the stats panel's test UI
+  (correlation, regression, t-test, rank test, ANOVA, chi-square, distribution fitting, outliers,
+  confidence intervals) is wired to the real backend with dedicated forms and result renderers
+  per test, not the old generic field/group form. The `statsTests` flag is gone. Reviewer
+  independently verified all 9 request shapes field-for-field against `contracts/stats.py` and
+  exercised all 9 endpoints through the real FastAPI app's test suite (the agent itself had only
+  tested against a stubbed fetch). One should-fix: switching the source while a test form had a
+  field selected could run with a now-unknown field (422) or show a stale result unlabeled as
+  stale — fixed by remounting the test panel on source change. Also fixed: a one-sample t-test's
+  result was mislabeled "Mean difference"; the result view's error boundary could stay stuck in
+  fallback mode for a later, valid run; test requests had no cancellation. vitest 599 passed/1
+  skipped, biome and build clean.
+  - Known gaps, not blockers: chi-square goodness-of-fit's custom expected-proportions input
+    isn't exposed yet (uniform only); outliers' `include` columns and t-test/ANOVA's advanced
+    options (`ssType`, `postHoc`, `maxLevels`) use silent defaults with no UI; distribution
+    fitting shows a table only, no fitted-curve plot (a natural "plot this" follow-up, since the
+    response already includes the density grid).
+
 ## MVP.md
 
 ### 1. Data Sources & Import
@@ -393,16 +419,16 @@ Tracked per plot under Plots.md below.
 | Mean, median and mode | stats · ui-data | done | Backend: describe (exact, SQL; modes with tie warning). Stats panel UI: source/field/group picker, result table. |
 | Standard deviation and variance | stats · ui-data | done | Backend: describe (overflow-safe moments). Stats panel UI: result table. |
 | Percentiles and quartiles | stats · ui-data | done | Backend: describe + quantiles kernel (exact, R type 7). Stats panel UI: percentile input, result table. |
-| Correlation analysis | stats · ui-data | partial | Backend done: Pearson exact in SQL, Spearman/Kendall in SciPy, Fisher-z/Bonett-Wright/Fieller CIs. UI gated behind `statsTests` pending ui-data follow-up (see Wave 2 log). |
-| Linear regression | stats · ui-data | partial | Backend done: OLS (sampled to 1M), HC3 robust SEs, VIF/GVIF, Breusch-Pagan, residual-normality checks, NIST-verified. UI gated behind `statsTests`. |
-| Multiple regression | stats · ui-data | partial | Same endpoint/backend as linear regression (numeric/boolean/date/categorical predictors). UI gated behind `statsTests`. |
-| Hypothesis testing | stats · ui-data | partial | Backend done: t-tests, Mann-Whitney, Wilcoxon, Kruskal-Wallis, with assumption checks (Shapiro-Wilk, Brown-Forsythe Levene) as warnings. UI gated behind `statsTests`. |
-| T-tests | stats · ui-data | partial | Backend done: one-sample, Welch, Student, paired; every alternative hypothesis; CIs; Cohen's d. UI gated behind `statsTests`. |
-| ANOVA | stats · ui-data | partial | Backend done: one-way (eta²/omega²/Welch/Tukey HSD) and two-way (Type I/II/III SS), exact via per-cell weighted least squares. UI gated behind `statsTests`. |
-| Chi-square tests | stats · ui-data | partial | Backend done: independence and goodness-of-fit, exact SQL counts, Yates' correction, Cramer's V, adjusted residuals, Fisher's exact + odds ratio for 2x2. UI gated behind `statsTests`. |
-| Distribution fitting | stats · ui-data | partial | Backend done: SciPy MLE fits of 10 distributions on a 100k sample, ranked by AIC/Akaike weights/BIC/KS, with a density histogram and fitted curves for plotting. UI gated behind `statsTests`. |
-| Outlier detection | stats · ui-data | partial | Backend done: IQR fences, z-scores, MAD, exact in SQL, per field and optionally per group. UI gated behind `statsTests`. |
-| Confidence intervals | stats · ui-data | partial | Backend done: exact t intervals; exact distribution-free order-statistic intervals for median/quantiles; an asymptotic delta-method interval for SD; bootstrap (BCa/percentile) reserved for smaller inputs, independently coverage-simulated after a review found the original subsample approach under-covered. UI gated behind `statsTests`. |
+| Correlation analysis | stats · ui-data | done | Pearson exact in SQL, Spearman/Kendall in SciPy, Fisher-z/Bonett-Wright/Fieller CIs. UI: field checklist, method, pairwise/listwise, CI level; coefficient/p-value matrix. |
+| Linear regression | stats · ui-data | done | OLS (sampled to 1M), HC3 robust SEs, VIF/GVIF, Breusch-Pagan, residual-normality checks, NIST-verified. UI: y/x selection, coefficient table with CI and VIF, model fit stats, assumption checks. |
+| Multiple regression | stats · ui-data | done | Same endpoint/backend as linear regression (numeric/boolean/date/categorical predictors). UI as above. |
+| Hypothesis testing | stats · ui-data | done | t-tests, Mann-Whitney, Wilcoxon, Kruskal-Wallis, with assumption checks (Shapiro-Wilk, Brown-Forsythe Levene) as warnings. UI: dedicated forms and result views per test. |
+| T-tests | stats · ui-data | done | One-sample, Welch, Student, paired; every alternative hypothesis; CIs; Cohen's d. UI: variant/group/alternative form, mean-difference headline (labeled per test kind), CI, sample table. |
+| ANOVA | stats · ui-data | done | One-way (eta²/omega²/Welch/Tukey HSD) and two-way (Type I/II/III SS), exact via per-cell weighted least squares. UI: dependent field, 1-2 factors, interaction option; ANOVA table, Welch ANOVA, Tukey comparisons. |
+| Chi-square tests | stats · ui-data | partial | Independence and goodness-of-fit, exact SQL counts, Yates' correction, Cramer's V, adjusted residuals, Fisher's exact + odds ratio for 2x2. UI: independence done; goodness-of-fit UI is uniform-proportions only (backend supports custom proportions, no input exposed yet). |
+| Distribution fitting | stats · ui-data | partial | SciPy MLE fits of 10 distributions on a 100k sample, ranked by AIC/Akaike weights/BIC/KS, with a density histogram and fitted curves for plotting. UI: AIC ranking table only, no fitted-curve plot yet (a natural "plot this" follow-up - the response already includes the density grid). |
+| Outlier detection | stats · ui-data | done | IQR fences, z-scores, MAD, exact in SQL, per field and optionally per group. UI: fence/outlier tables (the `include` extra-columns option defaults with no UI control yet). |
+| Confidence intervals | stats · ui-data | done | Exact t intervals; exact distribution-free order-statistic intervals for median/quantiles; an asymptotic delta-method interval for SD; bootstrap (BCa/percentile) reserved for smaller inputs, independently coverage-simulated after a review found the original subsample approach under-covered. UI: interval table. |
 | Descriptive statistics | stats · ui-data | done | Backend: `/api/stats/describe` (grouped, filtered, percentiles, skew/kurtosis). 10 fields with modes 2.6-3.9 s at 10M depending on conditions (Wave 4 watch item); grouped 7-8 s (Wave 4). Stats panel UI: source (dataset/pipeline) picker, field/group-by checklists, result table, "plot this" shortcut to a histogram/box chart. |
 
 ### 6. Interactivity

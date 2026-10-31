@@ -9,7 +9,7 @@ from pydantic import Field
 
 from viz.contracts.base import Contract
 from viz.contracts.chart import ChartSpec, ChartStyle
-from viz.contracts.dashboard import Dashboard
+from viz.contracts.dashboard import Dashboard, DashboardFilter
 from viz.contracts.pipeline import Pipeline
 
 
@@ -53,6 +53,9 @@ class Project(Contract):
     pipelines: list[Pipeline] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
     dashboards: list[Dashboard] = Field(default_factory=list)
+    # Filters shared across every dashboard in this project (e.g. a single date-range control
+    # that narrows all of them), distinct from a Dashboard's own per-dashboard filters.
+    global_filters: list[DashboardFilter] = Field(default_factory=list)
     folders: list[Folder] = Field(default_factory=list)
     themes: list[Theme] = Field(default_factory=list)
     templates: list[ChartTemplate] = Field(default_factory=list)
