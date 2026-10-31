@@ -245,6 +245,23 @@ tracked below for Wave 4, not blockers.
   `backend/src/viz/contracts/stats.py` (additive, mechanical; the stats agent couldn't touch
   `contracts/` itself). Now in OpenAPI and the generated TypeScript types — unblocks ui-data's
   `statsTests`-flagged UI follow-up.
+- 2026-10-31: `plots-timeseries` merged (Plots.md §4, all 8): time series line, seasonal, lag,
+  ACF, PACF, moving average, candlestick, calendar heatmap. Two review rounds. Round 1 found 2
+  blockers (seasonal 500 on empty y, no working way to count rows; PACF 500 when lags >= n/2)
+  and 8 should-fix items (seasonal x-axis scrambling off-period data; ACF/PACF bands centered on
+  the estimate instead of zero so "outside the band = significant" never triggered; an unbounded
+  regular-cadence grid, up to 17.9M synthetic buckets on sparse data; multi-series downsampling
+  fragmenting lines; an unimplemented UI color channel; date-part-vs-date-trunc merging the same
+  month across years; inaccurate rows_matched under truncation; moving-average's mark budget not
+  accounting for both y0/y1). All fixed and re-verified, including the original pathological grid
+  case (now 0.02s/12,417 buckets, down from 7.1s/17.9M). Round 2 re-review found one issue the
+  first review missed entirely: PACF used statsmodels' own default method (`ywadjusted`), whose
+  small-sample correction can push |PACF| above 1 on trending/random-walk data (reproduced: >1 in
+  28-40% of runs on cumulative-sum series at n=50-100) — the original test only "matched
+  statsmodels" because both sides shared the same wrong-for-this-case default. Fixed directly by
+  the lead (`method="ywm"`, matching `plot_acf`'s own default for the same reason) with a 20-seed
+  bounded-output regression test. pytest 1010 passed/6 skipped, ruff/mypy clean, vitest 457
+  passed/1 skipped, biome/build clean.
 
 ## MVP.md
 
@@ -435,14 +452,14 @@ Tracked per plot under Plots.md below.
 | 3 | Contour Plot | `contour` | plots-distribution-relationship | todo |
 | 3 | Regression Plot | `regression` | plots-distribution-relationship | todo |
 | 3 | Residual Plot | `residual` | plots-distribution-relationship | todo |
-| 4 | Time Series Line Plot | `timeseries_line` | plots-timeseries | todo |
-| 4 | Seasonal Plot | `seasonal` | plots-timeseries | todo |
-| 4 | Lag Plot | `lag` | plots-timeseries | todo |
-| 4 | Autocorrelation Plot (ACF) | `acf` | plots-timeseries | todo |
-| 4 | Partial Autocorrelation Plot (PACF) | `pacf` | plots-timeseries | todo |
-| 4 | Moving Average Plot | `moving_average` | plots-timeseries | todo |
-| 4 | Candlestick Chart | `candlestick` | plots-timeseries | todo |
-| 4 | Calendar Heatmap | `calendar_heatmap` | plots-timeseries | todo |
+| 4 | Time Series Line Plot | `timeseries_line` | plots-timeseries | done |
+| 4 | Seasonal Plot | `seasonal` | plots-timeseries | done |
+| 4 | Lag Plot | `lag` | plots-timeseries | done |
+| 4 | Autocorrelation Plot (ACF) | `acf` | plots-timeseries | done |
+| 4 | Partial Autocorrelation Plot (PACF) | `pacf` | plots-timeseries | done |
+| 4 | Moving Average Plot | `moving_average` | plots-timeseries | done |
+| 4 | Candlestick Chart | `candlestick` | plots-timeseries | done |
+| 4 | Calendar Heatmap | `calendar_heatmap` | plots-timeseries | done |
 | 5 | Stacked Area Chart | `stacked_area` | plots-composition-specialized | todo |
 | 5 | 100% Stacked Bar Chart | `percent_stacked_bar` | plots-composition-specialized | todo |
 | 5 | Waterfall Chart | `waterfall` | plots-composition-specialized | todo |
