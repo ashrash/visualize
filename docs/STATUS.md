@@ -515,7 +515,50 @@ follow-ups rather than fixed (outside those agents' owned paths).
   chart's drill path, so a click after "Clear all" post-drill can publish a stale+wrong predicate
   pair; and a fail-closed brush (non-contiguous buckets, multiple value-axis ranges, an
   unresolvable category) leaves a visibly drawn band with silently no active filter, which breaks
-  the round-3 invariant that there's never a band with no filter behind it. Round 5 in progress.
+  the round-3 invariant that there's never a band with no filter behind it. Round 5 fixed all
+  three (origin-gated "cleared" handling + click-cancels-pending-brush for the race; controlled
+  drill position held in the runtime store, keyed per-widget by source+hierarchy, surviving both
+  remounts and tab switches; dead-band remount plus a transient "can't be used as a filter"
+  message), each mutation-tested by the agent (confirmed the relevant test fails when the fix is
+  reverted) and independently re-verified against the real `BrushController` source and in a real
+  browser. Round 5's review found the *same* race existed in the legend path too (hiding a
+  legend entry that can't produce a filter could wipe an existing click/brush selection) plus 3
+  small nits (notice-timer restart, a drill-key missing `spec.id`, a shift-click-after-band-removal
+  ordering issue); round 6 fixed all four with the same origin-gated pattern, mutation-tested
+  again. **Round 6: APPROVE**, confirmed by a reviewer that traced the guard logic by hand rather
+  than trusting the mutation-test claim, and did a final full-diff sanity pass (no debug
+  statements, no skipped/disabled tests beyond the intentionally gated bench suite, every
+  remaining TODO a legitimate hand-off to another owner). **Merged** (6 review rounds total — the
+  most of any Wave 3 branch, proportional to how much of this feature is genuinely stateful
+  event-handling code). 849 frontend tests passed/4 skipped, biome and tsc clean.
+  - `ui-data`'s dashboard-route/grid-drill-through branch (held pending this merge) **merged**
+    immediately after: confirmed `DashboardPage`'s default export and `SharePage`/`EmbedPage`'s
+    named exports match exactly what `ui-data` had guessed while this branch was still unmerged
+    (clean `tsc -b`, no adjustment needed). 851 frontend tests passed/4 skipped on `main` after
+    both merges; backend 1152 passed/6 skipped (the 1 failure is the pre-existing, unrelated
+    `Plots.md`/`Next.md` uncommitted-edit issue noted above, not a regression).
+  - Deferred, tracked for Wave 4 or a future `ui-charts` touch: a brush and a legend filter active
+    on the same chart replace each other's predicate instead of combining (`TODO(ui-charts)` in
+    `ChartWidget.tsx`, next to the existing controlled-brush-clear TODO); a tab switch returns a
+    chart without its redrawn brush band even though the filter stays active (same controlled-
+    brush-API gap); clicking outside a drawn brush band may not fire at all in a real browser
+    (ECharts/`BrushController` behavior, confirmed plausible from source but not fully verified
+    live — a `TODO(ui-charts)` to check); shift-clicking a chart with an active legend filter can
+    toggle a value back out of that filter's `in` list via `extendSelection`'s union/toggle
+    semantics — intended per the semantics settled across rounds 1-6, but worth one real-browser
+    UX look in Wave 4.
+
+**Wave 3 exit criteria (CLAUDE.md §10) are met**: dashboards with cross-filtering (click, brush
+and legend, each independently hardened across 6 review rounds), drill-down and drill-through,
+sharing (tokens, public resolve, `/share`/`/embed` routes) and reports (HTML/PDF assembly) all
+work. The §6 1s cross-filter-refresh-of-a-6-chart-dashboard budget, including during a 10M-row
+import, was independently re-verified against the real fixture during `ui-dashboard`'s round-1
+work (idle p95 0.73s/0.68s, during-import p95 0.94s/0.90s across two measurements) and holds with
+a KPI widget added (p95 ~0.44-0.48s for 6 charts + 1 KPI). Known gaps carried forward, not
+blockers: the hosted-mode share/embed data-scoping gap (chart data isn't token-scoped yet, only
+"works" locally because auth is a no-op stub); brush+legend combination on one chart; asset
+cleanup/GC and `.vizproj` asset bundling; the responsive-layout and autosave/undo follow-ups
+already tracked under MVP §7/§10.
 
 ## MVP.md
 
@@ -601,33 +644,33 @@ Tracked per plot under Plots.md below.
 |---|---|---|---|
 | Zoom and pan | ui-charts | partial | dataZoom with detail-on-demand re-query (needs transform merge for server xRange). |
 | Hover tooltips | ui-charts | done |  |
-| Click-to-filter | ui-dashboard | todo |  |
-| Cross-filtering | ui-dashboard | todo |  |
+| Click-to-filter | ui-dashboard | done | Click, brush and legend-toggle all build `Predicate`s from raw chart values (not ECharts' display labels) and publish to the dashboard's cross-filter bus. Gated per plot type for brush (only plots whose x channel matches the brushed screen axis). |
+| Cross-filtering | ui-dashboard | done | Per-`linkGroup` bus; each chart excludes its own predicate from what it applies. 6 review rounds hardened the stateful edge cases — see the Wave 3 log. |
 | Drill-down | ui-charts | done | Chart-level hierarchy drilling (`PlotEntry.drill`, breadcrumb nav, keyboard "Drill into X" in the table view). Declared on bar/line/area/pie/donut; treemap/sunburst keep native ECharts drill. Reports via `onDrillChange`, doesn't publish to any bus itself. |
-| Drill-through | ui-dashboard | todo |  |
-| Data point selection | ui-dashboard | todo |  |
-| Multi-select | ui-dashboard | todo |  |
+| Drill-through | ui-dashboard | done | A chart's drill path can open the data grid (predicates applied via `gridDrill`, wired by ui-data) or another dashboard. Drill context is carried into click/brush/legend predicates so a leaf-level selection doesn't lose the ancestor levels. |
+| Data point selection | ui-dashboard | done | Click and brush selection, via the raw-value callbacks. |
+| Multi-select | ui-dashboard | done | Shift-click extends a selection (union for categorical `in`, replace for a non-combinable kind like a date bucket or range, since two ANDed ranges on one field can only ever select nothing). |
 | Interactive legends | ui-charts | done | Legend toggles survive cosmetic edits. |
 | Range sliders | ui-charts | partial | Slider dataZoom; xDomain from server after transform merges. |
-| Date range filters | ui-dashboard | todo |  |
-| Dynamic chart updates | ui-dashboard | todo |  |
-| Linked visualizations | ui-charts · ui-dashboard | partial | `echarts.connect` done (ui-charts): refcounted by `linkGroup` membership, synced tooltip/zoom/legend, with a per-chart gesture gate so a brush/legend gesture made on one linked chart never gets misreported as another's. ui-dashboard wires `interactions.linkGroup` from the dashboard's own link groups (in progress). |
+| Date range filters | ui-dashboard | done | Dashboard filter widgets and global filters support a date-range control. |
+| Dynamic chart updates | ui-dashboard | done | Cross-filter refetches via TanStack Query, debounced (150ms) per chart. |
+| Linked visualizations | ui-charts · ui-dashboard | done | `echarts.connect` (ui-charts): refcounted by `linkGroup` membership, synced tooltip/zoom/legend, with a per-chart gesture gate. ui-dashboard wires `interactions.linkGroup` from the dashboard's own link groups and layers the cross-filter bus on top. |
 
 ### 7. Dashboard
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Multiple charts per dashboard | ui-dashboard | todo |  |
-| Drag-and-drop layout | ui-dashboard | todo |  |
-| Resizable chart containers | ui-dashboard | todo |  |
-| Grid-based layout | ui-dashboard | todo |  |
-| Dashboard-level filters | ui-dashboard | todo |  |
-| Global date filters | ui-dashboard | todo |  |
-| Chart synchronization | ui-dashboard | todo |  |
-| Multiple dashboard tabs | ui-dashboard | todo |  |
-| KPI cards | ui-dashboard | todo |  |
-| Text and image widgets | ui-dashboard | todo |  |
-| Responsive layouts | ui-dashboard | todo |  |
+| Multiple charts per dashboard | ui-dashboard | done |  |
+| Drag-and-drop layout | ui-dashboard | done | react-grid-layout, 12-column. |
+| Resizable chart containers | ui-dashboard | done |  |
+| Grid-based layout | ui-dashboard | done |  |
+| Dashboard-level filters | ui-dashboard | done | Filter widgets (date range, dropdown, slider) plus `Project.global_filters` shared across every dashboard in a project. |
+| Global date filters | ui-dashboard | done |  |
+| Chart synchronization | ui-dashboard | done | Shares the same `linkGroup`/cross-filter-bus mechanism as linked visualizations above. |
+| Multiple dashboard tabs | ui-dashboard | done | Selections persist across tab switches (needed its own review round — see the Wave 3 log). |
+| KPI cards | ui-dashboard | done | Value, delta, sparkline. Its quartile-scan cost is a tracked perf watch-item (~150-200ms per KPI on the 10M fixture, within budget). |
+| Text and image widgets | ui-dashboard | done | Markdown (marked + DOMPurify, tag/attribute/URI allowlist) for text; image upload via `POST /api/assets`. |
+| Responsive layouts | ui-dashboard | partial | 12-column layout persists; narrower breakpoints don't yet get their own saved arrangement. |
 
 ### 8. Customization & Themes
 
@@ -656,10 +699,10 @@ Tracked per plot under Plots.md below.
 | Export as CSV | data-core · ui-data | partial | Backend done (DuckDB COPY, job + download). Pipeline sources wait on transform. UI: export job + download. |
 | Export underlying data to Excel | data-core · ui-data | partial | Backend done (streamed xlsxwriter, row-limit warning). UI: export job + download; warning toast must persist. |
 | Copy chart to clipboard | ui-charts | done | ClipboardItem PNG. |
-| Share dashboard through URL | platform · ui-dashboard | partial | Backend done: token mint/list/revoke, public resolve, scoped to what the shared item reaches. UI (`/share/:token` view): ui-dashboard, in progress. |
-| Embed visualizations | platform · ui-dashboard | partial | Backend done: `/api/embed/{token}` (same resolve, public). UI (`/embed/:token`, iframe snippet): ui-dashboard, in progress. |
-| Generate reports | platform · ui-dashboard | partial | Backend done: `/api/reports/{projectId}[/dashboards/{id}]`, authenticated, bundles chart specs/pipelines. HTML/PDF assembly is ui-dashboard's (frontend-rendered, since Python can't render ECharts headlessly), in progress. |
-| Print-friendly layouts | ui-dashboard | todo | Entirely frontend (print CSS); no backend component. |
+| Share dashboard through URL | platform · ui-dashboard | done | Backend: token mint/list/revoke, public resolve, scoped to what the shared item reaches. UI: `/share/:token` read-only view (route wired by ui-data). Hosted-mode gap tracked: the public resolve route is scoped, but chart *data* still goes through the normally-authenticated endpoint, which only "works" for an anonymous viewer locally because auth is a no-op stub. |
+| Embed visualizations | platform · ui-dashboard | done | Backend: `/api/embed/{token}` (same resolve, public). UI: `/embed/:token` (route wired by ui-data), iframe-ready. Same hosted-mode data-scoping gap as sharing. |
+| Generate reports | platform · ui-dashboard | done | Backend: `/api/reports/{projectId}[/dashboards/{id}]`, authenticated, bundles chart specs/pipelines. HTML/PDF assembly is frontend-rendered (ui-dashboard), since Python can't render ECharts headlessly. |
+| Print-friendly layouts | ui-dashboard | done | Print CSS; no backend component. |
 
 ### 10. Workspace & Project Management
 
