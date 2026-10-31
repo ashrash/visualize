@@ -58,12 +58,87 @@ export function hasSeveralGrids(option: Obj): boolean {
   return indices.size > 1;
 }
 
-/** Remove [x, y] points whose x is zero or negative (log x axes). Other items pass through. */
-export function dropNonPositiveX(data: unknown): unknown {
+/**
+ * Remove points whose x is zero or negative (log x axes). `xDims` are the item positions that
+ * hold x (default: the first, as in [x, y]). Items that are not arrays pass through.
+ */
+export function dropNonPositiveX(data: unknown, xDims: number[] = [0]): unknown {
   if (!Array.isArray(data)) return data;
   return data.filter(
-    (item) => !(Array.isArray(item) && typeof item[0] === "number" && item[0] <= 0),
+    (item) =>
+      !(
+        Array.isArray(item) &&
+        xDims.some((d) => typeof item[d] === "number" && (item[d] as number) <= 0)
+      ),
   );
+}
+
+/** The data positions a series reads x from: its `encode.x`, else the first. */
+function xDimsOf(series: Obj): number[] {
+  const encoded = (series.encode as Obj | undefined)?.x;
+  const dims = asArray(encoded as unknown as number | number[] | undefined).filter(
+    (d): d is number => typeof d === "number",
+  );
+  return dims.length > 0 ? dims : [0];
+}
+
+/** Round to the precision of the tick step, so 0.30000000000000004 prints as 0.3. */
+function tidy(value: number, step: number): number {
+  const decimals = Math.max(0, 1 - Math.floor(Math.log10(step)));
+  return Number(value.toFixed(Math.min(decimals, 10)));
+}
+
+/** ECharts' "nice" step: a 1, 2, 5 or 10 times a power of ten. */
+function niceStep(span: number, count: number): number {
+  const raw = span / count;
+  const exp = 10 ** Math.floor(Math.log10(raw));
+  const f = raw / exp;
+  const nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10;
+  return nf * exp;
+}
+
+/**
+ * The tick labels a value or log axis draws for a data extent, so the space an axis title needs
+ * is sized from what is on screen rather than from the raw data maximum (1607.42 is drawn as
+ * "1500", not "1,607.42"). A linear extent always includes 0 like ECharts' value axis does.
+ */
+export function niceTickLabels(
+  extent: [number, number],
+  o: {
+    log?: boolean;
+    logBase?: number;
+    format?: (v: unknown) => string;
+    splitNumber?: number;
+    /** A value axis starts at 0 unless it is a `scale: true` axis. Default true. */
+    includeZero?: boolean;
+  } = {},
+): string[] {
+  const show = (v: number) => (o.format ? o.format(v) : String(v));
+  let [lo, hi] = extent;
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [show(0)];
+  if (o.log) {
+    const base = o.logBase ?? 10;
+    // A log axis only draws positive values: ticks run over the positive part of the extent.
+    if (hi <= 0) return [show(1)];
+    if (lo <= 0) lo = hi;
+    hi = Math.max(hi, lo);
+    const first = Math.floor(Math.log(lo) / Math.log(base));
+    const last = Math.max(first, Math.ceil(Math.log(hi) / Math.log(base)));
+    const labels: string[] = [];
+    for (let e = first; e <= last && labels.length < 20; e++) labels.push(show(base ** e));
+    return labels;
+  }
+  if (o.includeZero !== false) {
+    lo = Math.min(lo, 0);
+    hi = Math.max(hi, 0);
+  }
+  if (hi === lo) hi = lo + 1;
+  const step = niceStep(hi - lo, o.splitNumber ?? 5);
+  const labels: string[] = [];
+  const start = Math.floor(lo / step);
+  const end = Math.ceil(hi / step);
+  for (let k = start; k <= end && labels.length < 20; k++) labels.push(show(tidy(k * step, step)));
+  return labels;
 }
 
 /** Replace non-positive values with null (log axes). Handles plain values and [x, y] pairs. */
@@ -403,7 +478,22 @@ export function applyStyle(
       const onAxis = rawSeries.filter((s, k) => axisOf(s, k) === i);
       const fmt = makeFormatter(yFormatOf(i) ?? "auto", locale);
       const vals = valuesOf(onAxis);
-      const ticks = vals.length ? [fmt(maxOf(vals)), fmt(minOf(vals))] : [fmtAuto(0)];
+      // The widest label is a tick the axis draws (a rounded value), not the data maximum.
+      const log = a.scale === "log";
+      // Log axes draw only positive values, so their ticks start at the smallest of those.
+      const measured = log ? vals.filter((v) => v > 0) : vals;
+      const lo = bound(a.min, "value") ?? minOf(measured);
+      const hi = bound(a.max, "value") ?? maxOf(measured);
+      // `fmt` is the axis's own format; for "auto" it groups digits like ECharts' default axis
+      // labels ("2,000,000"), which is what is actually drawn when no format is set.
+      const ticks = measured.length
+        ? niceTickLabels([lo, hi], {
+            log,
+            logBase: a.logBase ?? 10,
+            format: (v) => fmt(v),
+            includeZero: (yBases[i] as Obj | undefined)?.scale !== true,
+          })
+        : [fmtAuto(0)];
       yAxes.push(
         buildAxis({
           base: yBases[i] ?? { type: "value" },
@@ -465,6 +555,20 @@ export function applyStyle(
     }
   }
 
+  // Brush: a band along the x channel's axis (categories run down the y axis when horizontal).
+  // EChart switches the brush tool on; the chart reports what the band covers.
+  if (managed && spec.interactions?.brush) {
+    out.brush = {
+      [horizontal ? "yAxisIndex" : "xAxisIndex"]: 0,
+      brushType: horizontal ? "lineY" : "lineX",
+      brushMode: "multiple",
+      throttleType: "debounce",
+      throttleDelay: 150,
+      brushStyle: { color: `${t.textMuted}33`, borderColor: t.textMuted, borderWidth: 1 },
+      toolbox: [],
+    };
+  }
+
   // Series.
   const valueFormat = (axisIndex: number): string | null | undefined =>
     style.tooltip.format ??
@@ -495,7 +599,10 @@ export function applyStyle(
     // A log axis cannot draw zero or negative values; drop them rather than draw garbage.
     if (managed && yAxisTypes[ss?.yAxis ?? 0] === "log") result.data = dropNonPositive(s.data);
     // Likewise a log x axis cannot place x <= 0: those points are left out.
-    if (managed && !horizontal && xType === "log") result.data = dropNonPositiveX(result.data);
+    // Custom series place their own marks and may keep a category index first: not touched.
+    if (managed && !horizontal && xType === "log" && type !== "custom") {
+      result.data = dropNonPositiveX(result.data, xDimsOf(s));
+    }
     if (managed) {
       const axis = ss?.yAxis ?? 0;
       if (axis > 0 || s[axisKey] !== undefined) result[axisKey] = axis;

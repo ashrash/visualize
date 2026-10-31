@@ -217,7 +217,14 @@ export function dataZoomOption(
   // A slider helps on dense series; sparse bar charts rarely need one.
   const slider = !o.horizontal && (o.slider ?? o.count > 20);
   return [
-    { type: "inside", ...target, ...view, filterMode: "none" },
+    {
+      type: "inside",
+      ...target,
+      ...view,
+      filterMode: "none",
+      // A brush owns the drag; wheel zoom and the slider still work.
+      ...(spec.interactions?.brush ? { moveOnMouseMove: false } : {}),
+    },
     ...(slider
       ? [{ type: "slider", ...target, ...view, filterMode: "none", height: 18, bottom: 6 }]
       : []),

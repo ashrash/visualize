@@ -50,6 +50,7 @@ function variant(
     paramsSchema: BAR_PARAMS,
     styleSections: sections,
     defaults: { params: { barWidth: 60, barGap: 10 } },
+    drill: { channel: "x" },
     render: (spec, data, theme, ctx) =>
       renderCartesian("bar", { ...spec, style: force(spec) }, data, theme, ctx),
     warnings: (spec, data) => cartesianWarnings({ ...spec, style: force(spec) }, data),

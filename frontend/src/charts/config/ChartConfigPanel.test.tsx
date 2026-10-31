@@ -61,6 +61,48 @@ describe("ChartConfigPanel", () => {
     expect(call(onChange, 0).encodings?.y).toEqual([{ agg: "count" }]);
   });
 
+  it("edits drill-down levels for plots that can drill, offering only category columns", () => {
+    const onChange = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add drill-down level" }));
+    expect(call(onChange, 0).interactions?.drillHierarchy).toEqual(["region"]);
+    // Existing levels stay editable and removable.
+    cleanup();
+    const next = vi.fn();
+    render(
+      <ChartConfigPanel
+        spec={makeSpec({
+          encodings: { x: [{ field: "region" }] },
+          interactions: {
+            zoom: true,
+            brush: false,
+            clickFilter: true,
+            drillHierarchy: ["region", "day"],
+          },
+        })}
+        columns={[
+          ...columns,
+          { name: "city", type: "VARCHAR", semantic: "nominal", nullCount: 0, approxDistinct: 9 },
+        ]}
+        onChange={next}
+      />,
+    );
+    const level = screen.getByLabelText("Drill-down level 1") as HTMLSelectElement;
+    expect([...level.options].map((o) => o.value)).not.toContain("sales");
+    fireEvent.change(level, { target: { value: "city" } });
+    expect(call(next, 0).interactions?.drillHierarchy).toEqual(["city", "day"]);
+    fireEvent.click(screen.getByRole("button", { name: "Remove drill-down level 2" }));
+    expect(call(next, 1).interactions?.drillHierarchy).toEqual(["region"]);
+  });
+
+  it("hides drill-down for plots that cannot drill, and offers brushing on axis plots", () => {
+    setup(makeSpec({ plotType: "histogram" }));
+    expect(screen.queryByRole("button", { name: "Add drill-down level" })).toBeNull();
+    cleanup();
+    const onChange = setup();
+    fireEvent.click(screen.getByLabelText("Select ranges by dragging on the chart"));
+    expect(call(onChange, 0).interactions?.brush).toBe(true);
+  });
+
   it("generates Chart-tab controls from paramsSchema and hides showIf-gated ones", () => {
     const onChange = setup();
     fireEvent.click(tab("Chart"));

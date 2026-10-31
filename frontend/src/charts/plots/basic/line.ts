@@ -31,6 +31,7 @@ export const line = definePlot({
   paramsSchema: LINE_PARAMS,
   styleSections: LINE_SECTIONS,
   defaults: { params: { step: "none", connectNulls: false } },
+  drill: { channel: "x" },
   render: (spec, data, theme, ctx) => renderCartesian("line", spec, data, theme, ctx),
   warnings: cartesianWarnings,
   recommend(columns) {
@@ -49,6 +50,7 @@ export const area = definePlot({
   paramsSchema: LINE_PARAMS,
   styleSections: [...LINE_SECTIONS.filter((s) => s !== "trendline" && s !== "errorBars"), "stack"],
   defaults: { params: { step: "none", connectNulls: false } },
+  drill: { channel: "x" },
   render: (spec, data, theme, ctx) => renderCartesian("area", spec, data, theme, ctx),
   warnings: cartesianWarnings,
   recommend(columns) {

@@ -117,9 +117,15 @@ export interface ChartQueryOptions {
   size?: () => { widthPx: number; heightPx: number } | null;
   /** The project's pipelines; only those the chart's source uses are sent (and keyed on). */
   pipelines?: Pipeline[];
+  /**
+   * The backend's cancellation slot: a newer request in the same slot replaces an in-flight one.
+   * Defaults to the chart id. Give each widget its own when the same spec is shown twice, so
+   * they don't cancel each other.
+   */
+  slot?: string;
 }
 
-function buildRequest(
+export function buildRequest(
   spec: ChartSpec,
   filters: Predicate[],
   options: ChartQueryOptions,
@@ -133,6 +139,7 @@ function buildRequest(
   return {
     spec,
     filters,
+    slot: options.slot ?? spec.id,
     ...(size || options.xRange ? { viewport } : {}),
     ...(pipelines.length > 0 ? { pipelines } : {}),
   };
@@ -153,6 +160,8 @@ export function useChartData(
       filters,
       options.xRange ?? null,
       pipelines.length > 0 ? pipelines : null,
+      // Widgets with their own slot do not share a query: one cancels only its own requests.
+      options.slot ?? null,
     ],
     queryFn: ({ signal }) =>
       fetchChartData(buildRequest(spec, filters, options, pipelines), signal),
@@ -181,6 +190,7 @@ export function useChartOverlays(
       trendlines,
       filters,
       pipelines.length > 0 ? pipelines : null,
+      options.slot ?? null,
     ],
     queryFn: ({ signal }) => fetchOverlays(buildRequest(spec, filters, options, pipelines), signal),
     placeholderData: keepPreviousData,

@@ -199,12 +199,28 @@ export interface PlotEntry {
   /** Lazy assets (GeoJSON, custom series) loaded before the first render. */
   prepare?(spec: ChartSpec): Promise<void>;
   /**
+   * The `spec.params` names `prepare` reads (a map's level and resolution). The chart waits for
+   * a new `prepare` only when one of these changes; any other param edit re-renders in place and
+   * keeps roam/legend/brush state. Omit it and every param change waits (safe, but remounts).
+   *
+   * TODO(plots-geo): declare this on the geo plots (their map level / resolution params are
+   * `affectsData: false`, so it cannot be derived), e.g. choropleth: ["level", "resolution"].
+   */
+  prepareParams?: string[];
+  /**
    * Notices for the chart footer about data the plot could not draw ("3 negative values
    * omitted"). Pure, like render. Return [] when nothing was dropped.
    */
   warnings?(spec: ChartSpec, data: ChartData): string[];
   /** 0–1 suitability for the given columns (chart recommendations). */
   recommend?(columns: Column[]): number;
+  /**
+   * Opt in to drill-down (`interactions.drillHierarchy`): `channel` is the encoding channel
+   * whose field is swapped for the next hierarchy level when a category is clicked. Set it only
+   * when the plot's marks are category marks with their name in the `x` data column (bar, line,
+   * area, pie). Plots that drill natively (treemap, sunburst) leave it unset.
+   */
+  drill?: { channel: string };
 }
 
 /** Type helper for plot modules: `export const histogram = definePlot({...})`. */

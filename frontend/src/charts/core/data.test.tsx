@@ -36,7 +36,7 @@ const arrow = (data: ReturnType<typeof makeData>) => ({
 });
 vi.mock("../../api/http", () => ({ postJson: (...a: unknown[]) => postJson(...a) }));
 
-import { dataIdentity, fetchOverlays, useChartData, usedPipelines } from "./data";
+import { buildRequest, dataIdentity, fetchOverlays, useChartData, usedPipelines } from "./data";
 
 beforeEach(() => {
   postArrow.mockReset();
@@ -79,6 +79,14 @@ describe("dataIdentity (S2)", () => {
   it("keeps every param for a plot with no registry entry", () => {
     const id = dataIdentity(makeSpec({ plotType: "sankey", params: { depth: 3 } }));
     expect(id.params).toEqual({ depth: 3 });
+  });
+});
+
+describe("buildRequest slot", () => {
+  it("defaults the cancellation slot to the chart id, and lets a widget override it", () => {
+    const spec = makeSpec({ id: "chart-1" });
+    expect(buildRequest(spec, [], {}, []).slot).toBe("chart-1");
+    expect(buildRequest(spec, [], { slot: "widget-9" }, []).slot).toBe("widget-9");
   });
 });
 
