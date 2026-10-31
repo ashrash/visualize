@@ -38,10 +38,17 @@ log = logging.getLogger(__name__)
 # size and time).
 MAX_PATTERN_NEEDLE = 256
 
-# Combining Diacritical Marks: the marks decomposed Latin, Greek, Cyrillic and Vietnamese text
-# carries. (`\p{Mn}*` after every letter made long patterns big enough for RE2 to leave its
-# DFA mode: a 43-letter needle took ~4 s per 1M rows instead of ~30 ms.)
-_MARKS = "[\\x{300}-\\x{36f}]*"
+# Combining marks that can follow a pattern-safe (Latin/Greek/Cyrillic/Vietnamese) letter in
+# decomposed text: Combining Diacritical Marks, Cyrillic titlo and related marks, extended and
+# supplementary diacritics, marks for symbols, Cyrillic combining letters, and variation/half
+# marks. (`\p{Mn}*` after every letter made long patterns big enough for RE2 to leave its DFA
+# mode: a 43-letter needle took ~4 s per 1M rows instead of ~30 ms; this explicit, narrower set
+# of ranges keeps the same speed while covering more scripts than the original Latin-only range.)
+_MARKS = (
+    "[\\x{300}-\\x{36f}\\x{483}-\\x{489}\\x{1ab0}-\\x{1aff}\\x{1dc0}-\\x{1dff}"
+    "\\x{20d0}-\\x{20ff}\\x{2de0}-\\x{2dff}\\x{a66f}-\\x{a67d}\\x{a69e}\\x{a69f}"
+    "\\x{fe00}-\\x{fe0f}\\x{fe20}-\\x{fe2f}]*"
+)
 _STRIPPED = frozenset({"Mn", "Mc", "Me"})
 
 
@@ -97,11 +104,17 @@ def accent_pattern(needle: str) -> str:
     """A case-insensitive RE2 pattern matching text whose folded form contains
     `fold(needle)`. Only for needles that pass `pattern_supported`.
 
-    Known, accepted differences from strip_accents (RE2 `(?i)` case-folding quirks and marks
-    on non-letters): "s" also matches U+017F (long s), "µ" (micro sign) also matches Greek "μ"
-    and vice versa, and a combining mark after a digit or symbol in the data isn't skipped
-    ("12" doesn't match "1" + U+0301 + "2"). Data characters outside the pattern-safe ranges
-    that strip_accents folds to Latin (e.g. U+212B ANGSTROM SIGN) aren't matched either."""
+    Known, accepted differences from strip_accents:
+    - RE2 `(?i)` case-folds within groups strip_accents doesn't, so the pattern matches a few
+      more characters than it should: "s"/U+017F (long s)/U+1E9B, "µ"/Greek "μ", sigma forms
+      (σ/ς/Σ), Greek symbol forms (ϐ ϑ ϕ ϖ ϰ ϱ ϵ), Cyrillic Extended-C (U+1C80-U+1C88), and
+      U+0345 (combining ypogegrammeni) matching "ι".
+    - A combining mark after a digit or symbol in the data isn't skipped ("12" doesn't match
+      "1" + U+0301 + "2"), since only letters get `_MARKS` appended.
+    - Exactly three precomposed characters that strip_accents folds to a pattern-safe form
+      aren't matched by the pattern: U+2260 (≠ -> "="), U+226E (≮ -> "<"), U+226F (≯ -> ">").
+      (U+212B ANGSTROM SIGN *is* matched: RE2's case-fold group puts it with "å".)
+    See tests/ingest/test_search.py for the cases this pins."""
     parts = ["(?i)"]
     for ch in fold(needle):
         alts = _VARIANTS.get(ch)

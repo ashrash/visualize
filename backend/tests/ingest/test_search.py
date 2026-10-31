@@ -173,6 +173,17 @@ def test_other_scripts_route_to_strip_accents_and_match(needle: str) -> None:
     assert _matches(con, _contains_sql(needle, dictionary=False), []) == expected
 
 
+def test_pattern_matches_marks_beyond_combining_diacriticals() -> None:
+    """`_MARKS` covers more than U+0300-U+036F (Combining Diacritical Marks): Cyrillic titlo
+    and similar marks appear in real text (Church Slavonic) after a pattern-safe letter."""
+    con = duckdb.connect()
+    titlo = "҃"  # Cyrillic titlo, category Mn, outside U+0300-U+036F
+    word = "а" + titlo + "б"  # Cyrillic "аб" with a titlo over the а
+    con.register("words", pa.table({"w": pa.array([word])}))
+    assert _matches(con, _contains_sql("аб", dictionary=True), []) == [word]
+    assert _matches(con, _contains_sql("аб", dictionary=False), []) == [word]
+
+
 def test_known_differences_of_the_pattern() -> None:
     """Documented in `accent_pattern`; accepted, not bugs."""
     con = duckdb.connect()
@@ -191,9 +202,11 @@ def test_pattern_cost_is_bounded_at_the_needle_cap() -> None:
     """`\\p{Mn}*` after each letter pushed RE2 out of its DFA mode above ~40 letters (a
     256-letter needle took ~30-60 s per 1M rows). The narrow mark class keeps it near the
     strip_accents cost."""
-    needle = ("The quick brown fox jumps over the lazy dog " * 6)[:MAX_PATTERN_NEEDLE]
+    # "o" has the largest variant class (68 accented forms), so this is the actual worst case,
+    # not just a representative one.
+    needle = "o" * MAX_PATTERN_NEEDLE
     assert pattern_supported(needle)
-    assert len(accent_pattern(needle)) <= 600 * MAX_PATTERN_NEEDLE
+    assert len(accent_pattern(needle)) <= 700 * MAX_PATTERN_NEEDLE
     con = duckdb.connect()
     con.sql(
         "CREATE TABLE words AS SELECT 'Crème ' || md5(i::VARCHAR) || ' brûlée' AS w "
@@ -315,3 +328,26 @@ def test_a_file_row_number_column_skips_late_pages(
         request = RowsRequest.model_validate({"limit": 10, **body})
         table, meta = rows_page(engine, storage, dataset, request, max_limit=100, late_min_rows=0)
         assert meta.total_rows == 25 and table.num_rows == 10
+
+
+def test_a_file_row_number_column_skips_materialized_views(
+    client: TestClient, write: Callable[[str, bytes | str], Path], run_import: Callable[..., Any]
+) -> None:
+    """The same file_row_number collision breaks a materialized view's own
+    read_parquet(file_row_number := true) read, once one is built. RowViews must not offer to
+    build or serve a view for such a dataset; the direct path is always correct."""
+    from viz.ingest.views import RowViews
+
+    lines = ["file_row_number,city"] + [f"{i},{'Zürich' if i % 2 else 'Oslo'}" for i in range(50)]
+    path = write("rownum_views.csv", "\n".join(lines) + "\n")
+    dataset = Dataset.model_validate(run_import(path=str(path)))
+    engine = client.app.state.engine  # type: ignore[attr-defined]
+    storage = client.app.state.storage  # type: ignore[attr-defined]
+    views = RowViews(engine, storage, min_rows=0)
+    request = RowsRequest.model_validate({"search": "zur", "limit": 10})
+    version = dataset.versions[-1]
+    assert views._eligible(version, request) is False
+    table, meta = rows_page(
+        engine, storage, dataset, request, max_limit=100, late_min_rows=0, views=views
+    )
+    assert meta.total_rows == 25 and table.num_rows == 10

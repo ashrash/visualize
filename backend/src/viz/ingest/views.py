@@ -40,6 +40,7 @@ from sqlglot import exp
 from viz.chartdata.sql import col
 from viz.contracts import Dataset, DatasetVersion, RowsRequest
 from viz.engine import Engine
+from viz.ingest.rows import ROW_NUMBER
 from viz.storage import LocalStorage
 
 log = logging.getLogger(__name__)
@@ -106,6 +107,10 @@ class RowViews:
 
     def _eligible(self, version: DatasetVersion, request: RowsRequest) -> bool:
         if not needs_view(request) or version.row_count < self.min_rows:
+            return False
+        # A real column named file_row_number collides with read_parquet's own (as in
+        # rows._late_page and transform/compiler.py): a view built over it can't be read back.
+        if any(c.name.lower() == ROW_NUMBER for c in version.columns):
             return False
         if version.size_bytes is None:
             return True
