@@ -370,14 +370,19 @@ def test_one_shot_upload_cleans_its_staging(client: TestClient) -> None:
     assert _staged_dirs(client) == []
 
 
-def test_search_is_case_insensitive_not_accent_insensitive(
-    client: TestClient, stage: Stage
-) -> None:
-    """Accent folding is deferred to Wave 4 (it made free-text search ~4x slower)."""
+def test_search_is_case_and_accent_insensitive(client: TestClient, stage: Stage) -> None:
+    """Accent folding is back in Wave 4 at ~plain-lower() cost (see viz.ingest.search)."""
     staged = stage("cities.csv", "city\nZürich\nMontréal\nOslo\n".encode())
     job = import_job(client, stagedId=staged["stagedId"])
     ds = job.result.dataset_id
-    cases = (("zür", ["Zürich"]), ("ZÜR", ["Zürich"]), ("zur", []), ("MONTRÉ", ["Montréal"]))
+    cases = (
+        ("zür", ["Zürich"]),
+        ("ZÜR", ["Zürich"]),
+        ("zur", ["Zürich"]),
+        ("MONTRÉ", ["Montréal"]),
+        ("montre", ["Montréal"]),
+        ("oslø", []),
+    )
     for needle, expected in cases:
         response = client.post(f"/api/datasets/{ds}/rows", json={"search": needle})
         table, _ = read_arrow(response.content)
