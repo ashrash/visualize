@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 from scipy import stats as sps
 
+from viz.plots import scoped_registry
+
 SALES = """region,product,sales,units,order_date
 North,Widget,120.5,3,2024-01-05
 South,Widget,80,2,2024-01-17
@@ -319,12 +321,14 @@ def test_errors(upload: Any, client: Any, make_spec: Any) -> None:
             "/api/charts/data", json={"spec": make_spec(ds["id"], encodings=encodings)}
         )
         assert response.status_code == 422, (encodings, response.text)
-    # TODO(lead): pick an always-unimplemented stand-in (e.g. scoped_registry with nothing
-    # registered) once every Plots.md family has a server module; "violin" is now implemented
-    # (Wave 2, plots-distribution-relationship), and "sankey" is only a placeholder until
-    # plots-composition-specialized lands.
-    response = client.post(
-        "/api/charts/data",
-        json={"spec": make_spec(ds["id"], "sankey", encodings={"x": [{"field": "region"}]})},
-    )
-    assert response.status_code == 501
+    # Every Plots.md plot type is registered now (Wave 2 is complete), so there's no longer a
+    # real PlotType to use as an "unimplemented" stand-in. An empty scoped registry makes any
+    # otherwise-valid plot type unimplemented for the duration of the request. The default "bar"
+    # doesn't exercise this: it's handled by the generic aggregate path (chartdata.basic), not
+    # the viz.plots registry, so it ignores an empty scoped_registry() - use a plots/-family type.
+    with scoped_registry():
+        response = client.post(
+            "/api/charts/data",
+            json={"spec": make_spec(ds["id"], "histogram", encodings={"x": [{"field": "sales"}]})},
+        )
+        assert response.status_code == 501

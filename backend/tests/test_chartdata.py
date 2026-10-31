@@ -7,6 +7,7 @@ import pyarrow as pa
 from fastapi.testclient import TestClient
 
 from viz.contracts import ARROW_META_KEY
+from viz.plots import scoped_registry
 
 
 def _chart(client: TestClient, body: dict[str, Any]) -> tuple[pa.Table, dict[str, Any]]:
@@ -74,11 +75,18 @@ def test_unknown_field_and_unimplemented_plot(
     assert response.status_code == 422
     assert "nope" in response.json()["detail"]
 
-    # TODO(lead): "violin" is now implemented (Wave 2, plots-distribution-relationship);
-    # "sankey" stands in until plots-composition-specialized lands. Pick an always-unimplemented
-    # stand-in once every Plots.md family has a server module.
-    body = _bar(sales_dataset["id"], plotType="sankey")
-    assert client.post("/api/charts/data", json=body).status_code == 501
+    # Every Plots.md plot type is registered now (Wave 2 is complete), so there's no longer a
+    # real PlotType to use as an "unimplemented" stand-in. An empty scoped registry makes any
+    # otherwise-valid plot type unimplemented for the duration of the request. "bar" doesn't
+    # exercise this: it's handled by the generic aggregate path (chartdata.basic), not the
+    # viz.plots registry, so it ignores an empty scoped_registry() - use a plots/-family type.
+    with scoped_registry():
+        body = _bar(
+            sales_dataset["id"],
+            plotType="histogram",
+            encodings={"x": [{"field": "sales"}]},
+        )
+        assert client.post("/api/charts/data", json=body).status_code == 501
 
 
 def test_plot_catalogue(client: TestClient) -> None:
