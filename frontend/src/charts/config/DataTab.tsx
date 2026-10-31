@@ -173,10 +173,7 @@ function Channel({ channel, encodings, columns, onChange }: ChannelProps) {
         />
       ))}
       <div>
-        <SmallButton
-          onClick={() => onChange([...encodings, { agg: "count" }])}
-          label={`+ Add ${channel.label.toLowerCase()}`}
-        >
+        <SmallButton onClick={() => onChange([...encodings, { agg: "count" }])}>
           + Add {channel.label.toLowerCase()}
         </SmallButton>
       </div>
