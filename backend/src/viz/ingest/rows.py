@@ -167,7 +167,9 @@ def rows_page(
             return table, _meta(request, limit, total, version)
 
     needs_scan = bool(request.sort or request.filters or request.search)
-    if needs_scan and version.row_count >= late_min_rows:
+    # A real column named file_row_number collides with read_parquet's (as in transform).
+    clash = any(c.name.lower() == ROW_NUMBER for c in version.columns)
+    if needs_scan and not clash and version.row_count >= late_min_rows:
         table, total = _late_page(engine, path, dataset, version, request, limit, key)
     else:
         query = filtered_select(

@@ -1,22 +1,26 @@
 """Grid free-text search: case- and accent-insensitive "contains" ("zur" finds "Zürich").
 
-The obvious SQL, `contains(strip_accents(lower(col)), fold(needle))`, is cheap on
-dictionary-encoded Parquet columns (DuckDB evaluates the function once per dictionary entry)
-and on ASCII text, but `strip_accents` costs ~4-5x `lower` on high-cardinality non-ASCII text
-(10M unique accented strings: ~1.0 s vs ~0.2 s). A case-insensitive RE2 pattern that expands
-each letter of the needle into a class of its accented forms (`z[uùúûü...]\\p{Mn}*r`) leaves
-the data untouched and runs at about `lower` speed on such columns, but RE2 isn't evaluated
-per dictionary entry, so on dictionary columns it is ~10x slower than `strip_accents`.
+The obvious SQL, `contains(strip_accents(lower(col)), strip_accents(lower(needle)))`, is cheap
+on dictionary-encoded Parquet columns (DuckDB evaluates the function once per dictionary
+entry) and on ASCII text, but `strip_accents` costs ~4-5x `lower` on high-cardinality
+non-ASCII text (10M unique accented strings: ~1.0 s vs ~0.2 s). A case-insensitive RE2
+pattern that expands each letter of the needle into a class of its accented forms
+(`z[uùúûü...][\\x{300}-\\x{36f}]*r`) leaves the data untouched and runs at about `lower` speed
+on such columns, but RE2 isn't evaluated per dictionary entry, so on dictionary columns it is
+~10x slower than `strip_accents`.
 
 So each text column gets the form that is cheap for its Parquet layout: `strip_accents` when
-most of its row groups are dictionary-encoded, the pattern otherwise. Both match the same
-rows (see tests/ingest/test_search.py).
+most of its row groups are dictionary-encoded, the pattern otherwise. The pattern is only used
+for Latin, Greek and Cyrillic needles (`pattern_supported`); any other needle (Hangul,
+Devanagari, Thai, CJK, ...) uses `strip_accents` on every column. Both forms match the same
+rows, up to the small documented differences in `accent_pattern` (see
+tests/ingest/test_search.py).
 """
 
 from __future__ import annotations
 
-import functools
 import logging
+import threading
 import unicodedata
 from pathlib import Path
 
@@ -28,25 +32,40 @@ from viz.chartdata.sql import col, lit
 
 log = logging.getLogger(__name__)
 
-# Needles longer than this always use strip_accents: the pattern grows ~40 bytes per letter.
+# Longer needles always use strip_accents. A pattern is ~170 bytes per letter of English text
+# (each letter's class lists its accented forms; 43 KB at the cap); with the narrow mark class
+# below RE2 stays in its fast DFA mode up to this cap (tests/ingest/test_search.py bounds
+# size and time).
 MAX_PATTERN_NEEDLE = 256
+
+# Combining Diacritical Marks: the marks decomposed Latin, Greek, Cyrillic and Vietnamese text
+# carries. (`\p{Mn}*` after every letter made long patterns big enough for RE2 to leave its
+# DFA mode: a 43-letter needle took ~4 s per 1M rows instead of ~30 ms.)
+_MARKS = "[\\x{300}-\\x{36f}]*"
+_STRIPPED = frozenset({"Mn", "Mc", "Me"})
+
+
+def _pattern_safe(cp: int) -> bool:
+    """Code points the pattern form handles like `strip_accents(lower())`: ASCII, Latin,
+    Greek and Cyrillic (below U+0530) and Latin/Greek Extended (U+1E00-U+1FFF). The tests
+    check `fold` against DuckDB for every one of them. Other scripts always use
+    strip_accents: NFD splits Hangul syllables into jamo (DuckDB doesn't), and many Indic and
+    Southeast Asian vowel signs are spacing marks."""
+    return cp < 0x530 or 0x1E00 <= cp <= 0x1FFF
 
 
 def fold(text: str) -> str:
-    """Python mirror of DuckDB's `strip_accents(lower(text))`: lower case, canonical
-    decomposition, nonspacing marks removed."""
+    """Python mirror of DuckDB's `strip_accents(lower(text))` for pattern-safe text: lower
+    case, canonical decomposition, combining marks (Mn, Mc, Me) removed."""
     decomposed = unicodedata.normalize("NFD", text.lower())
-    return "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
+    return "".join(c for c in decomposed if unicodedata.category(c) not in _STRIPPED)
 
 
-@functools.cache
-def _variants() -> dict[str, frozenset[str]]:
-    """Folded character -> the precomposed characters (BMP) that fold to it, e.g. "u" ->
-    {ù, ú, û, ü, Ū, ...}."""
+def _build_variants() -> dict[str, frozenset[str]]:
+    """Folded character -> the pattern-safe precomposed characters that fold to it, e.g.
+    "u" -> {ù, ú, û, ü, Ū, ...}."""
     found: dict[str, set[str]] = {}
-    for cp in range(0x80, 0x10000):
-        if 0xD800 <= cp <= 0xDFFF:
-            continue
+    for cp in [*range(0x80, 0x530), *range(0x1E00, 0x2000)]:
         ch = chr(cp)
         base = fold(ch)
         if len(base) == 1 and base != ch and base != ch.lower():
@@ -54,29 +73,49 @@ def _variants() -> dict[str, frozenset[str]]:
     return {k: frozenset(v) for k, v in found.items()}
 
 
+# About 1,700 code points, so it's built at import (ms) rather than on the first search.
+_VARIANTS = _build_variants()
+
+
+def pattern_supported(needle: str) -> bool:
+    """Whether `accent_pattern(needle)` may stand in for strip_accents."""
+    if not needle or len(needle) > MAX_PATTERN_NEEDLE:
+        return False
+    if not all(_pattern_safe(ord(c)) for c in needle):
+        return False
+    folded = fold(needle)
+    return bool(folded) and all(_pattern_safe(ord(c)) for c in folded)
+
+
 def _escape(ch: str) -> str:
     if ch.isascii() and ch.isalnum():
         return ch
-    return f"\\x{{{ord(ch):x}}}"
+    return "\\x{" + format(ord(ch), "x") + "}"
 
 
 def accent_pattern(needle: str) -> str:
     """A case-insensitive RE2 pattern matching text whose folded form contains
-    `fold(needle)`."""
-    variants = _variants()
+    `fold(needle)`. Only for needles that pass `pattern_supported`.
+
+    Known, accepted differences from strip_accents (RE2 `(?i)` case-folding quirks and marks
+    on non-letters): "s" also matches U+017F (long s), "µ" (micro sign) also matches Greek "μ"
+    and vice versa, and a combining mark after a digit or symbol in the data isn't skipped
+    ("12" doesn't match "1" + U+0301 + "2"). Data characters outside the pattern-safe ranges
+    that strip_accents folds to Latin (e.g. U+212B ANGSTROM SIGN) aren't matched either."""
     parts = ["(?i)"]
     for ch in fold(needle):
-        alts = variants.get(ch)
+        alts = _VARIANTS.get(ch)
         if alts:
             parts.append("[" + "".join(_escape(c) for c in sorted(alts | {ch})) + "]")
         else:
             parts.append(_escape(ch))
         if unicodedata.category(ch).startswith("L"):
             # Decomposed input ("u" + U+0308): strip_accents drops the marks too.
-            parts.append(r"\p{Mn}*")
+            parts.append(_MARKS)
     return "".join(parts)
 
 
+_layouts_lock = threading.Lock()
 _layouts: LRUCache[tuple[str, float, int], dict[str, bool]] = LRUCache(maxsize=256)
 
 
@@ -88,7 +127,8 @@ def dictionary_columns(path: Path) -> dict[str, bool]:
         cache_key = (str(path), stat.st_mtime, stat.st_size)
     except OSError:
         return {}
-    found = _layouts.get(cache_key)
+    with _layouts_lock:
+        found = _layouts.get(cache_key)
     if found is not None:
         return found
     try:
@@ -105,14 +145,15 @@ def dictionary_columns(path: Path) -> dict[str, bool]:
                 1 if chunk.has_dictionary_page else -1
             )
     result = {name: score > 0 for name, score in votes.items()}
-    _layouts[cache_key] = result
+    with _layouts_lock:
+        _layouts[cache_key] = result
     return result
 
 
 def contains_folded(column: str, needle: str, *, dictionary: bool) -> exp.Expr:
     """Accent- and case-insensitive `column contains needle`, in the form that is cheap for
-    the column's layout."""
-    if dictionary or len(needle) > MAX_PATTERN_NEEDLE:
+    the column's layout and exact for the needle's script."""
+    if dictionary or not pattern_supported(needle):
         return exp.Anonymous(
             this="contains",
             expressions=[_strip_lower(col(column)), _strip_lower(lit(needle))],
