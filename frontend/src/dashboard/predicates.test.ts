@@ -4,6 +4,7 @@ import type { ChartBrush, ChartLegendChange, ChartPointClick } from "../charts";
 import {
   brushPredicates,
   bucketBounds,
+  canBrushFilter,
   canClickFilter,
   extendSelection,
   legendPredicates,
@@ -72,10 +73,51 @@ describe("pointPredicates (raw values from ChartView)", () => {
     expect(q).toMatchObject({ min: "2024-04-01T00:00:00.000Z", max: "2024-07-01T00:00:00.000Z" });
   });
 
-  it("matches a raw time value exactly when there is no bucket", () => {
+  it("matches the millisecond around a raw time value when there is no bucket", () => {
+    // timestamps carry finer precision than a JavaScript date: an exact match would miss them
     const s = spec({ x: [{ field: "ts" }] }, { plotType: "line" });
+    expect(pointPredicates(s, click("ts", "2024-05-15T13:45:00.000Z"), { temporal: true })).toEqual(
+      [
+        {
+          op: "between_dates",
+          field: "ts",
+          min: "2024-05-15T13:45:00.000Z",
+          max: "2024-05-15T13:45:00.001Z",
+          includeMin: true,
+          includeMax: false,
+        },
+      ],
+    );
+    // a text column that merely looks like a date stays an exact match
     expect(pointPredicates(s, click("ts", "2024-05-15T13:45:00.000Z"))).toEqual([
       { op: "in", field: "ts", values: ["2024-05-15T13:45:00.000Z"] },
+    ]);
+  });
+
+  it("takes the bucket from the x channel, not another channel using the same field", () => {
+    // order_date is bucketed on x but also a plain measure (count distinct) on y
+    const s = spec({
+      y: [{ field: "order_date", agg: "count_distinct" }],
+      x: [{ field: "order_date", timeUnit: "month" }],
+    });
+    const [p] = pointPredicates(s, click("order_date", "2024-02-01T00:00:00.000Z"));
+    expect(p).toMatchObject({ op: "between_dates", max: "2024-03-01T00:00:00.000Z" });
+    // and a field that is only a measure is never a bucket
+    const measureOnly = spec({
+      y: [{ field: "d", timeUnit: "month" }],
+      x: [{ field: "region" }],
+    });
+    expect(pointPredicates(measureOnly, click("d", "2024-02-01T00:00:00.000Z"))).toEqual([
+      { op: "in", field: "d", values: ["2024-02-01T00:00:00.000Z"] },
+    ]);
+  });
+
+  it("puts the drill path in front, so a leaf click keeps its context", () => {
+    const s = spec({ x: [{ field: "country" }] });
+    const path = [{ op: "eq" as const, field: "country", value: "US" }];
+    expect(pointPredicates(s, click("state", "Texas"), { drill: path })).toEqual([
+      { op: "eq", field: "country", value: "US" },
+      { op: "in", field: "state", values: ["Texas"] },
     ]);
   });
 
@@ -88,7 +130,7 @@ describe("pointPredicates (raw values from ChartView)", () => {
 
   it("adds the raw colour group when it is known", () => {
     const s = spec({ x: [{ field: "region" }], color: [{ field: "tier" }] });
-    expect(pointPredicates(s, click("region", "N"), 2)).toEqual([
+    expect(pointPredicates(s, click("region", "N"), { color: 2 })).toEqual([
       { op: "in", field: "region", values: ["N"] },
       { op: "in", field: "tier", values: [2] },
     ]);
@@ -113,6 +155,35 @@ describe("which plots can click-filter", () => {
     expect(canClickFilter(spec({}, { plotType: "pie" }))).toBe(true);
     expect(canClickFilter(spec({}, { plotType: "scatter" }))).toBe(false);
     expect(canClickFilter(spec({}, { plotType: "histogram" }))).toBe(false);
+  });
+});
+
+describe("which plots can brush-filter", () => {
+  it("only plots whose brushed axis is in the units of the x field", () => {
+    for (const plotType of [
+      "bar",
+      "horizontal_bar",
+      "grouped_bar",
+      "stacked_bar",
+      "line",
+      "area",
+      "scatter",
+    ]) {
+      expect(canBrushFilter(spec({}, { plotType: plotType as never }))).toBe(true);
+    }
+    // the x channel names a field, but the axis shows something computed from it
+    for (const plotType of [
+      "qq",
+      "lag",
+      "andrews_curves",
+      "pca_biplot",
+      "cluster",
+      "event_study",
+      "pie",
+      "histogram",
+    ]) {
+      expect(canBrushFilter(spec({}, { plotType: plotType as never }))).toBe(false);
+    }
   });
 });
 
@@ -204,6 +275,53 @@ describe("brushPredicates (raw values from ChartView)", () => {
     ]);
   });
 
+  it("fails closed for bands that do not touch: one range would include buckets nobody picked", () => {
+    const s = spec({ x: [{ field: "d", timeUnit: "month" }] });
+    const b = brushOf({
+      field: "d",
+      // Jan-Feb and Jun-Jul: a single range [Jan 1, Aug 1) would take in Mar-May as well
+      categories: ["Jan", "Feb", "Jun", "Jul"],
+      values: [
+        "2024-01-01T00:00:00.000Z",
+        "2024-02-01T00:00:00.000Z",
+        "2024-06-01T00:00:00.000Z",
+        "2024-07-01T00:00:00.000Z",
+      ],
+    });
+    expect(brushPredicates(s, b)).toEqual([]);
+  });
+
+  it("accepts touching bands in any order, and a single bucket", () => {
+    const s = spec({ x: [{ field: "d", timeUnit: "month" }] });
+    const touching = brushOf({
+      field: "d",
+      categories: ["Mar", "Jan", "Feb"],
+      values: ["2024-03-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z", "2024-02-01T00:00:00.000Z"],
+    });
+    expect(brushPredicates(s, touching)).toEqual([
+      {
+        op: "between_dates",
+        field: "d",
+        min: "2024-01-01T00:00:00.000Z",
+        max: "2024-04-01T00:00:00.000Z",
+        includeMin: true,
+        includeMax: false,
+      },
+    ]);
+    const one = brushOf({ field: "d", categories: ["Jan"], values: ["2024-01-01T00:00:00.000Z"] });
+    expect(brushPredicates(s, one)[0]).toMatchObject({ max: "2024-02-01T00:00:00.000Z" });
+  });
+
+  it("keeps the drill path in front of a brush", () => {
+    const s = spec({ x: [{ field: "state" }] });
+    const path = [{ op: "eq" as const, field: "country", value: "US" }];
+    expect(
+      brushPredicates(s, brushOf({ field: "state", categories: ["TX"], values: ["TX"] }), {
+        drill: path,
+      }),
+    ).toEqual([path[0], { op: "in", field: "state", values: ["TX"] }]);
+  });
+
   it("filters nothing when cleared, or when a brushed label has no value in the data", () => {
     const s = spec({ x: [{ field: "region" }] });
     expect(brushPredicates(s, brushOf({ cleared: true }))).toEqual([]);
@@ -214,7 +332,7 @@ describe("brushPredicates (raw values from ChartView)", () => {
     );
   });
 
-  it("ignores a band along the measure axis (horizontal charts) and several value ranges", () => {
+  it("ignores a value range along a y axis, and several value ranges", () => {
     const s = spec({ x: [{ field: "region" }] });
     expect(brushPredicates(s, brushOf({ axis: "y", kind: "value", ranges: [[1, 2]] }))).toEqual([]);
     expect(
@@ -231,7 +349,7 @@ describe("brushPredicates (raw values from ChartView)", () => {
     ).toEqual([]);
   });
 
-  it("a horizontal chart's category brush (axis y) still filters its categories", () => {
+  it("a horizontal chart brushes along y, where its categories run, and still filters them", () => {
     const s = spec({ x: [{ field: "region" }] });
     expect(brushPredicates(s, brushOf({ axis: "y", categories: ["N"], values: ["N"] }))).toEqual([
       { op: "in", field: "region", values: ["N"] },
@@ -239,31 +357,60 @@ describe("brushPredicates (raw values from ChartView)", () => {
   });
 });
 
-const legendOf = (over: Partial<ChartLegendChange>): ChartLegendChange => ({
-  toggled: "app",
-  selected: {},
-  shown: ["web", "store"],
+const legendOf = (over: Partial<ChartLegendChange>) => ({
+  field: "channel" as string | null,
   hidden: ["app"],
-  field: "channel",
-  shownValues: ["web", "store"],
-  hiddenValues: ["app"],
+  hiddenValues: ["app"] as ChartLegendChange["hiddenValues"],
   ...over,
 });
+const domain = ["web", "app", "store"];
 
 describe("legendPredicates (raw values from ChartView)", () => {
-  it("keeps only the groups still on, as raw values", () => {
-    expect(legendPredicates(legendOf({}))).toEqual([
+  it("keeps every colour value except the hidden ones", () => {
+    expect(legendPredicates(legendOf({}), { domain, measures: 1 })).toEqual([
       { op: "in", field: "channel", values: ["web", "store"] },
     ]);
-    expect(legendPredicates(legendOf({ shownValues: [2, null] }))).toEqual([
-      { op: "in", field: "channel", values: [2, null] },
-    ]);
+    expect(
+      legendPredicates(legendOf({ hidden: ["1"], hiddenValues: [1] }), {
+        domain: [1, 2, null],
+        measures: 1,
+      }),
+    ).toEqual([{ op: "in", field: "channel", values: [2, null] }]);
   });
 
-  it("does not filter when every group is on, none maps to data, or there is no colour field", () => {
-    expect(legendPredicates(legendOf({ hidden: [], hiddenValues: [] }))).toEqual([]);
-    expect(legendPredicates(legendOf({ shownValues: [] }))).toEqual([]);
-    expect(legendPredicates(legendOf({ field: null }))).toEqual([]);
+  it("fails open: a hidden entry that does not resolve to a value filters nothing", () => {
+    // 'ghost' is hidden but maps to no raw value: narrowing to the others would be a guess
+    expect(
+      legendPredicates(legendOf({ hidden: ["app", "ghost"], hiddenValues: ["app"] }), {
+        domain,
+        measures: 1,
+      }),
+    ).toEqual([]);
+  });
+
+  it("does not filter when nothing is hidden, everything is, or the hidden value is not in the data", () => {
+    expect(
+      legendPredicates(legendOf({ hidden: [], hiddenValues: [] }), { domain, measures: 1 }),
+    ).toEqual([]);
+    expect(
+      legendPredicates(legendOf({ hidden: domain, hiddenValues: domain }), { domain, measures: 1 }),
+    ).toEqual([]);
+    expect(
+      legendPredicates(legendOf({ hidden: ["x"], hiddenValues: ["x"] }), { domain, measures: 1 }),
+    ).toEqual([]);
+  });
+
+  it("does not filter without a colour field or data, or with several measures (entries are series)", () => {
+    expect(legendPredicates(legendOf({ field: null }), { domain, measures: 1 })).toEqual([]);
+    expect(legendPredicates(legendOf({}), { domain: undefined, measures: 1 })).toEqual([]);
+    expect(legendPredicates(legendOf({}), { domain, measures: 2 })).toEqual([]);
+  });
+
+  it("keeps the drill path in front", () => {
+    const path = [{ op: "eq" as const, field: "country", value: "US" }];
+    expect(legendPredicates(legendOf({}), { domain, measures: 1, drill: path })[0]).toEqual(
+      path[0],
+    );
   });
 });
 
@@ -274,6 +421,24 @@ describe("extendSelection", () => {
     expect(added).toEqual([inP(["N", "S"])]);
     expect(extendSelection(added, [inP(["N"])])).toEqual([inP(["S"])]);
     expect(extendSelection([inP(["S"])], [inP(["S"])])).toEqual([]);
+  });
+  it("replaces an earlier date bucket or range on the same field instead of stacking them", () => {
+    const bucket = (m: number) => ({
+      op: "between_dates" as const,
+      field: "d",
+      min: `2024-0${m}-01T00:00:00.000Z`,
+      max: `2024-0${m + 1}-01T00:00:00.000Z`,
+      includeMin: true,
+      includeMax: false,
+    });
+    expect(extendSelection([bucket(1)], [bucket(3)])).toEqual([bucket(3)]);
+  });
+  it("does not repeat the same drill predicate when extending", () => {
+    const drill = { op: "eq" as const, field: "country", value: "US" };
+    expect(extendSelection([drill, inP(["N"])], [drill, inP(["S"])])).toEqual([
+      drill,
+      inP(["N", "S"]),
+    ]);
   });
   it("compares selections regardless of value order", () => {
     expect(sameSelection([inP(["a", "b"])], [inP(["b", "a"])])).toBe(true);

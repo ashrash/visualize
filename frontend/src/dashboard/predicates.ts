@@ -67,7 +67,28 @@ export const CLICK_FILTER_PLOTS: ReadonlySet<string> = new Set([
   "donut",
 ]);
 
+/**
+ * Plot types whose brushed axis is in the units of the x field, so a band can filter it: the
+ * categories or values of that field. Not Q-Q plots (theoretical quantiles), lag, Andrews, PCA or
+ * cluster scores, event time and the like: their x channel names a field but the axis shows
+ * something computed from it, and a band over it would filter by numbers nobody selected.
+ * Scatter is in because its value axis is in data units, even in the binned-density fallback.
+ */
+export const BRUSH_FILTER_PLOTS: ReadonlySet<string> = new Set([
+  "bar",
+  "horizontal_bar",
+  "grouped_bar",
+  "stacked_bar",
+  "percent_stacked_bar",
+  "line",
+  "area",
+  "stacked_area",
+  "scatter",
+]);
+
 export const canClickFilter = (spec: ChartSpec) => CLICK_FILTER_PLOTS.has(spec.plotType);
+
+export const canBrushFilter = (spec: ChartSpec) => BRUSH_FILTER_PLOTS.has(spec.plotType);
 
 function datePredicate(field: string, from: number, to: number, closed: boolean): Predicate {
   return {
@@ -80,23 +101,26 @@ function datePredicate(field: string, from: number, to: number, closed: boolean)
   };
 }
 
-/** The encoding that feeds `field` (the x channel, or the drilled level's replacement). */
-function encodingOf(spec: ChartSpec, field: string): Encoding | undefined {
-  for (const items of Object.values(spec.encodings ?? {})) {
-    const hit = items.find((e) => e.field === field);
-    if (hit) return hit;
-  }
-  return undefined;
+/**
+ * The time bucket of the x field. Only the x channel is looked at: the same field can also be a
+ * measure or a colour on another channel, and that encoding says nothing about the x axis.
+ */
+function bucketUnit(spec: ChartSpec, field: string): TimeUnit | undefined {
+  const x = spec.encodings?.x?.[0];
+  return x?.field === field ? (x.timeUnit ?? undefined) : undefined;
 }
 
 /**
  * One raw x value as a predicate. With a `timeUnit` the raw value is the START of a bucket, so it
- * becomes the half-open range of that bucket; otherwise it is an exact match (NULL for blank).
+ * becomes the half-open range of that bucket. A raw time value without a bucket becomes the
+ * half-open millisecond around it: timestamps carry finer precision than a JavaScript date. Any
+ * other value is an exact match (NULL for blank).
  */
 function valuePredicate(
   field: string,
   raw: DrillValue,
   unit: TimeUnit | undefined,
+  temporal: boolean,
 ): Predicate | null {
   if (unit) {
     const ts = toEpoch(raw);
@@ -104,37 +128,60 @@ function valuePredicate(
     const [start, end] = bucketBounds(ts, unit);
     return datePredicate(field, start.getTime(), end.getTime(), false);
   }
+  if (temporal && !isBlank(raw)) {
+    const ts = toEpoch(raw);
+    return ts === null ? null : datePredicate(field, ts, ts + 1, false);
+  }
   return { op: "in", field, values: [isBlank(raw) ? null : raw] };
+}
+
+export interface ClickContext {
+  /** The raw colour group of the clicked series, when it is known. */
+  color?: DrillValue;
+  /** The x column holds time values (from the chart's data kinds). */
+  temporal?: boolean;
+  /** The predicates of the chart's drill path, so a leaf click keeps its context. */
+  drill?: Predicate[];
 }
 
 /**
  * A plain click on a mark, from the chart's own callback (`rawValue` is the value in the data, not
  * the label that was drawn). Nothing is filtered unless the value is known for certain, and a
  * click that drilled the chart one level deeper is that chart's own navigation, not a filter.
- *
- * `colorValue` is the raw colour group of the clicked series, when it is known.
  */
 export function pointPredicates(
   spec: ChartSpec,
   click: Pick<ChartPointClick, "field" | "rawValue" | "drilled">,
-  colorValue?: DrillValue,
+  context: ClickContext = {},
 ): Predicate[] {
   if (click.drilled || !click.field || click.rawValue === undefined) return [];
-  const unit = encodingOf(spec, click.field)?.timeUnit ?? undefined;
-  const x = valuePredicate(click.field, click.rawValue, unit);
+  const x = valuePredicate(
+    click.field,
+    click.rawValue,
+    bucketUnit(spec, click.field),
+    context.temporal === true,
+  );
   if (!x) return [];
-  const out: Predicate[] = [x];
+  const out: Predicate[] = [...(context.drill ?? []), x];
   const color = spec.encodings?.color?.find((e) => e.field);
-  if (color?.field && colorValue !== undefined) {
-    out.push({ op: "in", field: color.field, values: [isBlank(colorValue) ? null : colorValue] });
+  if (color?.field && context.color !== undefined) {
+    out.push({
+      op: "in",
+      field: color.field,
+      values: [isBlank(context.color) ? null : context.color],
+    });
   }
   return out;
 }
 
 /**
  * A committed brush, from the chart's own callback. Category brushes carry the raw values under
- * the band; value and time brushes carry the covered range. Only a brush along the x field
- * filters: on a horizontal chart the band spans the measure axis, which no predicate can express.
+ * the bands; value and time brushes carry the covered range. A band along a horizontal chart's
+ * category axis reports `axis: "y"` and still filters its categories; a range along a y axis is
+ * not a range of the x field and is ignored.
+ *
+ * Several bands on a time-bucketed axis are one date range only when they touch; otherwise the
+ * single range spanning them would take in buckets nobody selected, so nothing is filtered.
  */
 export function brushPredicates(
   spec: ChartSpec,
@@ -142,10 +189,12 @@ export function brushPredicates(
     ChartBrush,
     "field" | "axis" | "kind" | "ranges" | "categories" | "values" | "cleared"
   >,
+  context: Pick<ClickContext, "drill"> = {},
 ): Predicate[] {
   if (brush.cleared || !brush.field) return [];
   const field = brush.field;
-  const unit = encodingOf(spec, field)?.timeUnit ?? undefined;
+  const drill = context.drill ?? [];
+  const unit = bucketUnit(spec, field);
   if (brush.kind === "category") {
     // Every brushed label must map to a value in the data, or the selection would be wider or
     // narrower than what the user drew.
@@ -153,33 +202,43 @@ export function brushPredicates(
     if (unit) {
       const times = brush.values.map(toEpoch);
       if (times.some((t) => t === null)) return [];
-      const lo = Math.min(...(times as number[]));
-      const hi = Math.max(...(times as number[]));
-      return [datePredicate(field, lo, bucketBounds(hi, unit)[1].getTime(), false)];
+      const starts = [...new Set(times as number[])].sort((a, b) => a - b);
+      for (let i = 0; i < starts.length - 1; i++) {
+        if (bucketBounds(starts[i] as number, unit)[1].getTime() !== starts[i + 1]) return [];
+      }
+      const end = bucketBounds(starts.at(-1) as number, unit)[1].getTime();
+      return [...drill, datePredicate(field, starts[0] as number, end, false)];
     }
-    return [{ op: "in", field, values: brush.values.map((v) => (isBlank(v) ? null : v)) }];
+    return [
+      ...drill,
+      { op: "in", field, values: brush.values.map((v) => (isBlank(v) ? null : v)) },
+    ];
   }
   if (brush.axis === "y" || brush.ranges.length !== 1) return [];
   const [lo, hi] = brush.ranges[0] as [number, number];
-  if (brush.kind === "time") return [datePredicate(field, lo, hi, true)];
-  return [{ op: "range", field, min: lo, max: hi, includeMin: true, includeMax: true }];
+  if (brush.kind === "time") return [...drill, datePredicate(field, lo, hi, true)];
+  return [...drill, { op: "range", field, min: lo, max: hi, includeMin: true, includeMax: true }];
 }
 
 /**
- * Legend toggles, from the chart's own callback: the colour groups still switched on, as raw
- * values, become an `in` predicate. Nothing is filtered while every group is on, or when none of
- * the shown groups maps to a value in the data.
+ * Legend toggles. `hidden` are the entries switched off, `hiddenValues` their raw colour values and
+ * `domain` every colour value in the chart's data. The filter keeps every value except the hidden
+ * ones, and it only exists when each hidden entry maps to exactly one value: an entry that cannot
+ * be resolved would otherwise silently narrow the result, so then nothing is filtered. Entries are
+ * series, not groups, when the chart has several measures, so those charts are not filtered.
  */
 export function legendPredicates(
-  change: Pick<ChartLegendChange, "field" | "hidden" | "shownValues">,
+  change: Pick<ChartLegendChange, "field" | "hidden" | "hiddenValues">,
+  context: { domain: readonly DrillValue[] | undefined; measures: number; drill?: Predicate[] },
 ): Predicate[] {
-  if (!change.field || change.hidden.length === 0 || change.shownValues.length === 0) return [];
+  const { domain } = context;
+  if (!change.field || !domain || context.measures > 1) return [];
+  if (change.hidden.length === 0 || change.hiddenValues.length !== change.hidden.length) return [];
+  const allowed = domain.filter((v) => !change.hiddenValues.includes(v));
+  if (allowed.length === 0 || allowed.length === domain.length) return [];
   return [
-    {
-      op: "in",
-      field: change.field,
-      values: change.shownValues.map((v) => (isBlank(v) ? null : v)),
-    },
+    ...(context.drill ?? []),
+    { op: "in", field: change.field, values: allowed.map((v) => (isBlank(v) ? null : v)) },
   ];
 }
 
@@ -213,7 +272,15 @@ export function extendSelection(current: Predicate[], clicked: Predicate[]): Pre
   for (const p of clicked) {
     const at = next.findIndex((q) => q.field === p.field && q.op === "in");
     const existing = next[at];
-    if (p.op !== "in" || !existing || existing.op !== "in") {
+    if (p.op !== "in") {
+      // A range or date bucket cannot be added to: a second one on the same field replaces it
+      // (stacking them would select nothing).
+      const same = next.findIndex((q) => q.field === p.field && q.op === p.op);
+      if (same >= 0) next[same] = p;
+      else next.push(p);
+      continue;
+    }
+    if (existing?.op !== "in") {
       next.push(p);
       continue;
     }

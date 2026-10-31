@@ -1,12 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link2, Table2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChartSpec, Predicate } from "../../api/types";
 import {
   type ChartBrush,
   type ChartLegendChange,
   type ChartPointClick,
   ChartView,
+  type DrillValue,
 } from "../../charts";
 import {
   DropdownMenu,
@@ -16,12 +17,19 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { groupOf, selectionOf } from "../bus";
-import { colorValueFor } from "../chartLookup";
+import { cachedChartData, colorValueFor } from "../chartLookup";
 import { BRUSH_DEBOUNCE_MS, debounce } from "../debounce";
 import { describePredicate } from "../describe";
 import { useDashboardEnv, useWidgetFilters } from "../env";
 import { datasetOfSource } from "../filterControls";
-import { brushPredicates, canClickFilter, legendPredicates, pointPredicates } from "../predicates";
+import {
+  brushPredicates,
+  canBrushFilter,
+  canClickFilter,
+  legendPredicates,
+  pointPredicates,
+  samePredicate,
+} from "../predicates";
 import { useDashboardRuntime } from "../runtimeStore";
 
 interface Props {
@@ -57,7 +65,7 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   const interactive = env.mode !== "edit";
   const viewSpec = useMemo<ChartSpec>(() => {
     const linkGroup = group ?? spec.interactions?.linkGroup;
-    const brush = interactive && spec.interactions?.brush === true;
+    const brush = interactive && spec.interactions?.brush === true && canBrushFilter(spec);
     if (linkGroup === spec.interactions?.linkGroup && brush === spec.interactions?.brush)
       return spec;
     return { ...spec, interactions: { ...spec.interactions, linkGroup, brush } } as ChartSpec;
@@ -66,10 +74,22 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   // Handlers read the latest spec and group without being recreated on every render.
   const latest = useRef({ spec, group, widgetId });
   latest.current = { spec, group, widgetId };
+
+  // Unmounting (a tab switch, a removed widget) makes ChartView report its brush as cleared. React
+  // runs a parent's cleanups before its children's, so by then this is already set: the report
+  // must not publish an empty selection, which would drop the chart's filter from the others.
+  const disposed = useRef(false);
+  useEffect(() => {
+    disposed.current = false;
+    return () => {
+      disposed.current = true;
+    };
+  }, []);
+
   const publish = useMemo(() => {
     const send = (predicates: Predicate[], mode: "toggle" | "replace" | "extend") => {
       const { spec: s, group: g, widgetId: w } = latest.current;
-      if (!g) return;
+      if (!g || disposed.current) return;
       interact({ groupId: g, widgetId: w, sourceId: s.source.id, predicates, mode });
     };
     return {
@@ -80,28 +100,88 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   }, [interact]);
   useEffect(() => () => publish.settle.cancel(), [publish]);
 
+  // Where this chart's current selection came from. A brush band or a hidden legend entry lives
+  // inside the chart and ChartView cannot be told to drop it, so when the dashboard clears or
+  // replaces such a selection the chart is remounted: there is never a band with no filter.
+  // TODO(ui-charts): a controlled clear (an imperative handle or a `brushClearKey` prop) would
+  // replace the remount and keep the chart's zoom.
+  const origin = useRef<"brush" | "legend" | null>(null);
+  const hadSelection = useRef(false);
+  const [resetKey, setResetKey] = useState(0);
+  useEffect(() => {
+    if (own.length > 0) {
+      hadSelection.current = true;
+      return;
+    }
+    if (!hadSelection.current) return;
+    hadSelection.current = false;
+    if (origin.current) {
+      origin.current = null;
+      setResetKey((k) => k + 1);
+    }
+  }, [own.length]);
+
+  // The drill path (`interactions.drillHierarchy`) as predicates: a click at a drilled level keeps
+  // its context, and so does a drill-through.
+  const drill = useRef<Predicate[]>([]);
+  const [drillPath, setDrillPath] = useState<Predicate[]>([]);
+  const onDrillChange = useCallback((_path: unknown, predicates: Predicate[]) => {
+    drill.current = predicates;
+    setDrillPath(predicates);
+  }, []);
+
   const clickable = spec.interactions?.clickFilter !== false && canClickFilter(spec);
+  const brushable = canBrushFilter(spec);
 
   const onPointClick = useCallback(
     (hit: ChartPointClick) => {
       const { spec: s } = latest.current;
-      const color = colorValueFor(client, s, hit.seriesName);
-      const predicates = pointPredicates(s, hit, color);
-      if (predicates.length > 0) publish.send(predicates, hit.shiftKey ? "extend" : "toggle");
+      const data = cachedChartData(client, s);
+      const predicates = pointPredicates(s, hit, {
+        color: colorValueFor(client, s, hit.seriesName),
+        temporal: data?.kinds.x === "temporal",
+        drill: drill.current,
+      });
+      if (predicates.length === 0) return;
+      if (origin.current) {
+        // This click replaces a brush or legend selection: take its band off the chart.
+        origin.current = null;
+        setResetKey((k) => k + 1);
+      }
+      publish.send(predicates, hit.shiftKey ? "extend" : "toggle");
     },
     [client, publish],
   );
   const onBrushSelected = useCallback(
-    (brush: ChartBrush) => publish.settle(brushPredicates(latest.current.spec, brush)),
+    (brush: ChartBrush) => {
+      const predicates = brushPredicates(latest.current.spec, brush, { drill: drill.current });
+      origin.current = predicates.length > 0 ? "brush" : null;
+      publish.settle(predicates);
+    },
     [publish],
   );
   const onLegendChange = useCallback(
-    (change: ChartLegendChange) => publish.settle(legendPredicates(change)),
-    [publish],
+    (change: ChartLegendChange) => {
+      const { spec: s } = latest.current;
+      const colors = cachedChartData(client, s)?.columns.color;
+      const predicates = legendPredicates(change, {
+        domain: colors ? ([...new Set(colors)] as DrillValue[]) : undefined,
+        measures: s.encodings?.y?.length ?? 0,
+        drill: drill.current,
+      });
+      origin.current = predicates.length > 0 ? "legend" : null;
+      publish.settle(predicates);
+    },
+    [client, publish],
   );
 
   const drillTargets = (env.onDrillThrough ? (env.otherDashboards ?? []) : []).slice(0, 12);
-  const drillPredicates = [...filters, ...own];
+  // What a drill-through carries: the chart's filters, its drill path and its own selection.
+  const drillPredicates = [
+    ...filters,
+    ...drillPath.filter((p) => !own.some((o) => samePredicate(o, p))),
+    ...own,
+  ];
 
   return (
     <div className="flex h-full flex-col">
@@ -171,14 +251,16 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
       ) : null}
       <div className="min-h-0 flex-1">
         <ChartView
+          key={resetKey}
           spec={viewSpec}
           filters={filters}
           pipelines={env.pipelines}
           // Each widget has its own cancellation slot: one chart shown twice must not cancel itself.
           slot={widgetId}
           onPointClick={interactive && clickable ? onPointClick : undefined}
-          onBrushSelected={interactive ? onBrushSelected : undefined}
+          onBrushSelected={interactive && brushable ? onBrushSelected : undefined}
           onLegendChange={interactive ? onLegendChange : undefined}
+          onDrillChange={onDrillChange}
         />
       </div>
     </div>

@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChartSpec, Predicate } from "../api/types";
 import { dataIdentity } from "../charts/core/data";
@@ -20,14 +21,39 @@ interface ViewProps {
   onPointClick?: (hit: ChartPointClick) => void;
   onBrushSelected?: (brush: ChartBrush) => void;
   onLegendChange?: (change: ChartLegendChange) => void;
+  onDrillChange?: (path: unknown[], predicates: Predicate[]) => void;
 }
 // Latest props of each rendered chart, by chart id.
 const views = new Map<string, ViewProps>();
+// How many times each chart has been mounted, and which ones have a brush band drawn.
+const mounts = new Map<string, number>();
+const banded = new Set<string>();
 
 // The chart wrapper: shows the filters it was asked to query with and keeps its callbacks.
 vi.mock("../charts", () => ({
   ChartView: (props: ViewProps) => {
     views.set(props.spec.id, props);
+    const latest = useRef(props);
+    latest.current = props;
+    useEffect(() => {
+      const id = props.spec.id;
+      mounts.set(id, (mounts.get(id) ?? 0) + 1);
+      // The real ChartView reports a drawn band as cleared when it unmounts.
+      return () => {
+        if (banded.has(id)) {
+          banded.delete(id);
+          latest.current.onBrushSelected?.({
+            axis: "x",
+            kind: "category",
+            ranges: [],
+            categories: [],
+            cleared: true,
+            field: "region",
+            values: [],
+          });
+        }
+      };
+    }, [props.spec.id]);
     return (
       <div data-testid={`chart-${props.spec.id}`}>
         <output aria-label={`filters of ${props.spec.id}`}>
@@ -131,7 +157,9 @@ const click = (
 ) => act(() => views.get(id)?.onPointClick?.(hit(rawValue, over)));
 
 const brush = (id: string, over: Partial<ChartBrush> = {}) =>
-  act(() =>
+  act(() => {
+    if (over.cleared) banded.delete(id);
+    else banded.add(id);
     views.get(id)?.onBrushSelected?.({
       axis: "x",
       kind: "category",
@@ -141,8 +169,8 @@ const brush = (id: string, over: Partial<ChartBrush> = {}) =>
       field: "region",
       values: [],
       ...over,
-    }),
-  );
+    });
+  });
 
 function renderDashboard(chartSpecs: ChartSpec[], mode: "view" | "edit" | "embed" = "view") {
   const dashboard = dashboardWith(chartSpecs.map((c) => c.id));
@@ -154,6 +182,8 @@ function renderDashboard(chartSpecs: ChartSpec[], mode: "view" | "edit" | "embed
 beforeEach(() => {
   queryClient = new QueryClient();
   views.clear();
+  mounts.clear();
+  banded.clear();
   useDashboardRuntime.setState({ globalValues: {}, gridDrill: null });
   useDashboardRuntime.getState().open("fresh");
   vi.stubGlobal("matchMedia", () => ({
@@ -292,7 +322,7 @@ describe("cross-filtering a dashboard", () => {
     ]);
     expect(views.get("a")?.onPointClick).toBeUndefined();
     expect(views.get("s")?.onPointClick).toBeUndefined();
-    expect(views.get("s")?.onBrushSelected).toBeDefined();
+    expect(views.get("s")?.onBrushSelected).toBeUndefined(); // a histogram axis is not in data units
   });
 
   it("gives each widget its own request slot, and the dashboard's link group", () => {
@@ -333,7 +363,7 @@ describe("cross-filtering a dashboard", () => {
     ]);
   });
 
-  it("applies a legend toggle as an `in` filter on the colour field's raw values", () => {
+  it("applies a legend toggle as an `in` filter of the colour values still shown", () => {
     vi.useFakeTimers();
     renderDashboard([
       spec("a", {
@@ -358,6 +388,113 @@ describe("cross-filtering a dashboard", () => {
     );
     act(() => vi.advanceTimersByTime(200));
     expect(filtersOf("b")).toEqual([{ op: "in", field: "channel", values: ["web", "store"] }]);
+  });
+
+  it("filters nothing for a legend entry it cannot resolve (fails open)", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        encodings: {
+          x: [{ field: "region" }],
+          y: [{ agg: "count" }],
+          color: [{ field: "channel" }],
+        },
+      }),
+      spec("b"),
+    ]);
+    act(() =>
+      views.get("a")?.onLegendChange?.({
+        toggled: "ghost",
+        selected: {},
+        shown: ["web"],
+        hidden: ["app", "ghost"],
+        field: "channel",
+        shownValues: ["web"],
+        hiddenValues: ["app"], // 'ghost' maps to no value
+      }),
+    );
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([]);
+  });
+
+  it("gives no brush to plots whose x axis is not in data units (Q-Q, lag, scores...)", () => {
+    renderDashboard([
+      spec("q", { plotType: "qq", interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("s", { plotType: "scatter", interactions: { brush: true, linkGroup: "g" } as never }),
+    ]);
+    expect(views.get("q")?.onBrushSelected).toBeUndefined();
+    expect(views.get("q")?.spec.interactions?.brush).toBe(false); // and no band is drawn
+    expect(views.get("a")?.onBrushSelected).toBeDefined();
+    expect(views.get("a")?.spec.interactions?.brush).toBe(true);
+    expect(views.get("s")?.onBrushSelected).toBeDefined();
+  });
+
+  it("keeps the drill path in a leaf click and in the drill-through", () => {
+    const onDrillThrough = vi.fn();
+    const dashboard = dashboardWith(["a", "b"]);
+    render(
+      wrap(
+        <DashboardView
+          dashboard={dashboard}
+          charts={[spec("a"), spec("b")]}
+          pipelines={[]}
+          mode="view"
+          onDrillThrough={onDrillThrough}
+        />,
+      ),
+    );
+    const path: Predicate = { op: "eq", field: "country", value: "US" };
+    act(() => views.get("a")?.onDrillChange?.(["US"], [path]));
+    click("a", "Texas", { field: "state" });
+    expect(filtersOf("b")).toEqual([path, { op: "in", field: "state", values: ["Texas"] }]);
+  });
+
+  it("takes the brush band off the chart when the selection is cleared from the dashboard", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    brush("a", { categories: ["South"], values: ["South"] });
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toHaveLength(1);
+    expect(mounts.get("a")).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    // remounted: a fresh chart has no band, so there is no band without a filter
+    expect(mounts.get("a")).toBe(2);
+    act(() => vi.advanceTimersByTime(300));
+    expect(filtersOf("b")).toEqual([]);
+  });
+
+  it("does not remount a chart for a selection that was a plain click, or one it cleared itself", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    click("a", "North");
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    expect(mounts.get("a")).toBe(1);
+    brush("a", { categories: ["South"], values: ["South"] });
+    act(() => vi.advanceTimersByTime(200));
+    brush("a", { cleared: true }); // the chart's own "clear selection"
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([]);
+    expect(mounts.get("a")).toBe(1);
+  });
+
+  it("takes a brush band off the chart when a click replaces its selection", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    brush("a", { categories: ["South"], values: ["South"] });
+    act(() => vi.advanceTimersByTime(200));
+    click("a", "North");
+    expect(mounts.get("a")).toBe(2);
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
   });
 });
 
@@ -456,6 +593,41 @@ describe("tabs and embed", () => {
     // 'a' is unmounted now, but it is still on the dashboard: its click still filters 'b'.
     expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
     fireEvent.click(screen.getByRole("tab", { name: "Tab 1" }));
+    expect(screen.getByRole("status", { name: "Active filters" })).toBeTruthy();
+  });
+
+  it("keeps a brush filter across a tab switch, though the chart reports its band cleared on unmount", () => {
+    vi.useFakeTimers();
+    const base = dashboardWith(["a"]);
+    const first = base.tabs?.[0];
+    if (!first) throw new Error("no tab");
+    const second = {
+      id: "t2",
+      name: "Second",
+      items: [
+        { i: "w-b", x: 0, y: 0, w: 6, h: 4, widget: { kind: "chart" as const, chartId: "b" } },
+      ],
+    };
+    const dashboard: Dashboard = { ...base, tabs: [first, second] };
+    render(
+      wrap(
+        <DashboardView
+          dashboard={dashboard}
+          charts={[
+            spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+            spec("b"),
+          ]}
+          pipelines={[]}
+          mode="view"
+        />,
+      ),
+    );
+    brush("a", { categories: ["South"], values: ["South"] });
+    act(() => vi.advanceTimersByTime(200));
+    fireEvent.click(screen.getByRole("tab", { name: "Second" }));
+    // 'a' unmounted and reported cleared; that must not reach the bus, now or after the debounce
+    act(() => vi.advanceTimersByTime(500));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["South"] }]);
     expect(screen.getByRole("status", { name: "Active filters" })).toBeTruthy();
   });
 

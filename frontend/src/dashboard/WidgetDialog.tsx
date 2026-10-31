@@ -1,3 +1,4 @@
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { Encoding } from "../api/types";
 import { FORMAT_PRESETS } from "../charts";
@@ -5,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "../components/ui/dialog";
 import { Field, Input, Select } from "../components/ui/input";
 import { useDatasets } from "../data/hooks";
+import { assetUrl, IMAGE_ACCEPT, uploadImage } from "./assetsApi";
 import { useDashboardEnv } from "./env";
 import { newId } from "./model";
 import type { DashboardFilter, FilterControl, Widget } from "./types";
@@ -92,6 +94,14 @@ function WidgetForm({ kind, onSubmit }: { kind: NewWidgetKind; onSubmit: (v: New
   const [format, setFormat] = useState("compact:1");
   const [markdown, setMarkdown] = useState("## Heading\n\nWrite **Markdown** here.");
   const [assetId, setAssetId] = useState("");
+  const upload = useMutation({
+    mutationFn: (file: File) => uploadImage(file),
+    onSuccess: (asset, file) => {
+      setAssetId(asset.id);
+      // A starting point for the alt text, which the user should still describe properly.
+      setAlt((current) => current || file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " "));
+    },
+  });
   const [alt, setAlt] = useState("");
   const [fit, setFit] = useState<"contain" | "cover">("contain");
   const [label, setLabel] = useState("");
@@ -263,12 +273,37 @@ function WidgetForm({ kind, onSubmit }: { kind: NewWidgetKind; onSubmit: (v: New
       ) : null}
       {kind === "image" ? (
         <>
-          <Field
-            label="Asset id"
-            hint="Uploading images is not available yet. Enter the id of an image already stored on the server."
-          >
-            {(p) => <Input {...p} value={assetId} onChange={(e) => setAssetId(e.target.value)} />}
+          <Field label="Image" hint="PNG, JPEG, GIF, WebP or SVG, up to 10 MB">
+            {(p) => (
+              <input
+                {...p}
+                type="file"
+                accept={IMAGE_ACCEPT}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) upload.mutate(file);
+                }}
+                className="text-sm text-fg file:mr-2 file:rounded-md file:border file:border-line file:bg-bg file:px-2 file:py-1"
+              />
+            )}
           </Field>
+          {upload.isPending ? (
+            <p role="status" className="text-xs text-muted">
+              Uploading…
+            </p>
+          ) : null}
+          {upload.isError ? (
+            <p role="alert" className="text-sm text-danger">
+              {upload.error.message}
+            </p>
+          ) : null}
+          {assetId ? (
+            <img
+              src={assetUrl(assetId)}
+              alt="Preview of the upload"
+              className="max-h-40 w-auto self-start rounded-md border border-line object-contain"
+            />
+          ) : null}
           <Field label="Alt text" hint="Describes the image for screen readers">
             {(p) => <Input {...p} value={alt} onChange={(e) => setAlt(e.target.value)} />}
           </Field>
