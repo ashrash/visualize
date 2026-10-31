@@ -419,13 +419,25 @@ follow-ups rather than fixed (outside those agents' owned paths).
     grid column compiles as a bare integer literal instead of a cast timestamp. Only matters once
     a temporal drill-through predicate reaches the grid (see the `ui-data` item above) — not yet
     fixed, flagged for whoever next touches the grid's filter compilation.
-- 2026-10-31: Two Wave 3 integration gaps dispatched in parallel, not yet merged: `ui-data` is
-  wiring `/dashboards`, `/dashboards/:id`, `/share/:token`, `/embed/:token` routes into the app
-  shell and hooking the data grid up to `useDashboardRuntime`'s `gridDrill` state for
-  drill-through; `data-core` is adding a minimal `POST /api/assets` / `GET /api/assets/{id}`
-  image-asset endpoint for the dashboard Image widget (reassigned from the widget's own
-  `TODO(platform)` comment, since binary asset storage fits `data-core`'s `storage/`/`exports/`
-  lane better than `platform`'s project/share/auth lane).
+- 2026-10-31: Two Wave 3 integration gaps dispatched in parallel: `ui-data` is wiring
+  `/dashboards`, `/dashboards/:id`, `/share/:token`, `/embed/:token` routes into the app shell and
+  hooking the data grid up to `useDashboardRuntime`'s `gridDrill` state for drill-through;
+  `data-core` is adding a minimal `POST /api/assets` / `GET /api/assets/{id}` image-asset endpoint
+  for the dashboard Image widget (reassigned from the widget's own `TODO(platform)` comment, since
+  binary asset storage fits `data-core`'s `storage/`/`exports/` lane better than `platform`'s
+  project/share/auth lane).
+  - `ui-data`'s half landed on its branch (commit `ffb8f6c`): lazy-loaded `/dashboards`,
+    `/dashboards/:id` (inside `AppShell`), `/share/:token`, `/embed/:token` (outside, no nav
+    chrome) in `App.tsx`; a new `data/drillFilters.ts` maps a drilled `Predicate[]` onto grid
+    columns, silently dropping any field that isn't one (the pipeline-vs-dataset field-name gap
+    noted above); `DataScreen.tsx` consumes `gridDrill` once on mount and clears it so a refresh
+    doesn't replay it. This branch can't build standalone yet — it imports from
+    `dashboard/`, which only exists in `ui-dashboard`'s unmerged worktree; the agent verified it
+    by temporarily copying that directory in (74 files passed/1 skipped, 821 tests passed/4
+    skipped; biome and `tsc -b` clean), without merging anything. **After `ui-dashboard` merges**:
+    confirm its actual `DashboardPage`/`SharePage`/`EmbedPage` export shapes still match what
+    `ui-data` guessed (no props, each reads its own route param), and ask `ui-dashboard` to remove
+    the now-done `TODO(ui-data)` comment near `runtimeStore.ts:52`.
 
 ## MVP.md
 
