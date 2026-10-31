@@ -2,6 +2,7 @@
  * Pure edit helpers for the dashboard document (`Project.dashboards[]`). Each takes and returns
  * plain data so it can be passed to `projectStore.update` (one undo step per call).
  */
+import { moveElement, verticalCompactor } from "react-grid-layout/core";
 import type { Project } from "../api/types";
 import type { Dashboard, DashboardFilter, DashboardTab, LayoutItem, Widget } from "./types";
 
@@ -127,6 +128,26 @@ export function nudge(
   else if (key === "ArrowDown") next.y = pos.y + 1;
   else next.y = Math.max(pos.y - 1, 0);
   return next.x === pos.x && next.y === pos.y && next.w === pos.w && next.h === pos.h ? null : next;
+}
+
+/**
+ * The whole layout after one widget takes a new position or size: the others are pushed out of its
+ * way and everything is compacted upwards, exactly as the grid itself settles a drag. Used for the
+ * keyboard, so the stored layout already equals what the grid shows and nothing has to be read
+ * back from the grid.
+ */
+export function settleLayout(
+  layout: readonly GridPosition[],
+  moved: GridPosition,
+  columns = GRID_COLUMNS,
+): GridPosition[] {
+  const items = layout.map((p) => (p.i === moved.i ? { ...moved } : { ...p }));
+  const mover = items.find((p) => p.i === moved.i);
+  if (mover) {
+    // The moved widget claims its place; whatever it overlaps is pushed down.
+    moveElement(items, mover, moved.x, moved.y, true, false, "vertical", columns);
+  }
+  return verticalCompactor.compact(items, columns).map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
 }
 
 /** Apply a grid layout to the tab's items; the same object is returned when nothing moved. */

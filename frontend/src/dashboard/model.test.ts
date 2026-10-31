@@ -12,6 +12,7 @@ import {
   removeTab,
   removeWidget,
   setChartLinkGroup,
+  settleLayout,
 } from "./model";
 import type { Widget } from "./types";
 
@@ -165,5 +166,38 @@ describe("nudge (keyboard move and resize)", () => {
   it("cannot grow past the right edge", () => {
     expect(nudge(at(8, 0, 4, 4), "ArrowRight", true)).toBeNull();
     expect(nudge(at(6, 0, 5, 4), "ArrowRight", true)).toEqual(at(6, 0, 6, 4));
+  });
+});
+
+describe("settleLayout (the layout a keyboard step produces)", () => {
+  const L = (i: string, x: number, y: number, w: number, h: number) => ({ i, x, y, w, h });
+
+  it("moves a widget sideways", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4)], L("a", 2, 0, 6, 4))).toEqual([L("a", 2, 0, 6, 4)]);
+  });
+
+  it("compacts upwards like the grid: a lone widget moved down settles back at the top", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4)], L("a", 2, 1, 6, 4))).toEqual([L("a", 2, 0, 6, 4)]);
+  });
+
+  it("pushes a widget out of the way of the one that moved onto it", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4), L("b", 6, 0, 6, 4)], L("a", 6, 0, 6, 4))).toEqual([
+      L("a", 6, 0, 6, 4),
+      L("b", 6, 4, 6, 4),
+    ]);
+  });
+
+  it("makes room below for a widget that grew taller", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4), L("c", 0, 4, 6, 4)], L("a", 0, 0, 6, 6))).toEqual([
+      L("a", 0, 0, 6, 6),
+      L("c", 0, 6, 6, 4),
+    ]);
+  });
+
+  it("leaves a settled layout alone, and does not touch its input", () => {
+    const layout = [L("a", 0, 0, 6, 4), L("c", 0, 4, 6, 4)];
+    const copy = structuredClone(layout);
+    expect(settleLayout(layout, L("a", 0, 0, 6, 4))).toEqual(copy);
+    expect(layout).toEqual(copy);
   });
 });

@@ -4,7 +4,7 @@ import { Responsive, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { cn } from "../components/ui/cn";
 import { useDashboardEnv } from "./env";
-import { GRID_COLUMNS, type GridPosition, isArrowKey, nudge } from "./model";
+import { GRID_COLUMNS, type GridPosition, isArrowKey, nudge, settleLayout } from "./model";
 import type { DashboardTab, LayoutItem } from "./types";
 import { ChartWidget } from "./widgets/ChartWidget";
 import { FilterWidget } from "./widgets/FilterWidget";
@@ -51,6 +51,9 @@ function WidgetBody({ item }: { item: LayoutItem }) {
   }
 }
 
+const samePosition = (a: GridPosition, b: GridPosition) =>
+  a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
 function WidgetFrame({
   item,
   onRemove,
@@ -58,7 +61,8 @@ function WidgetFrame({
 }: {
   item: LayoutItem;
   onRemove?: () => void;
-  onMove?: (pos: GridPosition) => void;
+  /** Applies a step and returns where the widget ends up once the grid has settled the layout. */
+  onMove?: (pos: GridPosition) => GridPosition;
 }) {
   const env = useDashboardEnv();
   const help = useId();
@@ -98,12 +102,15 @@ function WidgetFrame({
     } else if (grabbed && isArrowKey(event.key)) {
       event.preventDefault();
       const next = nudge(live.current ?? here(), event.key, event.shiftKey);
-      if (next) {
-        live.current = next;
-        onMove?.(next);
-        setSaid(whereIs(next));
+      const before = live.current ?? here();
+      const settled = next ? (onMove?.(next) ?? next) : null;
+      if (settled && !samePosition(settled, before)) {
+        // Follow where the grid really put it (it compacts upwards and pushes neighbours), so the
+        // next key builds on that and the announcement is true.
+        live.current = settled;
+        setSaid(whereIs(settled));
       } else {
-        setSaid("Edge reached.");
+        setSaid("It can't move any further that way.");
       }
     }
   };
@@ -196,9 +203,16 @@ export function DashboardGrid({ tab, onLayout, onRemove }: Props) {
           onBreakpointChange={(_breakpoint, columns) => {
             cols.current = columns;
           }}
-          onLayoutChange={(current) => {
-            // Only the 12-column layouts are stored: a narrow screen's re-flow must not
-            // overwrite the desktop arrangement.
+          // The stored layout changes when the user finishes a drag or a resize, or takes a
+          // keyboard step. It is deliberately NOT updated from the grid's own layout-change report:
+          // that report echoes whichever layout it last received, so writing it back sets two
+          // states off against each other (React's "maximum update depth"), and it also fired on
+          // load, marking an untouched dashboard as edited. Only 12-column layouts are stored: a
+          // narrow screen's re-flow must not overwrite the desktop arrangement.
+          onDragStop={(current) => {
+            if (editing && cols.current === GRID_COLUMNS) onLayout?.(current);
+          }}
+          onResizeStop={(current) => {
             if (editing && cols.current === GRID_COLUMNS) onLayout?.(current);
           }}
         >
@@ -209,12 +223,14 @@ export function DashboardGrid({ tab, onLayout, onRemove }: Props) {
                 onRemove={onRemove ? () => onRemove(item.i) : undefined}
                 onMove={
                   editing && onLayout
-                    ? (pos) =>
-                        onLayout(
-                          items.map((it) =>
-                            it.i === pos.i ? pos : { i: it.i, x: it.x, y: it.y, w: it.w, h: it.h },
-                          ),
-                        )
+                    ? (pos) => {
+                        const settled = settleLayout(
+                          items.map((it) => ({ i: it.i, x: it.x, y: it.y, w: it.w, h: it.h })),
+                          pos,
+                        );
+                        onLayout(settled);
+                        return settled.find((p) => p.i === pos.i) ?? pos;
+                      }
                     : undefined
                 }
               />
