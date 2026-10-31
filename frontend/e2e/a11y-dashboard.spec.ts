@@ -130,9 +130,12 @@ for (const theme of ["light", "dark"] as const) {
       const download = page.waitForEvent("download", { timeout: 45_000 });
       await page.getByRole("button", { name: "Report", exact: true }).click();
       await page.getByRole("menuitem", { name: "HTML report" }).click();
-      const file = await (await download).path();
-      expect(readFileSync(file ?? "", "utf8")).toContain("Rich board");
-      await page.goto(pathToFileURL(file ?? "").href);
+      // Playwright keeps a download under a bare id with no extension, which Chrome shows as plain
+      // text (no <title>, no lang): save it as .html to check the document itself.
+      const file = testInfo.outputPath("report.html");
+      await (await download).saveAs(file);
+      expect(readFileSync(file, "utf8")).toContain("Rich board");
+      await page.goto(pathToFileURL(file).href);
       await check(page, "dashboard-report", theme, testInfo);
     });
 
@@ -254,16 +257,13 @@ test.describe("dashboard landmarks, titles and focus", () => {
     }
   });
 
-  // KNOWN BUG (ui-dashboard): the widget dialogs are opened from a menu item through state, so
-  // Radix Dialog has no trigger to give focus back to; after Escape, focus is on <body> and a
-  // keyboard user restarts from the top of the page (WCAG 2.4.3). `test.fail` is the sentinel.
-  // Fix: return focus to the "Add widget" button in the dialog's onCloseAutoFocus.
+  // The widget dialogs open from a menu item, so focus is returned to the "Add widget" button
+  // explicitly when they close (WCAG 2.4.3).
   test("widget dialogs give focus back to a control when closed", async ({
     page,
     api,
     project,
   }) => {
-    test.fail(true, "TODO(ui-dashboard): focus falls to <body> when a widget dialog closes");
     dataset = unique("a11yg");
     await seedRichBoard(api, project.id, dataset);
     await openDashboards(page);

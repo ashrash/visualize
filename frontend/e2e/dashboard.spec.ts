@@ -175,13 +175,9 @@ test.describe("dashboards", () => {
     await expect(widget(page, "Company logo").getByRole("img")).toBeVisible();
   });
 
-  // KNOWN GAP (ui-dashboard): react-grid-layout's drag and resize are pointer-only. The drag
-  // handle is a plain <span> and the resize handle is injected by the library, neither is in the
-  // tab order, so CLAUDE.md section 6 ("keyboard-reachable controls") is not met for moving and
-  // resizing. `test.fail` turns this into a sentinel: it passes while the gap exists and fails
-  // (asking to remove the annotation) once the handles become keyboard-operable.
+  // Moving and resizing have a keyboard path (CLAUDE.md section 6): the drag handle is a button;
+  // Space picks the widget up, arrows move it, Shift+arrows resize it, Space drops it.
   test("layout can be moved and resized with the keyboard", async ({ page, api, project }) => {
-    test.fail(true, "TODO(ui-dashboard): drag and resize handles are not keyboard-operable");
     const ds = await importSales(api, "kbd");
     const chart = barChart({ kind: "dataset", id: ds.id }, { name: "K", x: "region", y: "units" });
     await seedProject(
@@ -203,9 +199,15 @@ test.describe("dashboards", () => {
     const before = await page.locator(".react-grid-item").first().boundingBox();
     await page.keyboard.press("Space");
     await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Shift+ArrowRight");
     await page.keyboard.press("Space");
-    const after = await page.locator(".react-grid-item").first().boundingBox();
-    expect(after?.x).toBeGreaterThan(before?.x ?? 0);
+    // the grid animates a move (200 ms), so poll rather than read the box at once
+    await expect
+      .poll(async () => (await page.locator(".react-grid-item").first().boundingBox())?.x ?? 0)
+      .toBeGreaterThan(before?.x ?? 0);
+    await expect
+      .poll(async () => (await page.locator(".react-grid-item").first().boundingBox())?.width ?? 0)
+      .toBeGreaterThan(before?.width ?? 0);
   });
 
   // -- tabs, cross-filter -----------------------------------------------------------------------
@@ -634,21 +636,14 @@ test.describe("dashboards", () => {
     }
   });
 
-  // KNOWN BUG (ui-dashboard): DELETE /api/share/{token} answers 204 and the link IS revoked, but
-  // share/api.ts `revokeShare` passes the empty body through `unwrap`, which throws on a missing
-  // `data`; the mutation's onSuccess never runs, the share list is not refetched and the dialog
-  // shows the dead link as live, with no error. `test.fail` is the sentinel: remove it once the
-  // dialog updates. The server-side half (the link stops working) is asserted before the UI half.
+  // DELETE /api/share/{token} answers 204 with no body; the dialog must still refresh and drop the
+  // link. The server-side half (the link stops working) is asserted before the UI half.
   test("revoking a link kills it and the dialog says so", async ({
     page,
     browser,
     api,
     project,
   }) => {
-    test.fail(
-      true,
-      "TODO(ui-dashboard): revokeShare throws on the 204, so the dialog never updates",
-    );
     const ds = await importSales(api, "revoke");
     const a = barChart({ kind: "dataset", id: ds.id }, { name: "R", x: "region", y: "units" });
     const board = dashboard("Revocable", [
@@ -673,20 +668,13 @@ test.describe("dashboards", () => {
     await expect(dialog.getByText("No links yet.")).toBeVisible({ timeout: 3_000 });
   });
 
-  // KNOWN BUG (ui-dashboard): FilterControl's DateRangeControl resets its draft to the last
-  // COMMITTED value on every render, and the commit is debounced, so a picked date blanks out for
-  // about 150 ms and a second edit inside that window (the other end of the range) starts from
-  // the blank draft and drops the first. Typing a year digit by digit in the native input is
-  // reverted the same way. `test.fail` is the sentinel; remove it when the input keeps its value.
+  // The date-range input keeps what was picked while the debounced commit is pending, so the
+  // other end of the range can be filled straight away.
   test("a picked date stays in the date-range input while the filter commits", async ({
     page,
     api,
     project,
   }) => {
-    test.fail(
-      true,
-      "TODO(ui-dashboard): DateRangeControl reverts the draft until the debounce lands",
-    );
     const ds = await importSales(api, "datebug");
     const source = { kind: "dataset", id: ds.id } as const;
     const a = barChart(source, { name: "Units by region", x: "region", y: "units" });
