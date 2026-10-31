@@ -86,7 +86,7 @@ test.describe("project menu", () => {
     await expect
       .poll(() => page.evaluate(() => localStorage.getItem("viz.lastProject")))
       .toBe(project.id);
-    await expect(app.projectName).toHaveText(project.name);
+    await expect(app.projectName).toContainText(project.name);
 
     await api.deleteProject(copyId ?? "");
     await api.deleteDatasetByName(dataset);

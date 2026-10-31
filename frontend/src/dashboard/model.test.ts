@@ -7,6 +7,7 @@ import {
   bottomRow,
   createDashboard,
   duplicateDashboard,
+  nudge,
   removeFilter,
   removeTab,
   removeWidget,
@@ -132,5 +133,37 @@ describe("duplicateDashboard", () => {
       ...(d.tabs?.[0]?.items ?? []).map((i) => i.i),
     ];
     expect(new Set(ids).size).toBe(4);
+  });
+});
+
+describe("nudge (keyboard move and resize)", () => {
+  const at = (x: number, y: number, w: number, h: number) => ({ i: "w", x, y, w, h });
+
+  it("moves one cell per arrow, inside the grid", () => {
+    expect(nudge(at(2, 3, 4, 4), "ArrowRight", false)).toEqual(at(3, 3, 4, 4));
+    expect(nudge(at(2, 3, 4, 4), "ArrowLeft", false)).toEqual(at(1, 3, 4, 4));
+    expect(nudge(at(2, 3, 4, 4), "ArrowDown", false)).toEqual(at(2, 4, 4, 4));
+    expect(nudge(at(2, 3, 4, 4), "ArrowUp", false)).toEqual(at(2, 2, 4, 4));
+  });
+
+  it("stops at the edges and says so (null) instead of leaving the grid", () => {
+    expect(nudge(at(0, 0, 4, 4), "ArrowLeft", false)).toBeNull();
+    expect(nudge(at(0, 0, 4, 4), "ArrowUp", false)).toBeNull();
+    expect(nudge(at(8, 0, 4, 4), "ArrowRight", false)).toBeNull(); // 8 + 4 = 12 columns
+    expect(nudge(at(7, 0, 4, 4), "ArrowRight", false)).toEqual(at(8, 0, 4, 4));
+  });
+
+  it("Shift resizes: right and down grow, left and up shrink, never below the minimum", () => {
+    expect(nudge(at(0, 0, 4, 4), "ArrowRight", true)).toEqual(at(0, 0, 5, 4));
+    expect(nudge(at(0, 0, 4, 4), "ArrowDown", true)).toEqual(at(0, 0, 4, 5));
+    expect(nudge(at(0, 0, 4, 4), "ArrowLeft", true)).toEqual(at(0, 0, 3, 4));
+    expect(nudge(at(0, 0, 4, 4), "ArrowUp", true)).toEqual(at(0, 0, 4, 3));
+    expect(nudge(at(0, 0, 2, 2), "ArrowLeft", true)).toBeNull();
+    expect(nudge(at(0, 0, 2, 2), "ArrowUp", true)).toBeNull();
+  });
+
+  it("cannot grow past the right edge", () => {
+    expect(nudge(at(8, 0, 4, 4), "ArrowRight", true)).toBeNull();
+    expect(nudge(at(6, 0, 5, 4), "ArrowRight", true)).toEqual(at(6, 0, 6, 4));
   });
 });

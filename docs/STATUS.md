@@ -560,6 +560,57 @@ blockers: the hosted-mode share/embed data-scoping gap (chart data isn't token-s
 cleanup/GC and `.vizproj` asset bundling; the responsive-layout and autosave/undo follow-ups
 already tracked under MVP §7/§10.
 
+## Wave 4 log
+
+- 2026-10-31: Wave 4 kicked off per CLAUDE.md §10: perf budgets at 10M rows, e2e flows, an
+  accessibility pass, smoke tests on Windows and macOS, wheel packaging, Dockerfile + optional
+  compose. Dispatched in parallel: `data-core` (cold-page/search/dashboard-refresh perf),
+  `transform` (M4 line-chart perf), `stats` (describe-with-modes perf), `platform` (packaging and
+  infra), `qa` (e2e + a11y for the Wave 3 dashboard surface). **Known limitation, flagged up front
+  and unresolved**: this repo has no git remote configured, so the existing 3-OS CI workflow
+  (`.github/workflows/ci.yml`) has never actually executed on GitHub's runners — neither the lead
+  nor any agent can trigger or verify a real macOS run from here. `qa`'s review confirmed the
+  workflow is *correctly configured* for macOS (wheel coverage in `uv.lock`, native binaries in
+  `package-lock.json`, LF line endings, OS-guarded `taskkill`/`ControlOrMeta` usage) but this is
+  inspection only, not a real run. Actual macOS verification needs a GitHub remote or physical/
+  virtual Mac access.
+- 2026-10-31: `platform`'s packaging/infra merged: verified the wheel ships the built frontend
+  end to end (built, installed into a clean venv with no Node on PATH, `viz serve` works);
+  `infra/Dockerfile` (3-stage build), `infra/docker-compose.yml` (app + Postgres 17, AWS-parity
+  testing only), `infra/smoke.py`, `backend/tests/test_packaging.py`. xhigh review (touches
+  `auth/`) found no blockers; two should-fixes and ten nits, addressed by the lead:
+  - A real bug found while wiring in a new `postgres` optional-dependency extra (`psycopg[binary]`
+    in `pyproject.toml`): `uv pip install --no-deps "<wheel>[postgres]"` silently drops the
+    extra's own dependencies too, not just the base package's, so psycopg was never actually in
+    the image. **Correction to the record**: this bug only ever existed in the lead's own
+    uncommitted intermediate edit — the platform agent's original, committed Dockerfile installed
+    psycopg inline with full dependency resolution and worked correctly. Fixed by exporting the
+    extra into the cached `requirements.txt` layer instead (`uv export --locked --extra postgres`).
+  - `/api/health` moved off the authenticated `api_router` onto a new bare `health_router`: a load
+    balancer/container probe can't carry credentials, and the route only "worked" authenticated
+    before because `auth.current_user` is a local no-op stub. Documented in CLAUDE.md §6 and
+    `viz/auth/__init__.py` as the second deliberate public-route exception alongside
+    `share_access`, pinned by the existing test enumerating every unauthenticated `/api/*` route.
+    Still runs a trivial DB query, doubling as the Docker healthcheck's connectivity check.
+  - Smaller fixes: `--locked` instead of `--frozen` (fails the build on a stale lock), `uv pip
+    check` plus explicit import assertions after the wheel install, `VIZ_PORT` read from the
+    environment in the healthcheck, the `uv` binary and its cache removed from the runtime image,
+    a URL-safe-characters warning on the compose Postgres password.
+  - Verified concretely: built the image, confirmed `import psycopg` succeeds (and did NOT before
+    the fix), ran the full `docker compose` Postgres path end to end twice (health endpoint 200,
+    Alembic migrations clean on Postgres, Docker's own HEALTHCHECK reports healthy), torn down
+    cleanly both times. 1154 backend tests passed/6 skipped, ruff/mypy clean.
+  - **Deferred, tracked, not blockers** (AWS-specific per CLAUDE.md §11's "don't build it now,
+    don't block it"): a hatch build-hook to fail the wheel build if the frontend wasn't built
+    first (today only an in-Dockerfile assert catches this); migration locking for concurrent ECS
+    task starts (every task runs `run_migrations` in its own lifespan with no lock); an ALB
+    liveness-vs-readiness probe split (today's DB-touching health check would mark every task
+    unhealthy during an RDS failover, roughly 60-120s, and ECS would replace all of them —
+    acceptable for the Docker healthcheck, not for an ALB target group); `infra/smoke.py` doesn't
+    yet exercise `/api/charts/data` (the DuckDB/Parquet path most sensitive to container memory)
+    or `/api/health` itself; a wheel-metadata test asserting the `postgres` extra's `Requires-Dist`
+    entry survives future refactors.
+
 ## MVP.md
 
 ### 1. Data Sources & Import

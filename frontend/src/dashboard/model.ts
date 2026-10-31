@@ -98,6 +98,37 @@ export interface GridPosition {
   h: number;
 }
 
+/** Smallest a widget can be resized to, in grid units (matches the grid's own minimum). */
+export const MIN_WIDGET_SIZE = 2;
+
+const ARROWS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"] as const;
+export const isArrowKey = (key: string): key is (typeof ARROWS)[number] =>
+  (ARROWS as readonly string[]).includes(key);
+
+/**
+ * One keyboard step for a widget on the grid: an arrow moves it one cell, Shift+arrow resizes it
+ * one cell (Right/Down grow, Left/Up shrink). Stays inside the grid and above the minimum size;
+ * returns null when the step would not change anything (an edge was reached).
+ */
+export function nudge(
+  pos: GridPosition,
+  key: (typeof ARROWS)[number],
+  resize: boolean,
+  columns = GRID_COLUMNS,
+): GridPosition | null {
+  const next = { ...pos };
+  if (resize) {
+    if (key === "ArrowRight") next.w = Math.min(pos.w + 1, columns - pos.x);
+    else if (key === "ArrowLeft") next.w = Math.max(pos.w - 1, MIN_WIDGET_SIZE);
+    else if (key === "ArrowDown") next.h = pos.h + 1;
+    else next.h = Math.max(pos.h - 1, MIN_WIDGET_SIZE);
+  } else if (key === "ArrowRight") next.x = Math.min(pos.x + 1, columns - pos.w);
+  else if (key === "ArrowLeft") next.x = Math.max(pos.x - 1, 0);
+  else if (key === "ArrowDown") next.y = pos.y + 1;
+  else next.y = Math.max(pos.y - 1, 0);
+  return next.x === pos.x && next.y === pos.y && next.w === pos.w && next.h === pos.h ? null : next;
+}
+
 /** Apply a grid layout to the tab's items; the same object is returned when nothing moved. */
 export function applyLayout(
   dashboard: Dashboard,
