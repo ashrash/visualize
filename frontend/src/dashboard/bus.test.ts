@@ -208,3 +208,15 @@ describe("filtersForChart: cross-dataset selections", () => {
     ]);
   });
 });
+
+describe("filtersForChart: followAllGroups", () => {
+  it("lets a widget in no group take the selections of every group", () => {
+    let bus = publish(EMPTY_BUS, "g1", "w1", sel("ds1", inP("region", "N")));
+    bus = publish(bus, "g2", "w2", sel("ds1", inP("channel", "web")));
+    const kpi = spec("kpi:x");
+    expect(filtersForChart(inputs({ spec: kpi, widgetId: "k", bus }))).toEqual([]);
+    expect(
+      filtersForChart(inputs({ spec: kpi, widgetId: "k", bus, followAllGroups: true })),
+    ).toEqual([inP("region", "N"), inP("channel", "web")]);
+  });
+});

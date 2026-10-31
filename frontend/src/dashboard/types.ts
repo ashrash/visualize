@@ -15,3 +15,6 @@ export type FilterControl = NonNullable<DashboardFilter["control"]>;
 export type DrillTarget =
   | { kind: "dashboard"; dashboardId: string }
   | { kind: "grid"; datasetId: string };
+
+export type KpiWidgetValue = Extract<Widget, { kind: "kpi" }>;
+export type FilterWidgetValue = Extract<Widget, { kind: "filter" }>;

@@ -145,6 +145,8 @@ export function legendPredicates(spec: ChartSpec, selected: Record<string, boole
   return [{ op: "in", field: color.field, values: on }];
 }
 
+type RangeLike = { min?: number | string | null; max?: number | string | null };
+
 const sameValues = (a: unknown[], b: unknown[]) =>
   a.length === b.length && a.every((v) => b.includes(v));
 
@@ -156,8 +158,8 @@ export function samePredicate(a: Predicate, b: Predicate): boolean {
   }
   if (a.op === "eq") return a.value === (b as typeof a).value;
   if (a.op === "is_null") return a.isNull === (b as typeof a).isNull;
-  const r = b as typeof a;
-  return a.min === r.min && a.max === r.max;
+  const [ra, rb] = [a, b] as [RangeLike, RangeLike];
+  return ra.min === rb.min && ra.max === rb.max;
 }
 
 export function sameSelection(a: Predicate[], b: Predicate[]): boolean {

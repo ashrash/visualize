@@ -81,6 +81,8 @@ export interface FilterInputs {
   globalValues: Record<string, Predicate | null>;
   /** Drill-through predicates pinned when the dashboard was opened from another view. */
   drill: Predicate[];
+  /** KPI cards and other widgets that are in no group: take every group's selections. */
+  followAllGroups?: boolean;
   /** Known columns of a source, or undefined when not known (a pipeline not yet inspected). */
   columnsOf: (sourceId: string) => ReadonlySet<string> | undefined;
 }
@@ -129,7 +131,9 @@ export function filtersForChart(input: FilterInputs): Predicate[] {
   for (const p of input.drill) if (applicable(p)) out.push(p);
 
   const group = groupOf(dashboard, spec);
-  const selections = group ? (bus[group] ?? {}) : {};
+  const groups = input.followAllGroups ? Object.keys(bus).sort() : group ? [group] : [];
+  const selections: Record<string, Selection> = {};
+  for (const g of groups) Object.assign(selections, bus[g]);
   for (const id of Object.keys(selections).sort()) {
     if (id === widgetId) continue; // a chart never filters itself
     const selection = selections[id];
