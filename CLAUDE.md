@@ -37,7 +37,7 @@ Anything not in these files is out of scope until the user confirms it.
 | Stats / ML | NumPy, SciPy, statsmodels, scikit-learn | pandas only at the library boundary, on capped samples |
 | Downsampling | **tsdownsample** (M4, MinMaxLTTB; Rust) | For line and area series |
 | Export | DuckDB `COPY` (CSV), **xlsxwriter** (Excel) | |
-| Metadata | SQLAlchemy 2.0 + Alembic; **SQLite** locally, Postgres on AWS (`VIZ_DATABASE_URL`) | |
+| Metadata | SQLAlchemy 2.0 + Alembic; **SQLite** locally, Postgres on AWS (`VIZ_DATABASE_URL`) | The Postgres driver (`psycopg[binary]`) is the `postgres` optional-dependency extra (`pip install visualize[postgres]`), not a core dependency, since SQLite needs no driver locally. `infra/Dockerfile` installs it; any future extra the server needs at runtime must be added to that Dockerfile's `uv export --extra` line too. |
 | Data dir | platformdirs (`%LOCALAPPDATA%\visualize`, `~/Library/Application Support/visualize`); `VIZ_DATA_DIR` overrides | |
 | Cache | in-process LRU (cachetools) keyed by (dataset version, SQL hash) | Redis only if AWS runs multiple instances |
 | CLI | Typer (`viz dev`, `viz build`, `viz serve`) | |
@@ -200,7 +200,7 @@ Most parallelism comes from the libraries. Our job is to **limit it and cancel s
 - **Bound value growth per step.** Formulas can blow up a single value: `replace` expansion, `||` chains and list concatenation compound across chained calc steps. Every step that produces text gets a generated length guard. Calc outputs with nested types are refused, except a bare column reference. Each formula has a documented worst-case growth factor, enforced by tests. DuckDB's `memory_limit` doesn't cover string heaps, so very wide inputs can still exhaust memory. Rows can also multiply, bounded only by the query timeout and the memory limit: through chained many-to-many joins, chained unpivots (each step doubles the rows), and unions that reference one pipeline twice. And because DuckDB evaluates 2,048-row vectors before the guard runs, a single step can transiently hold about 2,048 × its per-value peak. All of this is accepted locally; hosted mode needs per-query process isolation with a memory cap.
 - **User SQL** (Next §11) is SELECT-only and runs on a locked connection (`enable_external_access=false`, `allowed_directories` = data dir, `lock_configuration=true`) with a timeout.
 - Never `eval`/`exec` user input in the API process. Custom Python/R scripts (Next) run in a subprocess with a timeout and memory cap, with Arrow in and out. In hosted mode they stay disabled unless an isolated runner is configured.
-- The server binds `127.0.0.1` by default; `--host 0.0.0.0` is opt-in. Every router depends on `auth.current_user` (a local stub now, OIDC later); never bypass it.
+- The server binds `127.0.0.1` by default; `--host 0.0.0.0` is opt-in. Every router depends on `auth.current_user` (a local stub now, OIDC later); never bypass it, except the two deliberate, spelled-out-at-the-call-site exceptions a test pins the full list of: `share_access` (token-gated share/embed resolution) and `/api/health`'s bare router (a load balancer/container probe can't carry credentials; it discloses only a static status/version plus a DB round-trip, nothing sensitive).
 - Enforce upload size limits and sniff file types. Sanitize Markdown in text widgets with DOMPurify.
 
 ### Cross-platform

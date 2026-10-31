@@ -1,0 +1,51 @@
+# AWS-parity test stack: the app container plus Postgres as the metadata DB.
+#
+# THIS IS OPTIONAL AND NOT FOR NORMAL USE. Running Visualize locally needs no Docker and no
+# Postgres (`uv run viz serve` uses SQLite in the data dir). Use this only to check that the
+# Postgres metadata path (SQLAlchemy + Alembic) behaves like the SQLite one before an AWS deploy.
+#
+#   docker compose -f infra/docker-compose.yml up --build -d
+#   open http://127.0.0.1:8000
+#   docker compose -f infra/docker-compose.yml down -v    # -v also drops the volumes
+#
+# The credentials below are throwaway defaults for a local test; override with POSTGRES_PASSWORD.
+# Keep it to URL-safe characters (no @, /, :, % or whitespace): it's interpolated directly into
+# VIZ_DATABASE_URL below without percent-encoding, so an unsafe character breaks the app's startup.
+
+name: visualize
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: viz
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-viz}
+      POSTGRES_DB: viz
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U viz -d viz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      VIZ_DATABASE_URL: postgresql+psycopg://viz:${POSTGRES_PASSWORD:-viz}@db:5432/viz
+      # Mirrors a container with a memory limit; DuckDB sizes itself from this, not the host.
+      VIZ_DUCKDB_MEMORY_LIMIT: ${VIZ_DUCKDB_MEMORY_LIMIT:-2GB}
+    ports:
+      # Loopback only: the app has no real auth yet (auth.current_user is a stub).
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - vizdata:/data
+
+volumes:
+  pgdata:
+  vizdata:

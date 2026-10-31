@@ -126,6 +126,11 @@ export class Api {
     return this.json<Project>("post", "/api/projects", { data: { name } });
   }
 
+  /** Save a project document (the revision inside it must be current). */
+  saveProject(project: Project): Promise<Project> {
+    return this.json<Project>("put", `/api/projects/${project.id}`, { data: project });
+  }
+
   project(id: string): Promise<Project> {
     return this.json<Project>("get", `/api/projects/${id}`);
   }
@@ -140,6 +145,26 @@ export class Api {
 
   async deleteProject(id: string): Promise<void> {
     await this.json<void>("delete", `/api/projects/${id}`, {}, [200, 204]);
+  }
+
+  // -- assets and sharing -------------------------------------------------------------------
+
+  /** Upload an image (as the image widget does). Returns the asset id. */
+  async uploadAsset(buffer: Buffer, name = "image.png", mimeType = "image/png"): Promise<string> {
+    const asset = await this.json<{ id: string }>("post", "/api/assets", {
+      multipart: { file: { name, mimeType, buffer } },
+    });
+    return asset.id;
+  }
+
+  /** Mint a share link for a dashboard. Returns the token and the frontend paths. */
+  createShare(
+    projectId: string,
+    dashboardId: string,
+  ): Promise<{ token: string; sharePath: string; embedPath: string }> {
+    return this.json("post", "/api/share", {
+      data: { projectId, kind: "dashboard", itemId: dashboardId },
+    });
   }
 
   // -- misc ---------------------------------------------------------------------------------

@@ -104,7 +104,12 @@ function GlobalFilters({
           <Field label="Date field" className="flex-1">
             {(p) => <Input {...p} value={field} onChange={(e) => setField(e.target.value)} />}
           </Field>
-          <Button type="submit" variant="primary" disabled={!field.trim()}>
+          <Button
+            type="submit"
+            variant="primary"
+            className="hover:opacity-100 hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]"
+            disabled={!field.trim()}
+          >
             Add
           </Button>
         </form>
@@ -297,7 +302,11 @@ export default function DashboardPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button variant="primary" onClick={() => setSharing(true)}>
+              <Button
+                variant="primary"
+                className="hover:opacity-100 hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]"
+                onClick={() => setSharing(true)}
+              >
                 <Share2 size={14} aria-hidden="true" />
                 Share
               </Button>
@@ -334,7 +343,11 @@ export default function DashboardPage() {
       ) : (
         <div className="flex flex-col items-center gap-2 p-10 text-center">
           <p className="text-sm text-muted">This project has no dashboards yet.</p>
-          <Button variant="primary" onClick={create}>
+          <Button
+            variant="primary"
+            className="hover:opacity-100 hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]"
+            onClick={create}
+          >
             Create a dashboard
           </Button>
         </div>

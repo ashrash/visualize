@@ -27,7 +27,9 @@ export async function listShares(projectId: string, signal?: AbortSignal): Promi
 
 /** DELETE /api/share/{token}: revoke. */
 export async function revokeShare(token: string, signal?: AbortSignal): Promise<void> {
-  unwrap(await api.DELETE("/api/share/{token}", { params: { path: { token } }, signal }));
+  const result = await api.DELETE("/api/share/{token}", { params: { path: { token } }, signal });
+  // 204 has no body, so there is no `data` for `unwrap` to return: only an error is checked.
+  if (result.error !== undefined) unwrap(result);
 }
 
 /** GET /api/share/{token} or /api/embed/{token}: public, no sign-in. 404 for any bad token. */

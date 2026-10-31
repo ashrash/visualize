@@ -1,5 +1,5 @@
 import { Image, Link2, Plus, RotateCcw, Save, Type } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChartSpec, Pipeline, Predicate } from "../api/types";
 import { Button } from "../components/ui/button";
 import { cn } from "../components/ui/cn";
@@ -112,6 +112,8 @@ export function DashboardView({
   const clearSelection = useDashboardRuntime((s) => s.clearSelection);
   const prune = useDashboardRuntime((s) => s.prune);
   const [adding, setAdding] = useState<NewWidgetKind | null>(null);
+  // The widget dialogs open from a menu item, so there is no trigger for them to give focus back to.
+  const addButton = useRef<HTMLButtonElement>(null);
 
   // A dashboard opened without going through a drill-through starts clean.
   useEffect(() => {
@@ -211,40 +213,35 @@ export function DashboardView({
         {!embed || filterItems.length > 0 ? (
           <div className="dashboard-chrome flex flex-wrap items-end gap-x-4 gap-y-2">
             {tabs.length > 1 || editing ? (
-              <div
-                role="tablist"
-                aria-label="Dashboard tabs"
-                className="flex flex-wrap items-center gap-1"
-              >
-                {tabs.map((t) => (
-                  <div key={t.id} className="flex items-center">
-                    {editing && t.id === tab.id ? (
-                      <Input
-                        aria-label="Tab name"
-                        value={t.name}
-                        onChange={(e) => onChange?.((d) => renameTab(d, t.id, e.target.value))}
-                        className="h-7 w-28"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={t.id === tab.id}
-                        onClick={() => setTab(t.id)}
-                        className={cn(
-                          "rounded-md px-2.5 py-1 text-sm focus-visible:outline-2 focus-visible:outline-accent",
-                          t.id === tab.id
-                            ? "bg-surface-2 font-medium"
-                            : "text-muted hover:bg-surface-2",
-                        )}
-                      >
-                        {t.name}
-                      </button>
-                    )}
-                  </div>
-                ))}
+              <div className="flex flex-wrap items-center gap-1">
+                {/* Only tabs inside the tablist (the ARIA content model); editing sits beside it. */}
+                <div role="tablist" aria-label="Dashboard tabs" className="flex flex-wrap gap-1">
+                  {tabs.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={t.id === tab.id}
+                      onClick={() => setTab(t.id)}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-sm focus-visible:outline-2 focus-visible:outline-accent",
+                        t.id === tab.id
+                          ? "bg-surface-2 font-medium"
+                          : "text-muted hover:bg-surface-2",
+                      )}
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
                 {editing ? (
                   <>
+                    <Input
+                      aria-label="Tab name"
+                      value={tab.name}
+                      onChange={(e) => onChange?.((d) => renameTab(d, tab.id, e.target.value))}
+                      className="h-7 w-28"
+                    />
                     <Button
                       size="icon"
                       variant="ghost"
@@ -284,7 +281,10 @@ export function DashboardView({
             {editing ? (
               <div className="ml-auto flex items-center gap-1">
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-accent">
+                  <DropdownMenuTrigger
+                    ref={addButton}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)] focus-visible:outline-2 focus-visible:outline-accent"
+                  >
                     <Plus size={14} aria-hidden="true" />
                     Add widget
                   </DropdownMenuTrigger>
@@ -374,7 +374,12 @@ export function DashboardView({
           </p>
         ) : null}
       </div>
-      <WidgetDialog kind={adding} onClose={() => setAdding(null)} onAdd={addNew} />
+      <WidgetDialog
+        kind={adding}
+        onClose={() => setAdding(null)}
+        onAdd={addNew}
+        returnFocusTo={addButton}
+      />
     </DashboardEnvProvider>
   );
 }

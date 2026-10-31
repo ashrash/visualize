@@ -38,10 +38,20 @@ export interface ScreenReport {
 
 /**
  * Which agent should fix a node. A heuristic from where the element sits in the DOM: chart
- * canvas, chart toolbar/export menu and the config panel belong to ui-charts, everything else in
- * the shell, data screens, dialogs and project menu to ui-data. (Dashboards arrive in Wave 3.)
+ * canvas, chart toolbar/export menu and the config panel belong to ui-charts; dashboards (the
+ * grid, its toolbar, the share and embed pages, the widget-add, share and global-filter dialogs)
+ * to ui-dashboard; everything else in the shell, data screens, dialogs and project menu to ui-data.
  */
-const CHARTS_REGION = 'section[aria-label="Chart"], #chart-settings, [aria-label="Export chart"]';
+const CHARTS_REGION = [
+  'section[aria-label="Chart"]',
+  "#chart-settings",
+  '[aria-label="Export chart"]',
+  '.dashboard-widget [role="img"][aria-label]',
+  '.dashboard-widget [aria-label="Drill-down"]',
+].join(", ");
+const DASHBOARD_REGION = ".dashboard, .dashboard-chrome, .shared-page, .shared-embed";
+/** Titles of the dialogs ui-dashboard owns. */
+const DASHBOARD_DIALOG = '^(Add (KPI card|text|image|filter)|Share "|Global filters|Delete ")';
 
 /** Run axe (WCAG 2.1 A/AA rules) on the current page state and save the result. */
 export async function runAxe(page: Page, screen: string, theme: string): Promise<ScreenReport> {
@@ -54,23 +64,37 @@ export async function runAxe(page: Page, screen: string, theme: string): Promise
     const nodes: AxeNodeResult[] = [];
     for (const n of v.nodes) {
       const target = n.target.map(String).join(" ");
-      const inCharts = await page
+      const owner = await page
         .evaluate(
-          ({ selector, region }) => {
+          ({ selector, charts, dashboard, dialogTitle }) => {
             try {
               const element = document.querySelector(selector);
-              return element !== null && element.closest(region) !== null;
+              if (element === null) return "ui-data";
+              if (element.closest(charts) !== null) return "ui-charts";
+              if (element.closest(dashboard) !== null) return "ui-dashboard";
+              const dialog = element.closest('[role="dialog"]');
+              const labelledBy = dialog?.getAttribute("aria-labelledby");
+              const title = labelledBy ? document.getElementById(labelledBy)?.textContent : "";
+              if (title && new RegExp(dialogTitle).test(title)) return "ui-dashboard";
+              return "ui-data";
             } catch {
-              return false;
+              return "ui-data";
             }
           },
-          { selector: target, region: CHARTS_REGION },
+          {
+            selector: target,
+            charts: CHARTS_REGION,
+            dashboard: DASHBOARD_REGION,
+            dialogTitle: DASHBOARD_DIALOG,
+          },
         )
-        .catch(() => false);
+        .catch(() => "ui-data");
+      // the generated HTML report is opened from a file and built by the dashboard module
+      const isReport = page.url().startsWith("file:");
       nodes.push({
         target,
         html: n.html.slice(0, 240),
-        owner: inCharts ? "ui-charts" : "ui-data",
+        owner: isReport ? "ui-dashboard" : (owner as Owner),
         summary: (n.failureSummary ?? "").replace(/\s+/g, " ").slice(0, 300),
       });
     }

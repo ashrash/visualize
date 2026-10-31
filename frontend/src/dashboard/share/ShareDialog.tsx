@@ -145,7 +145,12 @@ export function ShareDialog({
               />
             )}
           </Field>
-          <Button variant="primary" disabled={create.isPending} onClick={() => create.mutate()}>
+          <Button
+            variant="primary"
+            className="hover:opacity-100 hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]"
+            disabled={create.isPending}
+            onClick={() => create.mutate()}
+          >
             Create link
           </Button>
         </div>

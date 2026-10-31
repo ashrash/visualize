@@ -1,6 +1,9 @@
 """Authentication. Local mode has one user; on AWS this becomes OIDC (Cognito).
 
-Every API router depends on `current_user`. Never add a route that skips it.
+Every API router depends on `current_user`. Never add a route that skips it, except the two
+already-established, deliberately public exceptions: `share_access` below (token-gated reads) and
+`/api/health` (`api/__init__.py`'s bare `health_router`, for a load balancer probe that can't
+carry credentials and discloses only a static status/version). A test pins the full public list.
 """
 
 from __future__ import annotations

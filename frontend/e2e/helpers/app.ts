@@ -39,7 +39,8 @@ export class App {
   // -- header ---------------------------------------------------------------------------------
 
   get projectMenu(): Locator {
-    return this.page.getByRole("button", { name: "Project menu" });
+    // Its accessible name is "<project name>, project menu" (the name comes first, WCAG 2.5.3).
+    return this.page.getByRole("banner").getByRole("button", { name: /project menu$/i });
   }
 
   get projectName(): Locator {
@@ -60,11 +61,11 @@ export class App {
   }
 
   get undoButton(): Locator {
-    return this.page.getByRole("button", { name: "Undo" });
+    return this.page.getByRole("button", { name: "Undo", exact: true });
   }
 
   get redoButton(): Locator {
-    return this.page.getByRole("button", { name: "Redo" });
+    return this.page.getByRole("button", { name: "Redo", exact: true });
   }
 
   /** Press Save and wait for the indicator to settle. */

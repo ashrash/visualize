@@ -560,6 +560,101 @@ blockers: the hosted-mode share/embed data-scoping gap (chart data isn't token-s
 cleanup/GC and `.vizproj` asset bundling; the responsive-layout and autosave/undo follow-ups
 already tracked under MVP §7/§10.
 
+## Wave 4 log
+
+- 2026-10-31: Wave 4 kicked off per CLAUDE.md §10: perf budgets at 10M rows, e2e flows, an
+  accessibility pass, smoke tests on Windows and macOS, wheel packaging, Dockerfile + optional
+  compose. Dispatched in parallel: `data-core` (cold-page/search/dashboard-refresh perf),
+  `transform` (M4 line-chart perf), `stats` (describe-with-modes perf), `platform` (packaging and
+  infra), `qa` (e2e + a11y for the Wave 3 dashboard surface). **Known limitation, flagged up front
+  and unresolved**: this repo has no git remote configured, so the existing 3-OS CI workflow
+  (`.github/workflows/ci.yml`) has never actually executed on GitHub's runners — neither the lead
+  nor any agent can trigger or verify a real macOS run from here. `qa`'s review confirmed the
+  workflow is *correctly configured* for macOS (wheel coverage in `uv.lock`, native binaries in
+  `package-lock.json`, LF line endings, OS-guarded `taskkill`/`ControlOrMeta` usage) but this is
+  inspection only, not a real run. Actual macOS verification needs a GitHub remote or physical/
+  virtual Mac access.
+- 2026-10-31: `platform`'s packaging/infra merged: verified the wheel ships the built frontend
+  end to end (built, installed into a clean venv with no Node on PATH, `viz serve` works);
+  `infra/Dockerfile` (3-stage build), `infra/docker-compose.yml` (app + Postgres 17, AWS-parity
+  testing only), `infra/smoke.py`, `backend/tests/test_packaging.py`. xhigh review (touches
+  `auth/`) found no blockers; two should-fixes and ten nits, addressed by the lead:
+  - A real bug found while wiring in a new `postgres` optional-dependency extra (`psycopg[binary]`
+    in `pyproject.toml`): `uv pip install --no-deps "<wheel>[postgres]"` silently drops the
+    extra's own dependencies too, not just the base package's, so psycopg was never actually in
+    the image. **Correction to the record**: this bug only ever existed in the lead's own
+    uncommitted intermediate edit — the platform agent's original, committed Dockerfile installed
+    psycopg inline with full dependency resolution and worked correctly. Fixed by exporting the
+    extra into the cached `requirements.txt` layer instead (`uv export --locked --extra postgres`).
+  - `/api/health` moved off the authenticated `api_router` onto a new bare `health_router`: a load
+    balancer/container probe can't carry credentials, and the route only "worked" authenticated
+    before because `auth.current_user` is a local no-op stub. Documented in CLAUDE.md §6 and
+    `viz/auth/__init__.py` as the second deliberate public-route exception alongside
+    `share_access`, pinned by the existing test enumerating every unauthenticated `/api/*` route.
+    Still runs a trivial DB query, doubling as the Docker healthcheck's connectivity check.
+  - Smaller fixes: `--locked` instead of `--frozen` (fails the build on a stale lock), `uv pip
+    check` plus explicit import assertions after the wheel install, `VIZ_PORT` read from the
+    environment in the healthcheck, the `uv` binary and its cache removed from the runtime image,
+    a URL-safe-characters warning on the compose Postgres password.
+  - Verified concretely: built the image, confirmed `import psycopg` succeeds (and did NOT before
+    the fix), ran the full `docker compose` Postgres path end to end twice (health endpoint 200,
+    Alembic migrations clean on Postgres, Docker's own HEALTHCHECK reports healthy), torn down
+    cleanly both times. 1154 backend tests passed/6 skipped, ruff/mypy clean.
+  - **Deferred, tracked, not blockers** (AWS-specific per CLAUDE.md §11's "don't build it now,
+    don't block it"): a hatch build-hook to fail the wheel build if the frontend wasn't built
+    first (today only an in-Dockerfile assert catches this); migration locking for concurrent ECS
+    task starts (every task runs `run_migrations` in its own lifespan with no lock); an ALB
+    liveness-vs-readiness probe split (today's DB-touching health check would mark every task
+    unhealthy during an RDS failover, roughly 60-120s, and ECS would replace all of them —
+    acceptable for the Docker healthcheck, not for an ALB target group); `infra/smoke.py` doesn't
+    yet exercise `/api/charts/data` (the DuckDB/Parquet path most sensitive to container memory)
+    or `/api/health` itself; a wheel-metadata test asserting the `postgres` extra's `Requires-Dist`
+    entry survives future refactors.
+- 2026-10-31: `transform`'s M4 single-pass perf fix merged: eliminates a materialized 10M-row CTE,
+  a second full scan for the x extent, and a semi-join, replacing them with one aggregate-and-pick
+  pipeline (scalar `arg_min`/`arg_max` for one measure, whole-row struct picks via `arg_min(row,
+  key)` for several, avoiding tied-row column mispairing). ~40% faster under heavy concurrent
+  load (p50 ~377ms -> ~223ms in-process, ~312ms -> ~238ms over HTTP). xhigh review found one real
+  blocker: the new integer `epoch_us` bucket path's `least()` silently kept NULL-x rows instead of
+  dropping them (DuckDB's `least()` skips NULL arguments) — reproduced as a 40x-magnitude false
+  spike on a line chart built from CSV rows with empty date cells. Fixed with the same `CASE WHEN
+  isfinite(...)` guard the DOUBLE-literal branch already had; the fix was re-verified by writing a
+  pytest plugin that reverts the guard and confirms the regression tests actually fail without it.
+  1164 backend tests passed/7 skipped, ruff/mypy clean.
+- 2026-10-31: `ui-dashboard` fixed all 4 product bugs qa's Wave 4 e2e pass pinned with `test.fail`
+  sentinels, plus the accessibility findings: share-revoke now handles a 204's empty body instead
+  of routing it through a JSON-expecting `unwrap()`; the date-range filter's draft no longer resets
+  to the stale committed value mid-edit (was racing its own 150ms debounce); react-grid-layout's
+  drag handle is now a real keyboard-operable button (Space/Enter pick up, arrows move/resize,
+  Escape cancels, a live region announces each step) — a genuine race was found and fixed where the
+  live grid position lagged a render behind, dropping the first of two fast keypresses; widget
+  dialogs now return focus to "Add widget" on close instead of dropping to `<body>`. A11y fixes:
+  the dropdown filter's accessible name now includes its value; the edit-mode tablist holds only
+  tabs; print styles use light tokens regardless of the active theme; hand-written buttons picked
+  up the same accent/text color-mix hover fix as the shared `Button` component. Also retired the 4
+  `test.fail` sentinels and 15 now-resolved axe-baseline entries in qa's own e2e files (done while
+  verifying end-to-end against qa's suite, based on qa's pre-round-2 commit — qa is reconciling
+  their own round-2 quality improvements against this separately). Independently re-verified on
+  `main` post-merge: `dashboard.spec.ts` + `a11y-dashboard.spec.ts` = **43/43 passed, zero axe
+  violations across all 34 screens**. 871 vitest passed/4 skipped, biome/tsc clean.
+  - **Known limitation, unrelated to this branch**: in dark-theme print, ECharts draws axis/series
+    text on canvas using the screen theme's colors, which CSS print overrides can't reach — axis
+    labels may print pale on a white page. The token-level print-contrast fix covers everything
+    except canvas-rendered chart text.
+- 2026-10-31: `data-core`'s search/grid-perf branch found genuinely serious bugs on its first
+  review round, both now fixed and in a second xhigh confirmation round: (1) searches in Korean,
+  Hindi and other non-Latin scripts returned **zero rows** on high-cardinality columns, because the
+  new accent-folding fast path didn't match DuckDB's `strip_accents` for Hangul (Python NFD
+  decomposes syllables; DuckDB doesn't) or Mc/Me Unicode marks (only Mn was stripped) — fixed by
+  gating the regex fast path to Latin/Greek/Cyrillic/Vietnamese ranges only, routing everything
+  else to the always-correct `strip_accents` fallback; (2) long search needles were ~200x slower,
+  with the 256-character cap not preventing a 29-62s worst case that could hold a query slot past
+  the engine's 60s timeout — fixed by narrowing the accent-expansion character class now that the
+  fast path is script-scoped, bringing the worst case down to ~26ms. Also fixed: a dataset column
+  literally named `file_row_number` broke every filtered/searched page (mirrors an existing guard
+  in `transform/compiler.py`); a thread-unsafe LRU cache; a ~356ms first-search cost. 1207 backend
+  tests passed/6 skipped.
+
 ## MVP.md
 
 ### 1. Data Sources & Import

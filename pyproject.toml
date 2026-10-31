@@ -28,6 +28,12 @@ dependencies = [
     "threadpoolctl>=3.5",
 ]
 
+[project.optional-dependencies]
+# Postgres metadata DB (VIZ_DATABASE_URL). Not needed locally (SQLite is the default); used for
+# AWS-parity testing (infra/docker-compose.yml) and on AWS itself (RDS Postgres, CLAUDE.md §11).
+# psycopg-binary ships wheels for win_amd64, macOS arm64/x86_64 and manylinux.
+postgres = ["psycopg[binary]>=3.2"]
+
 [project.scripts]
 viz = "viz.cli:app"
 
