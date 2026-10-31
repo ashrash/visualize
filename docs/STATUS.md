@@ -698,6 +698,56 @@ already tracked under MVP §7/§10.
     layout (a pre-existing gap, not introduced by this round); Escape's whole-layout restore has
     thinner test coverage against the simpler single-widget-restore alternative than ideal, though
     fuzzing showed both converge in practice for the cases tried.
+- 2026-10-31: `stats` closed out the last two Wave 1 perf items: descriptive stats with modes at
+  10M rows, ungrouped (p50 1.70s / p95 1.73-1.81s on a quiet machine, down from 2.09-2.34s, meets
+  the 3s budget) and grouped (p50 3.40s, down from 5.9-6.2s, ~43% faster). No engine changes
+  needed — three fixes, all in `stats/descriptive.py`:
+  - The modes computation ran one `GROUP BY` per field as branches of a single `UNION ALL`, which
+    DuckDB executes concurrently — every field's value-count hash table was resident in memory at
+    once (2-5x peak memory measured; spills at low `memory_limit` values, independently confirmed
+    by the reviewer at a 350MB limit: 0.45s -> 5.42s on `main`, unaffected on the branch). Fixed
+    with one query per field instead of one combined query.
+  - The mode top-k used `min_by` with a STRUCT key, building an expensive sort key per distinct
+    value (0.6s CPU alone on a 3.4M-distinct column). Fixed with a cheaper top-k keyed on a plain
+    count, sorting ties natively in SQL afterward — with an exact fallback whenever all 64 kept
+    slots tie above count 1, so a mode can never be silently dropped. The reviewer proved this
+    fallback trigger condition is complete (a dropped mode is only possible when every kept slot
+    ties, which is exactly when the fallback fires).
+  - A DATE/TIMESTAMP `quantile_disc` call finalizes on one thread (CLAUDE.md §12's known DuckDB
+    gotcha), stalling the scan. Low-cardinality temporal columns now derive quantiles from the
+    mode query's own value-counts via DuckDB's own discrete-quantile index formula instead of
+    calling `quantile_disc`; high-cardinality ones keep the original path (the gate only affects
+    speed — the counts-derived path is exact at any cardinality, independently verified against
+    the textbook formula for every n up to 3M across 22 percentiles with zero divergence).
+  - xhigh review independently re-verified every correctness claim rather than trusting the
+    numbers (field-by-field comparison across 12 synthetic-data configurations: 0 exact-statistic
+    differences; confirmed the ~1e-16 moment-aggregate differences are DuckDB's own parallel-
+    summation floating-point noise, reproducible from an old-vs-old rerun, not a regression; 10
+    planted mutants in the new logic, 9 killed by existing tests, the 10th survived correctly as
+    a mathematically equivalent variant). Lead applied one nit: the test's float tolerance now
+    scopes to the 7 moment keys only, keeping quantiles/modes/min/max at bit-exact equality.
+    1237 backend tests passed/7 skipped, ruff/mypy clean. **Merged.**
+  - Deferred, tracked, not blockers: grouped describe can still OOM on a very memory-constrained
+    machine (~1.7 GiB main-instance limit) — substantially improved by this branch but not fully
+    closed; a measured fix exists (split into per-group + overall queries, +0.14s, peak 1.56->1.10
+    GiB) left for a follow-up after qa's quiet-machine pass. A deeper design question for the
+    100M-row target: `quantile_cont`'s per-row-growing state can't spill, so it will outgrow small
+    machines even ungrouped at that scale — needs a Wave 4+ decision (sampled, approximate, or
+    per-field above some row count). An all-tied high-cardinality field pays the exact-fallback
+    cost unconditionally (roughly doubles that one field's mode cost; bounded to one field, not
+    blocking). `TODO(transform)`: a `range` filter on a BIGINT column compiles to a per-row DOUBLE
+    cast (`chartdata/sql.py`'s `_bound` emits a float literal unconditionally), costing ~0.1s
+    across describe's own scans under a filter — out of scope for `stats`. `TODO(qa)`: `bench.py`'s
+    "payload cap scatter: lat vs lon" case returns HTTP 422 (lat/lon get the geo semantic, which
+    chart-data rejects for x/y) — a fixture issue, not a regression.
+
+**Wave 4's originally-dispatched perf-fixing scope is now complete**: all 5 carried-over Wave 1
+budget items (cold sorted/deep grid pages, free-text search, the M4 raw-timestamp line, and
+describe-with-modes) are fixed and merged, meeting budget except grouped describe's deep-sorted-
+page figure (improved but not fully closed, tracked above). Still open for Wave 4 overall: `qa`'s
+final confirmed state of `frontend/e2e/` (reconciliation is in; no outstanding report expected
+unless something regressed), a consolidated quiet-machine re-measurement of everything above, and
+the pre-existing `Plots.md`/`Next.md` uncommitted-edit question still awaiting the user.
 
 ## MVP.md
 
