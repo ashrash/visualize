@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from viz.config import Settings
-from viz.storage.assets import MAX_ASSET_BYTES, sniff_image_type
+from viz.storage.assets import sniff_image_type
 
 
 def _png_1x1() -> bytes:
@@ -100,7 +100,7 @@ def test_exe_masquerading_as_png_is_rejected(client: TestClient, settings: Setti
 
 
 def test_too_large_is_413(client: TestClient, settings: Settings) -> None:
-    data = PNG + b"\x00" * MAX_ASSET_BYTES
+    data = PNG + b"\x00" * (settings.max_asset_mb * 1024 * 1024)
     response = _upload(client, "big.png", data)
     assert response.status_code == 413
     assert not [p for p in (settings.data_dir / "assets").iterdir() if p.is_file()]

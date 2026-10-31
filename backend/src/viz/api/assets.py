@@ -8,14 +8,12 @@ from pathlib import Path
 from anyio.to_thread import run_sync
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse
-from pydantic import Field
 
 from viz.api.deps import SettingsDep, StorageDep
-from viz.contracts.base import Contract
+from viz.contracts.assets import ImageAsset
 from viz.ingest.upload import UPLOAD_OPENAPI, receive_upload
 from viz.storage.assets import (
     EXTENSIONS,
-    MAX_ASSET_BYTES,
     find_image,
     incoming_dir,
     store_image,
@@ -31,16 +29,6 @@ _HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
 }
-
-
-# TODO(lead): move to contracts/ if you want it there; kept local as the only consumer is here.
-class ImageAsset(Contract):
-    """A stored image. Display it with `<img src={url}>`."""
-
-    id: str
-    content_type: str = Field(description="Sniffed from the bytes, not the client's header")
-    size_bytes: int
-    url: str
 
 
 def _accept_any_name(_name: str) -> None:
@@ -62,13 +50,14 @@ def _store(storage: LocalStorage, upload_dir_id: str, uploaded: Path) -> ImageAs
 
 @router.post("", response_model=ImageAsset, status_code=201, openapi_extra=UPLOAD_OPENAPI)
 async def upload_image(request: Request, storage: StorageDep, settings: SettingsDep) -> ImageAsset:
-    """Upload one image (multipart field `file`): PNG, JPEG, GIF, WebP or SVG, at most 10 MB.
-    The type is sniffed from the file's bytes (415 if it isn't one of those); 413 if too big."""
+    """Upload one image (multipart field `file`): PNG, JPEG, GIF, WebP or SVG, at most
+    `settings.max_asset_mb` (default 10 MB). The type is sniffed from the file's bytes (415 if it
+    isn't one of those); 413 if too big."""
     upload = await receive_upload(
         request,
         storage,
         settings,
-        max_bytes=MAX_ASSET_BYTES,
+        max_bytes=settings.max_asset_mb * 1024 * 1024,
         accept=_accept_any_name,
         stage_dir=incoming_dir(storage),
     )

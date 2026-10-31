@@ -15,8 +15,6 @@ from pathlib import Path
 from viz.errors import NotFoundError, UnsupportedFormatError
 from viz.storage.local import LocalStorage
 
-# TODO(lead): make this `VIZ_MAX_ASSET_MB` in config.py; `max_upload_mb` (4 GB) is for datasets.
-MAX_ASSET_BYTES = 10 * 1024 * 1024
 INCOMING = "_incoming"
 
 # Sniffed content type -> stored extension.
