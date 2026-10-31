@@ -119,15 +119,22 @@ def test_groups_match_pandas(table_relation: Any, data: pa.Table) -> None:
     _check_numeric(_one(result, "x"), _clean(data.column("x")), 400)
 
 
-def _approx_floats(value: Any) -> Any:
-    """Floats as pytest.approx (rel 1e-12), recursively: different query plans (a grouping
-    sets pass vs separate passes) may round sums differently in the last bits."""
-    if isinstance(value, float):
+# Different query plans (a grouping sets pass vs separate passes) may round these moments
+# differently in the last bits, since DuckDB's aggregate plan for them changed when an unrelated
+# aggregate (quantile_disc) was removed from the same query. Order statistics (quantiles, modes,
+# min/max, counts) stay bit-exact regardless of query plan, so only these keys get a tolerance.
+_MOMENT_KEYS = {"mean", "std", "variance", "sem", "sum", "skewness", "kurtosis"}
+
+
+def _approx_floats(value: Any, key: str | None = None) -> Any:
+    """Moment floats as pytest.approx (rel 1e-12); everything else (quantiles, modes, min/max)
+    stays bit-exact, recursively."""
+    if isinstance(value, float) and key in _MOMENT_KEYS:
         return pytest.approx(value, rel=1e-12)
     if isinstance(value, dict):
-        return {k: _approx_floats(v) for k, v in value.items()}
+        return {k: _approx_floats(v, k) for k, v in value.items()}
     if isinstance(value, list):
-        return [_approx_floats(v) for v in value]
+        return [_approx_floats(v, key) for v in value]
     return value
 
 
