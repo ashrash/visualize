@@ -355,12 +355,17 @@ def violin(req: PlotRequest) -> TableOutput:
         if x_field
         else np.array(["All"] * sample.n, dtype=object)
     )
+    # Output rows are groups x grid_size (up to 100 x 2048 = 204,800): clamp the resolution so
+    # the whole violin set fits the mark cap, instead of letting the generic cap guard slice the
+    # table mid-curve (the last kept group's polygon would be cut off partway through).
+    n_groups = max(1, len(np.unique(groups)))
+    grid_size = max(2, min(params.grid_size, req.mark_cap // n_groups))
     grouped = kde_by_group(
         sample.column(y_field),
         groups,
         bw=params.bandwidth,
         adjust=params.adjust,
-        grid_size=params.grid_size,
+        grid_size=grid_size,
         common_grid=True,
     )
     xs: list[object] = []

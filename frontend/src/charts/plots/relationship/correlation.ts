@@ -36,9 +36,11 @@ function escapeHtml(value: unknown): string {
 
 const pValueFmt = makeFormatter("number:3");
 
-/** p-values below 0.001 would otherwise round to "0.000", reading as "no significance". */
+/** p-values below 0.001 would otherwise round to "0.000", reading as "no significance". The
+ * text goes into tooltip HTML, so the "<" is entity-escaped defensively (harmless as a literal
+ * "<0" here since that can't start a tag, but there's no reason to rely on that). */
 function formatPValue(p: number): string {
-  return p < 0.001 ? "<0.001" : pValueFmt(p);
+  return p < 0.001 ? "&lt;0.001" : pValueFmt(p);
 }
 
 /** Grid that leaves room for a title/subtitle above and a horizontal visualMap legend below;

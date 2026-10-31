@@ -145,14 +145,14 @@ describe("correlogram", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
-  it("shows a small p-value as '<0.001' rather than rounding it to 0.000", () => {
+  it("shows a small p-value as '<0.001' (HTML-escaped) rather than rounding it to 0.000", () => {
     const data = makeData(
       { x: ["a"], y: ["b"], value: [0.9], n: [100], p: [0.0000001] },
       { x: "Field", y: "Field", value: "r" },
     );
     const o = render("correlogram", {}, data);
     const html = o.tooltip.formatter({ value: [0, 0, 0.9, 0.0000001] });
-    expect(html).toContain("<0.001");
+    expect(html).toContain("&lt;0.001");
   });
 });
 

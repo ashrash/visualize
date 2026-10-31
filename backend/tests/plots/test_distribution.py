@@ -205,6 +205,20 @@ def test_violin_over_cap_is_sampled(table_relation: Any) -> None:
     assert out.table.column("n").to_pylist()[0] <= KDE_CAP
 
 
+def test_violin_clamps_grid_size_to_the_mark_cap(table_relation: Any) -> None:
+    # Rows are groups x grid_size; requesting the max gridSize (2048) with several groups would
+    # otherwise return far more rows than the mark cap, and the generic cap guard would slice
+    # the table mid-curve, cutting the last kept group's polygon off partway through.
+    groups = [f"g{i}" for i in range(10)]
+    rel = table_relation(
+        {"v": [float(i) for i in range(100)], "g": [groups[i % 10] for i in range(100)]}
+    )
+    out = _run(PlotType.VIOLIN, rel, {"gridSize": 2048}, x=["g"], y=["v"], mark_cap=500)
+    assert out.table.num_rows <= 500
+    # Every group is still present (just at a coarser resolution), not truncated away.
+    assert set(out.table.column("x").to_pylist()) == set(groups)
+
+
 # ---------------------------------------------------------------- strip / swarm
 
 

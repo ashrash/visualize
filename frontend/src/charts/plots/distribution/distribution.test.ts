@@ -129,6 +129,22 @@ describe("box", () => {
     const outlierSeries = o.series.find((s: Opt) => s.type === "scatter");
     expect(outlierSeries.data).toEqual([[1, 100]]);
   });
+
+  it("matches a numeric category by value, not by its stringified form", () => {
+    // This is the case that actually discriminates the old bug from the fix: with numeric
+    // categories xs=[1, 2], the old `xs.indexOf(String(o.x))` compared the string "2" against
+    // the numbers 1 and 2 with strict equality, which never matches (indexOf has no implicit
+    // coercion), silently plotting the outlier on category 1 instead of category 2. A string
+    // category like "a" would have passed under the old code too, since String("a") === "a".
+    const numericCategory = makeData(
+      { x: [1, 2], q1: [1, 10], median: [2, 20], q3: [3, 30], lo: [0, 8], hi: [4, 32], n: [5, 6] },
+      { x: "group" },
+      { meta: { params: { outliers: [{ x: 2, value: 100 }], truncatedOutliers: false } } },
+    );
+    const o = render("box", {}, numericCategory);
+    const outlierSeries = o.series.find((s: Opt) => s.type === "scatter");
+    expect(outlierSeries.data).toEqual([[1, 100]]);
+  });
 });
 
 describe("violin", () => {
@@ -155,12 +171,24 @@ describe("violin", () => {
     { x: "species", y: "body_mass_g" },
   );
 
-  // A faithful-enough stand-in for ECharts' custom-series `api`: `coord` places a category at
-  // `index * 100` and maps y linearly, `size([1, 0])` is a fixed category band width in px.
+  // A faithful-enough stand-in for ECharts' custom-series `api`. On a *category* axis, real
+  // ECharts' `api.value(0, ...)` returns the category's numeric ordinal (e.g. `0`), not the
+  // category string ("a") that lives in the raw data row — and `api.coord` only resolves that
+  // numeric ordinal, never a stringified one (there is no category literally named "0"). This
+  // mock enforces both: `value(0, ...)` returns the ordinal, and `coord` returns NaN for
+  // anything that isn't that numeric ordinal, so a renderItem that re-stringifies the category
+  // (the regression this test exists to catch) fails here instead of in production.
   function mockApi(currentIndex: number) {
     return {
-      value: (dim: number, idx = currentIndex) => rows[idx]?.[dim],
-      coord: ([cat, y]: [string, number]) => [categories.indexOf(cat) * 100, 300 - y * 50],
+      value: (dim: number, idx = currentIndex) => {
+        const row = rows[idx];
+        if (dim === 0) return categories.indexOf(row?.[0] as string);
+        return row?.[dim];
+      },
+      coord: ([catIndex, y]: [number, number]) => {
+        const valid = typeof catIndex === "number" && categories[catIndex] !== undefined;
+        return valid ? [catIndex * 100, 300 - y * 50] : [Number.NaN, Number.NaN];
+      },
       size: () => [80],
       style: () => ({ fill: "blue" }),
     };

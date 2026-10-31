@@ -82,24 +82,31 @@ function escapeHtml(value: unknown): string {
 
 interface RenderApi {
   value(dim: number, dataIndex?: number): number | string;
-  coord(point: (number | string)[]): number[];
+  coord(point: number[]): number[];
   size(point: number[]): number[];
   style(): Record<string, unknown>;
 }
 
 interface CustomParams {
-  context: { groups?: Map<string, { firstIndex: number; ys: number[]; ds: number[]; n: number }> };
+  context: { groups?: Map<number, { firstIndex: number; ys: number[]; ds: number[]; n: number }> };
   dataInsideLength: number;
   dataIndexInside: number;
 }
 
 /** One polygon per category, traced through the server's KDE curve (mirrored left/right),
- * scaled to the category's own peak density (so every violin reaches the same half-width). */
+ * scaled to the category's own peak density (so every violin reaches the same half-width).
+ *
+ * On a category axis, `api.value(0)` is the category's *ordinal index* (a number, e.g. `0`),
+ * not the category string: `String(api.value(0))` then feeding that into `api.coord` asks for
+ * a category literally named "0", which doesn't exist, so every point coords to NaN and the
+ * whole series draws nothing. Groups are keyed, and `api.coord` called, with that raw numeric
+ * ordinal throughout.
+ */
 function renderItem(params: CustomParams, api: RenderApi): Obj | undefined {
   if (!params.context.groups) {
-    const groups = new Map<string, { firstIndex: number; ys: number[]; ds: number[]; n: number }>();
+    const groups = new Map<number, { firstIndex: number; ys: number[]; ds: number[]; n: number }>();
     for (let i = 0; i < params.dataInsideLength; i++) {
-      const cat = String(api.value(0, i));
+      const cat = Number(api.value(0, i));
       let group = groups.get(cat);
       if (!group) {
         group = { firstIndex: i, ys: [], ds: [], n: Number(api.value(3, i)) || 0 };
@@ -110,7 +117,7 @@ function renderItem(params: CustomParams, api: RenderApi): Obj | undefined {
     }
     params.context.groups = groups;
   }
-  const cat = String(api.value(0));
+  const cat = Number(api.value(0));
   const group = params.context.groups.get(cat);
   // Only the first row of each category's curve draws (it draws the whole polygon at once);
   // every other row of that category renders nothing.
