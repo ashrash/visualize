@@ -838,6 +838,91 @@ describe("dashboard filters", () => {
   });
 });
 
+describe("moving and resizing with the keyboard", () => {
+  function renderEditable() {
+    let dash = dashboardWith(["a"]);
+    const specs = [spec("a")];
+    const ui = () =>
+      wrap(
+        <DashboardView
+          dashboard={dash}
+          charts={specs}
+          pipelines={[]}
+          mode="edit"
+          onChange={(edit) => {
+            dash = edit(dash);
+            view.rerender(ui());
+          }}
+        />,
+      );
+    const view = render(ui());
+    const item = () => {
+      const i = dash.tabs?.[0]?.items?.[0];
+      return { x: i?.x, y: i?.y, w: i?.w, h: i?.h };
+    };
+    return { item };
+  }
+  const handle = () => screen.getByRole("button", { name: /Move or resize/ });
+  const press = (key: string, shiftKey = false) => fireEvent.keyDown(handle(), { key, shiftKey });
+
+  it("has a focusable handle with a name, in the tab order", () => {
+    renderEditable();
+    expect(handle().getAttribute("tabindex")).not.toBe("-1");
+    expect(handle().getAttribute("aria-pressed")).toBe("false");
+    handle().focus();
+    expect(document.activeElement).toBe(handle());
+  });
+
+  it("Space picks up, arrows move one cell, Space drops", () => {
+    const { item } = renderEditable();
+    expect(item()).toEqual({ x: 0, y: 0, w: 6, h: 4 });
+    press("ArrowRight"); // not picked up yet: nothing happens
+    expect(item().x).toBe(0);
+    press(" ");
+    expect(handle().getAttribute("aria-pressed")).toBe("true");
+    press("ArrowRight");
+    press("ArrowRight");
+    press("ArrowDown");
+    expect(item()).toEqual({ x: 2, y: 1, w: 6, h: 4 });
+    expect(screen.getByRole("status", { name: "" }).textContent).toMatch(/column 3, row 2/);
+    press(" ");
+    expect(handle().getAttribute("aria-pressed")).toBe("false");
+    press("ArrowLeft"); // dropped: arrows do nothing again
+    expect(item().x).toBe(2);
+  });
+
+  it("Shift and arrows resize, within the minimum and the grid", () => {
+    const { item } = renderEditable();
+    press("Enter");
+    press("ArrowRight", true);
+    press("ArrowDown", true);
+    expect(item()).toEqual({ x: 0, y: 0, w: 7, h: 5 });
+    for (let i = 0; i < 10; i++) press("ArrowLeft", true);
+    expect(item().w).toBe(2); // never below the minimum
+  });
+
+  it("Escape puts the widget back where it was picked up", () => {
+    const { item } = renderEditable();
+    press(" ");
+    press("ArrowRight");
+    press("ArrowDown", true);
+    expect(item()).not.toEqual({ x: 0, y: 0, w: 6, h: 4 });
+    press("Escape");
+    expect(item()).toEqual({ x: 0, y: 0, w: 6, h: 4 });
+    expect(handle().getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("losing focus drops the widget where it is", () => {
+    const { item } = renderEditable();
+    press(" ");
+    press("ArrowRight");
+    fireEvent.blur(handle());
+    expect(handle().getAttribute("aria-pressed")).toBe("false");
+    press("ArrowRight");
+    expect(item().x).toBe(1);
+  });
+});
+
 describe("tabs and embed", () => {
   it("switches tabs without touching the cross-filter state", () => {
     const d = dashboardWith(["a"]);
@@ -918,6 +1003,43 @@ describe("tabs and embed", () => {
     act(() => vi.advanceTimersByTime(500));
     expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["South"] }]);
     expect(screen.getByRole("status", { name: "Active filters" })).toBeTruthy();
+  });
+
+  it("the tablist holds only tabs; renaming and tab buttons sit beside it", () => {
+    renderDashboard([spec("a")], "edit");
+    const tablist = screen.getByRole("tablist", { name: "Dashboard tabs" });
+    for (const child of Array.from(tablist.children))
+      expect(child.getAttribute("role")).toBe("tab");
+    expect(within(tablist).queryByRole("textbox")).toBeNull();
+    expect(within(tablist).queryByRole("button", { name: "Add tab" })).toBeNull();
+    // the rename field and the buttons still exist, outside it
+    expect(screen.getByRole("textbox", { name: "Tab name" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add tab" })).toBeTruthy();
+    // and the active tab is a tab like the others
+    expect(within(tablist).getByRole("tab", { selected: true })).toBeTruthy();
+  });
+
+  it("renames the active tab from the field beside the tablist", () => {
+    let dash = dashboardWith(["a"]);
+    const ui = () =>
+      wrap(
+        <DashboardView
+          dashboard={dash}
+          charts={[spec("a")]}
+          pipelines={[]}
+          mode="edit"
+          onChange={(edit) => {
+            dash = edit(dash);
+            view.rerender(ui());
+          }}
+        />,
+      );
+    const view = render(ui());
+    fireEvent.change(screen.getByRole("textbox", { name: "Tab name" }), {
+      target: { value: "Overview" },
+    });
+    expect(dash.tabs?.[0]?.name).toBe("Overview");
+    expect(screen.getByRole("tab", { name: "Overview" })).toBeTruthy();
   });
 
   it("shows no edit tools in view or embed mode", () => {

@@ -60,15 +60,17 @@ function DateRangeControl({ filter, scope }: { filter: DashboardFilter; scope: F
   const value = dateRangeValue(useFilterValue(filter, scope));
   const commit = useCommit(filter, scope);
   const [draft, setDraft] = useState(value);
-  // Follow outside changes (reset, drill) but not our own in-progress typing.
-  const lastCommitted = useRef(value);
-  if (value.from !== lastCommitted.current.from || value.to !== lastCommitted.current.to) {
-    lastCommitted.current = value;
+  // The draft follows the filter's stored value only when that value CHANGES (a reset, a drill,
+  // or this control's own commit landing). Comparing the draft with the stored value on every
+  // render would put the old value back while the debounced commit is still pending, and a second
+  // edit inside that window would start from it and lose the first.
+  const seen = useRef(value);
+  if (value.from !== seen.current.from || value.to !== seen.current.to) {
+    seen.current = value;
     setDraft(value);
   }
   const change = (next: { from: string; to: string }) => {
     setDraft(next);
-    lastCommitted.current = next;
     commit(dateRangePredicate(filter.field, next.from, next.to));
   };
   return (
@@ -133,7 +135,7 @@ function DropdownControl({ filter, scope }: { filter: DashboardFilter; scope: Fi
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        aria-label={`${filter.label} filter`}
+        aria-label={`${filter.label} filter: ${label}`}
         className="inline-flex h-8 min-w-32 items-center justify-between gap-2 rounded-md border border-line bg-bg px-2 text-sm text-fg hover:bg-surface focus-visible:outline-2 focus-visible:outline-accent"
       >
         <span className="truncate">{label}</span>

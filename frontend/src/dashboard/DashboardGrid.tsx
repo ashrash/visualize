@@ -1,10 +1,10 @@
 import { GripVertical, Trash2 } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { type KeyboardEvent, useId, useMemo, useRef, useState } from "react";
 import { Responsive, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { cn } from "../components/ui/cn";
 import { useDashboardEnv } from "./env";
-import { GRID_COLUMNS, type GridPosition } from "./model";
+import { GRID_COLUMNS, type GridPosition, isArrowKey, nudge } from "./model";
 import type { DashboardTab, LayoutItem } from "./types";
 import { ChartWidget } from "./widgets/ChartWidget";
 import { FilterWidget } from "./widgets/FilterWidget";
@@ -51,8 +51,55 @@ function WidgetBody({ item }: { item: LayoutItem }) {
   }
 }
 
-function WidgetFrame({ item, onRemove }: { item: LayoutItem; onRemove?: () => void }) {
+function WidgetFrame({
+  item,
+  onRemove,
+  onMove,
+}: {
+  item: LayoutItem;
+  onRemove?: () => void;
+  onMove?: (pos: GridPosition) => void;
+}) {
   const env = useDashboardEnv();
+  const help = useId();
+  // Keyboard move and resize: Space picks the widget up, arrows move it, Shift+arrows resize it,
+  // Space or Enter puts it down, Escape puts it back where it was. The same edits as dragging.
+  const [grabbed, setGrabbed] = useState(false);
+  const [said, setSaid] = useState("");
+  const origin = useRef<GridPosition | null>(null);
+  const here = (): GridPosition => ({ i: item.i, x: item.x, y: item.y, w: item.w, h: item.h });
+  const whereIs = (p: GridPosition) =>
+    `column ${p.x + 1}, row ${p.y + 1}, ${p.w} wide, ${p.h} high`;
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      if (grabbed) {
+        setGrabbed(false);
+        setSaid(`Dropped at ${whereIs(here())}.`);
+      } else {
+        origin.current = here();
+        setGrabbed(true);
+        setSaid(
+          "Picked up. Arrow keys move, Shift and arrow keys resize, Space drops, Escape cancels.",
+        );
+      }
+    } else if (grabbed && event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (origin.current) onMove?.(origin.current);
+      setGrabbed(false);
+      setSaid("Cancelled. Back where it was.");
+    } else if (grabbed && isArrowKey(event.key)) {
+      event.preventDefault();
+      const next = nudge(here(), event.key, event.shiftKey);
+      if (next) {
+        onMove?.(next);
+        setSaid(whereIs(next));
+      } else {
+        setSaid("Edge reached.");
+      }
+    }
+  };
   const editing = env.mode === "edit";
   const chartName =
     item.widget.kind === "chart"
@@ -66,12 +113,25 @@ function WidgetFrame({ item, onRemove }: { item: LayoutItem; onRemove?: () => vo
     >
       {editing ? (
         <header className="flex items-center gap-1 border-b border-line bg-surface px-1">
-          <span
-            className="dash-drag-handle flex flex-1 cursor-grab items-center gap-1 py-1 text-xs text-muted active:cursor-grabbing"
-            title="Drag to move"
+          {/* The drag handle is also the keyboard control for moving and resizing. */}
+          <button
+            type="button"
+            aria-label={`Move or resize ${title}`}
+            aria-pressed={grabbed}
+            aria-describedby={help}
+            onKeyDown={onKeyDown}
+            onBlur={() => setGrabbed(false)}
+            className="dash-drag-handle flex flex-1 cursor-grab items-center gap-1 rounded py-1 text-xs text-muted focus-visible:outline-2 focus-visible:outline-accent active:cursor-grabbing"
+            title="Drag to move, or press Space and use the arrow keys"
           >
             <GripVertical size={14} aria-hidden="true" />
             <span className="truncate">{title}</span>
+            <span id={help} className="sr-only">
+              Press Space to pick up, then arrow keys to move and Shift with arrow keys to resize.
+            </span>
+          </button>
+          <span role="status" className="sr-only">
+            {said}
           </span>
           {onRemove ? (
             <button
@@ -134,7 +194,20 @@ export function DashboardGrid({ tab, onLayout, onRemove }: Props) {
         >
           {items.map((item) => (
             <div key={item.i}>
-              <WidgetFrame item={item} onRemove={onRemove ? () => onRemove(item.i) : undefined} />
+              <WidgetFrame
+                item={item}
+                onRemove={onRemove ? () => onRemove(item.i) : undefined}
+                onMove={
+                  editing && onLayout
+                    ? (pos) =>
+                        onLayout(
+                          items.map((it) =>
+                            it.i === pos.i ? pos : { i: it.i, x: it.x, y: it.y, w: it.w, h: it.h },
+                          ),
+                        )
+                    : undefined
+                }
+              />
             </div>
           ))}
         </Responsive>
