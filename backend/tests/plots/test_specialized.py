@@ -165,6 +165,52 @@ def test_sankey_self_loop_only_drops_itself(table_relation: MakeRelation) -> Non
     assert any("self-referencing" in w for w in out.warnings)
 
 
+def test_sankey_handles_a_null_target_without_crashing(table_relation: MakeRelation) -> None:
+    # A NULL target is a valid, common group-by result. Before _edges cast source/target to
+    # VARCHAR and the tie-break sort got a total order, two nodes tied on weight (here "B" and
+    # the NULL target) raised TypeError comparing None to str during cycle detection.
+    rel = table_relation(
+        {"source": ["A", "B"], "target": [None, "C"], "value": [1.0, 1.0]},
+    )
+    req = _request(
+        rel,
+        PlotType.SANKEY,
+        {"source": [Encoding(field="source")], "target": [Encoding(field="target")]},
+        GraphParams,
+    )
+    out = sankey(req)
+    # _graph_result stringifies every node name for JSON output (str(name)), so a NULL target
+    # becomes the literal "None" - this test is only about the TypeError the None value used to
+    # raise during the Python-side tie-break sort in _drop_cycles, not about what NULL renders as.
+    links = {(link["source"], link["target"]) for link in out.values["links"]}
+    assert links == {("A", "None"), ("B", "C")}
+
+
+def test_sankey_handles_integer_node_ids_once_rollup_triggers(
+    table_relation: MakeRelation,
+) -> None:
+    # Arrow infers int64 from the first rows of source/target; _cap_graph's "(Other: ...)"
+    # rollup buckets are strings, so building the rolled-up table used to raise ArrowInvalid
+    # for any integer-id graph (user ids, step numbers, ...) with more nodes than max_nodes.
+    rel = table_relation(
+        {
+            "source": list(range(60)),
+            "target": [i + 1 for i in range(60)],
+            "value": [1.0] * 60,
+        }
+    )
+    req = _request(
+        rel,
+        PlotType.SANKEY,
+        {"source": [Encoding(field="source")], "target": [Encoding(field="target")]},
+        GraphParams,
+        params={"maxNodes": 40},
+    )
+    out = sankey(req)
+    names = {node["name"] for node in out.values["nodes"]}
+    assert "(Other: from)" in names or "(Other: to)" in names
+
+
 def test_drop_cycles_is_deterministic_regardless_of_input_order() -> None:
     # A tied 2-cycle (A <-> B, equal weight): which edge gets dropped must depend only on the
     # graph itself, not on the order edges happen to arrive in (e.g. from GROUP BY), which is

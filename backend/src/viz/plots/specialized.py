@@ -101,9 +101,18 @@ def _edges(
     req: PlotRequest, source_field: str, target_field: str, value_enc: Encoding | None
 ) -> pa.Table:
     measure = _size_measure(value_enc)
+    # Node names are compared and sorted in Python below (cycle removal, "(Other)" rollup) and
+    # mixed into string "(Other: ...)" bucket names once capping kicks in. Cast both columns to
+    # VARCHAR up front so every node name is a plain string (NULL stays NULL): otherwise an
+    # INTEGER or mixed-type source/target column raises ArrowInvalid once it meets a string
+    # bucket name, and ties among raw values of different types (e.g. int vs str) raise
+    # TypeError when Python tries to compare them for a tie-break.
     grouped = aggregate_query(
         req.relation,
-        [("source", col(source_field)), ("target", col(target_field))],
+        [
+            ("source", cast(col(source_field), "VARCHAR")),
+            ("target", cast(col(target_field), "VARCHAR")),
+        ],
         [("value", measure)],
     )
     return req.relation.arrow(over_groups(grouped))
@@ -153,6 +162,14 @@ def _cap_graph(
     return pa.Table.from_pylist(rows) if rows else edges.slice(0, 0), rolled, self_loops
 
 
+def _name_key(n: str | None) -> tuple[bool, str]:
+    """A total order for a node name used as a tie-break: None sorts before any real name, since
+    a bare `n` comparison raises TypeError between None and str (a NULL source/target column is
+    valid and common).
+    """
+    return (n is None, "" if n is None else n)
+
+
 def _drop_cycles(edges: list[tuple[str, str, float]]) -> tuple[list[tuple[str, str, float]], int]:
     """Remove only the edges that close a cycle (DFS back-edges), not everything downstream of
     one: Kahn's algorithm (repeatedly removing nodes with no incoming edge) throws away every
@@ -172,10 +189,10 @@ def _drop_cycles(edges: list[tuple[str, str, float]]) -> tuple[list[tuple[str, s
             seen_nodes.add(n)
             weight[n] = weight.get(n, 0.0) + v
     for out in adjacency.values():
-        out.sort(key=lambda e: -e[1])
+        out.sort(key=lambda e: (-e[1], _name_key(e[0])))
     # Deterministic start order: by total weight then name, not by GROUP BY/insertion order,
     # which is unspecified and can flip which edge of a tied cycle gets dropped between runs.
-    nodes = sorted(seen_nodes, key=lambda n: (-weight.get(n, 0.0), n))
+    nodes = sorted(seen_nodes, key=lambda n: (-weight.get(n, 0.0), _name_key(n)))
 
     dropped: set[int] = set()
     UNVISITED, IN_STACK, DONE = 0, 1, 2
