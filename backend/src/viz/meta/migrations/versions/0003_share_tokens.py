@@ -19,7 +19,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "share_tokens",
-        sa.Column("token", sa.String(64), primary_key=True),
+        sa.Column("token", sa.String(255), primary_key=True),
         sa.Column(
             "project_id",
             sa.String(36),
@@ -27,8 +27,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("kind", sa.String(16), nullable=False),
-        sa.Column("item_id", sa.String(64), nullable=False),
-        sa.Column("created_by", sa.String(64), nullable=False),
+        sa.Column("item_id", sa.String(255), nullable=False),
+        sa.Column("created_by", sa.String(255), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
