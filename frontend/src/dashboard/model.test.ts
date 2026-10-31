@@ -12,6 +12,8 @@ import {
   removeTab,
   removeWidget,
   setChartLinkGroup,
+  settleLayout,
+  stepLayout,
 } from "./model";
 import type { Widget } from "./types";
 
@@ -165,5 +167,107 @@ describe("nudge (keyboard move and resize)", () => {
   it("cannot grow past the right edge", () => {
     expect(nudge(at(8, 0, 4, 4), "ArrowRight", true)).toBeNull();
     expect(nudge(at(6, 0, 5, 4), "ArrowRight", true)).toEqual(at(6, 0, 6, 4));
+  });
+});
+
+describe("settleLayout (the layout a keyboard step produces)", () => {
+  const L = (i: string, x: number, y: number, w: number, h: number) => ({ i, x, y, w, h });
+
+  it("moves a widget sideways", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4)], L("a", 2, 0, 6, 4))).toEqual([L("a", 2, 0, 6, 4)]);
+  });
+
+  it("compacts upwards like the grid: a lone widget moved down settles back at the top", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4)], L("a", 2, 1, 6, 4))).toEqual([L("a", 2, 0, 6, 4)]);
+  });
+
+  it("pushes a widget out of the way of the one that moved onto it", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4), L("b", 6, 0, 6, 4)], L("a", 6, 0, 6, 4))).toEqual([
+      L("a", 6, 0, 6, 4),
+      L("b", 6, 4, 6, 4),
+    ]);
+  });
+
+  it("makes room below for a widget that grew taller", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4), L("c", 0, 4, 6, 4)], L("a", 0, 0, 6, 6))).toEqual([
+      L("a", 0, 0, 6, 6),
+      L("c", 0, 6, 6, 4),
+    ]);
+  });
+
+  it("leaves a settled layout alone, and does not touch its input", () => {
+    const layout = [L("a", 0, 0, 6, 4), L("c", 0, 4, 6, 4)];
+    const copy = structuredClone(layout);
+    expect(settleLayout(layout, L("a", 0, 0, 6, 4))).toEqual(copy);
+    expect(layout).toEqual(copy);
+  });
+});
+
+describe("settleLayout: the widget that moves wins, in any array order", () => {
+  const L = (i: string, x: number, y: number, w: number, h: number) => ({ i, x, y, w, h });
+
+  it("pushes the neighbour down, not the mover, whichever comes first in the layout", () => {
+    // 'a' steps left onto 'b'. The grid's own drag gives b(0,4) and a(5,0).
+    const expected = [L("b", 0, 4, 6, 4), L("a", 5, 0, 6, 4)];
+    expect(settleLayout([L("b", 0, 0, 6, 4), L("a", 6, 0, 6, 4)], L("a", 5, 0, 6, 4))).toEqual(
+      expected,
+    );
+    expect(settleLayout([L("a", 6, 0, 6, 4), L("b", 0, 0, 6, 4)], L("a", 5, 0, 6, 4))).toEqual([
+      L("a", 5, 0, 6, 4),
+      L("b", 0, 4, 6, 4),
+    ]);
+  });
+
+  it("does the same moving right", () => {
+    expect(settleLayout([L("a", 0, 0, 6, 4), L("b", 6, 0, 6, 4)], L("a", 1, 0, 6, 4))).toEqual([
+      L("a", 1, 0, 6, 4),
+      L("b", 6, 4, 6, 4),
+    ]);
+  });
+});
+
+describe("stepLayout (a keyboard step, settled like a drag)", () => {
+  const L = (i: string, x: number, y: number, w: number, h: number) => ({ i, x, y, w, h });
+  const stack = [L("a", 0, 0, 6, 4), L("c", 0, 4, 6, 4)];
+
+  it("swaps two stacked widgets by stepping the top one down, and the lower one up", () => {
+    const down = stepLayout(stack, "a", "ArrowDown", false);
+    expect(down?.position).toEqual(L("a", 0, 4, 6, 4));
+    expect(down?.layout).toEqual([L("a", 0, 4, 6, 4), L("c", 0, 0, 6, 4)]);
+    const up = stepLayout(stack, "c", "ArrowUp", false);
+    expect(up?.position).toEqual(L("c", 0, 0, 6, 4));
+    expect(up?.layout).toEqual([L("a", 0, 4, 6, 4), L("c", 0, 0, 6, 4)]);
+  });
+
+  it("swaps with repeated presses, each from the layout the last one made", () => {
+    const first = stepLayout(stack, "a", "ArrowDown", false);
+    expect(first).not.toBeNull();
+    // a is at the bottom now: pressing down again has nowhere to go
+    expect(stepLayout(first?.layout ?? [], "a", "ArrowDown", false)).toBeNull();
+    // and up brings it back over c
+    const back = stepLayout(first?.layout ?? [], "a", "ArrowUp", false);
+    expect(back?.layout).toEqual([L("a", 0, 0, 6, 4), L("c", 0, 4, 6, 4)]);
+  });
+
+  it("does nothing for a lone widget at the top, or at an edge", () => {
+    expect(stepLayout([L("a", 0, 0, 6, 4)], "a", "ArrowDown", false)).toBeNull();
+    expect(stepLayout([L("a", 0, 0, 6, 4)], "a", "ArrowUp", false)).toBeNull();
+    expect(stepLayout([L("a", 0, 0, 6, 4)], "a", "ArrowLeft", false)).toBeNull();
+  });
+
+  it("measures against where the widget really is: a gap in the stored layout is no step", () => {
+    // stored at row 3 with nothing above it, so it is shown at row 0: down changes nothing
+    expect(stepLayout([L("a", 0, 3, 6, 4)], "a", "ArrowDown", false)).toBeNull();
+  });
+
+  it("resizes, pushing what is below, and says nothing changed at the minimum", () => {
+    const grown = stepLayout(stack, "a", "ArrowDown", true);
+    expect(grown?.layout).toEqual([L("a", 0, 0, 6, 5), L("c", 0, 5, 6, 4)]);
+    expect(stepLayout([L("a", 0, 0, 2, 2)], "a", "ArrowLeft", true)).toBeNull();
+  });
+
+  it("pushes the neighbour a sideways step lands on", () => {
+    const step = stepLayout([L("b", 0, 0, 6, 4), L("a", 6, 0, 6, 4)], "a", "ArrowLeft", false);
+    expect(step?.layout).toEqual([L("b", 0, 4, 6, 4), L("a", 5, 0, 6, 4)]);
   });
 });

@@ -2,6 +2,7 @@
  * Pure edit helpers for the dashboard document (`Project.dashboards[]`). Each takes and returns
  * plain data so it can be passed to `projectStore.update` (one undo step per call).
  */
+import { moveElement, verticalCompactor } from "react-grid-layout/core";
 import type { Project } from "../api/types";
 import type { Dashboard, DashboardFilter, DashboardTab, LayoutItem, Widget } from "./types";
 
@@ -127,6 +128,100 @@ export function nudge(
   else if (key === "ArrowDown") next.y = pos.y + 1;
   else next.y = Math.max(pos.y - 1, 0);
   return next.x === pos.x && next.y === pos.y && next.w === pos.w && next.h === pos.h ? null : next;
+}
+
+const settled = (layout: GridPosition[], columns: number): GridPosition[] =>
+  verticalCompactor.compact(layout, columns).map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
+
+/**
+ * The whole layout after one widget takes a new position or size: the others are pushed out of its
+ * way and everything is compacted upwards, exactly as the grid itself settles a drag. `layout`
+ * holds every widget where it is NOW; `moved` is the one that changes, at its new place.
+ *
+ * The widget is handed to the grid's `moveElement` still at its old position (with its new size),
+ * the way a drag does it. Placing it at the target first makes `moveElement` a no-op, and then
+ * only the compactor's array order decides which of two colliding widgets gives way.
+ */
+export function settleLayout(
+  layout: readonly GridPosition[],
+  moved: GridPosition,
+  columns = GRID_COLUMNS,
+): GridPosition[] {
+  const items = layout.map((p) => ({ ...p }));
+  const mover = items.find((p) => p.i === moved.i);
+  if (!mover) return settled(items, columns);
+  mover.w = moved.w;
+  mover.h = moved.h;
+  const placed = moveElement(
+    items,
+    mover,
+    moved.x,
+    moved.y,
+    true,
+    false,
+    "vertical",
+    columns,
+    false,
+  );
+  return settled(placed, columns);
+}
+
+export type StepKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
+
+/** The result of one keyboard step: the whole new layout, and where the widget ended up. */
+export interface Step {
+  layout: GridPosition[];
+  position: GridPosition;
+}
+
+const samePos = (a: GridPosition, b: GridPosition) =>
+  a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
+/**
+ * One keyboard step for widget `id` (an arrow moves it, Shift+arrow resizes it), settled like a
+ * drag. Returns null when nothing would change.
+ *
+ * Settling already compacts, so a single one-row step up or down often lands the widget straight
+ * back where it was (a widget over a neighbour in a stack is compacted back above it). A mouse user
+ * drags on until it passes the neighbour; the same here: an up or down step that settles to no
+ * change goes on, row by row, until the layout actually changes, so two stacked widgets can swap.
+ */
+export function stepLayout(
+  layout: readonly GridPosition[],
+  id: string,
+  key: StepKey,
+  resize: boolean,
+  columns = GRID_COLUMNS,
+): Step | null {
+  // Compare with where things really are on screen: a stored layout may have gaps.
+  const base = settled(
+    layout.map((p) => ({ ...p })),
+    columns,
+  );
+  const from = base.find((p) => p.i === id);
+  if (!from) return null;
+  const next = nudge(from, key, resize, columns);
+  if (!next) return null;
+  const attempt = (target: GridPosition): Step | null => {
+    const result = settleLayout(base, target, columns);
+    const position = result.find((p) => p.i === id);
+    return position && !samePos(position, from) ? { layout: result, position } : null;
+  };
+  const first = attempt(next);
+  if (first || resize || (key !== "ArrowDown" && key !== "ArrowUp")) return first;
+  const bottom = base.reduce((max, p) => Math.max(max, p.y + p.h), 0);
+  if (key === "ArrowDown") {
+    for (let y = next.y + 1; y <= bottom; y++) {
+      const step = attempt({ ...next, y });
+      if (step) return step;
+    }
+  } else {
+    for (let y = next.y - 1; y >= 0; y--) {
+      const step = attempt({ ...next, y });
+      if (step) return step;
+    }
+  }
+  return null;
 }
 
 /** Apply a grid layout to the tab's items; the same object is returned when nothing moved. */

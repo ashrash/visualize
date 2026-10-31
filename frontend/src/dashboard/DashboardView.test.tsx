@@ -67,9 +67,21 @@ vi.mock("../charts", () => ({
   useChartData: () => ({ data: undefined, error: null }),
   FORMAT_PRESETS: [],
 }));
+// The props the grid was last given, so tests can call its callbacks the way it would.
+interface GridProps {
+  children: React.ReactNode;
+  onLayoutChange?: unknown;
+  onDragStop?: (layout: unknown[]) => void;
+  onResizeStop?: (layout: unknown[]) => void;
+  onBreakpointChange?: (breakpoint: string, columns: number) => void;
+}
+const grid: { props: GridProps | null } = { props: null };
 vi.mock("react-grid-layout", () => ({
   useContainerWidth: () => ({ width: 1200, containerRef: { current: null }, mounted: true }),
-  Responsive: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Responsive: (props: GridProps) => {
+    grid.props = props;
+    return <div>{props.children}</div>;
+  },
 }));
 vi.mock("react-grid-layout/css/styles.css", () => ({}));
 vi.mock("../data/hooks", () => ({ useDatasets: () => ({ data: [] }) }));
@@ -882,9 +894,11 @@ describe("moving and resizing with the keyboard", () => {
     expect(handle().getAttribute("aria-pressed")).toBe("true");
     press("ArrowRight");
     press("ArrowRight");
+    expect(screen.getByRole("status", { name: "" }).textContent).toMatch(/column 3, row 1/);
     press("ArrowDown");
-    expect(item()).toEqual({ x: 2, y: 1, w: 6, h: 4 });
-    expect(screen.getByRole("status", { name: "" }).textContent).toMatch(/column 3, row 2/);
+    // like the grid itself, a lone widget moved down settles back at the top: no step happened
+    expect(item()).toEqual({ x: 2, y: 0, w: 6, h: 4 });
+    expect(screen.getByRole("status", { name: "" }).textContent).toMatch(/can.t move any further/);
     press(" ");
     expect(handle().getAttribute("aria-pressed")).toBe("false");
     press("ArrowLeft"); // dropped: arrows do nothing again
@@ -945,6 +959,142 @@ describe("moving and resizing with the keyboard", () => {
     expect(handle().getAttribute("aria-pressed")).toBe("false");
     press("ArrowRight");
     expect(item().x).toBe(1);
+  });
+});
+
+describe("saving the layout", () => {
+  function renderEditable() {
+    let dash = dashboardWith(["a", "b"]);
+    const edits: Dashboard[] = [];
+    const ui = () =>
+      wrap(
+        <DashboardView
+          dashboard={dash}
+          charts={[spec("a"), spec("b")]}
+          pipelines={[]}
+          mode="edit"
+          onChange={(edit) => {
+            dash = edit(dash);
+            edits.push(dash);
+            view.rerender(ui());
+          }}
+        />,
+      );
+    const view = render(ui());
+    const items = () => dash.tabs?.[0]?.items?.map((i) => [i.i, i.x, i.y, i.w, i.h]);
+    return { items, edits };
+  }
+
+  it("does not write the grid's own layout-change report back (it echoes, and loops)", () => {
+    renderEditable();
+    // The grid reports its layout whenever it is given one, including a stale one: storing that
+    // sets two layouts off against each other without end (React's maximum update depth).
+    expect(grid.props?.onLayoutChange).toBeUndefined();
+  });
+
+  it("stores the layout when a drag or a resize ends", () => {
+    const { items, edits } = renderEditable();
+    act(() =>
+      grid.props?.onDragStop?.([
+        { i: "w-a", x: 6, y: 0, w: 6, h: 4 },
+        { i: "w-b", x: 0, y: 0, w: 6, h: 4 },
+      ]),
+    );
+    expect(items()).toEqual([
+      ["w-a", 6, 0, 6, 4],
+      ["w-b", 0, 0, 6, 4],
+    ]);
+    act(() =>
+      grid.props?.onResizeStop?.([
+        { i: "w-a", x: 6, y: 0, w: 6, h: 7 },
+        { i: "w-b", x: 0, y: 0, w: 6, h: 4 },
+      ]),
+    );
+    expect(items()?.[0]).toEqual(["w-a", 6, 0, 6, 7]);
+    expect(edits).toHaveLength(2);
+  });
+
+  it("stores nothing for a narrow screen's re-flow, and nothing just for loading", () => {
+    const { edits } = renderEditable();
+    expect(edits).toHaveLength(0); // an untouched dashboard is not marked as edited
+    act(() => grid.props?.onBreakpointChange?.("xs", 4));
+    act(() => grid.props?.onDragStop?.([{ i: "w-a", x: 0, y: 0, w: 4, h: 4 }]));
+    expect(edits).toHaveLength(0);
+  });
+});
+
+describe("moving widgets that share the grid with the keyboard", () => {
+  function renderPair(second: { x: number; y: number }) {
+    const base = dashboardWith(["a", "b"]);
+    const tab = base.tabs?.[0];
+    if (!tab) throw new Error("no tab");
+    let dash: Dashboard = {
+      ...base,
+      tabs: [
+        {
+          ...tab,
+          items: (tab.items ?? []).map((it, i) =>
+            i === 0 ? { ...it, x: 0, y: 0 } : { ...it, x: second.x, y: second.y },
+          ),
+        },
+      ],
+    };
+    const ui = () =>
+      wrap(
+        <DashboardView
+          dashboard={dash}
+          charts={[spec("a"), spec("b")]}
+          pipelines={[]}
+          mode="edit"
+          onChange={(edit) => {
+            dash = edit(dash);
+            view.rerender(ui());
+          }}
+        />,
+      );
+    const view = render(ui());
+    const items = () => dash.tabs?.[0]?.items?.map((i) => [i.i, i.x, i.y]);
+    const handles = () => screen.getAllByRole("button", { name: /Move or resize/ });
+    const press = (index: number, key: string, shiftKey = false) =>
+      fireEvent.keyDown(handles()[index] as HTMLElement, { key, shiftKey });
+    return { items, press };
+  }
+
+  it("swaps two stacked widgets by stepping one past the other", () => {
+    const { items, press } = renderPair({ x: 0, y: 4 });
+    press(0, " ");
+    press(0, "ArrowDown");
+    expect(items()).toEqual([
+      ["w-a", 0, 4],
+      ["w-b", 0, 0],
+    ]);
+  });
+
+  it("pushes the neighbour a step lands on, and Escape puts both back", () => {
+    const { items, press } = renderPair({ x: 6, y: 0 });
+    press(0, " ");
+    for (let i = 0; i < 6; i++) press(0, "ArrowRight");
+    // a is now over b's column: b gives way (down), not a
+    expect(items()).toEqual([
+      ["w-a", 6, 0],
+      ["w-b", 6, 4],
+    ]);
+    press(0, "Escape");
+    expect(items()).toEqual([
+      ["w-a", 0, 0],
+      ["w-b", 6, 0],
+    ]);
+  });
+
+  it("says resize when a resize cannot go further, and move when a move cannot", () => {
+    const { press } = renderPair({ x: 6, y: 0 });
+    press(0, " ");
+    for (let i = 0; i < 8; i++) press(0, "ArrowLeft", true); // shrink to the minimum
+    expect(screen.getAllByRole("status", { name: "" })[0]?.textContent).toMatch(
+      /resized any further/,
+    );
+    press(0, "ArrowLeft"); // already at the left edge
+    expect(screen.getAllByRole("status", { name: "" })[0]?.textContent).toMatch(/move any further/);
   });
 });
 

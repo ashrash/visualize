@@ -4,7 +4,14 @@ import { Responsive, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { cn } from "../components/ui/cn";
 import { useDashboardEnv } from "./env";
-import { GRID_COLUMNS, type GridPosition, isArrowKey, nudge } from "./model";
+import {
+  GRID_COLUMNS,
+  type GridPosition,
+  isArrowKey,
+  type Step,
+  type StepKey,
+  stepLayout,
+} from "./model";
 import type { DashboardTab, LayoutItem } from "./types";
 import { ChartWidget } from "./widgets/ChartWidget";
 import { FilterWidget } from "./widgets/FilterWidget";
@@ -54,11 +61,18 @@ function WidgetBody({ item }: { item: LayoutItem }) {
 function WidgetFrame({
   item,
   onRemove,
-  onMove,
+  keyboard,
 }: {
   item: LayoutItem;
   onRemove?: () => void;
-  onMove?: (pos: GridPosition) => void;
+  /** What the keyboard needs from the grid; absent when the dashboard cannot be edited. */
+  keyboard?: {
+    /** The whole layout as it is now, to put back on Escape. */
+    snapshot: () => GridPosition[];
+    /** One step from `from`, applied; null when nothing would change. */
+    step: (from: GridPosition, key: StepKey, resize: boolean) => Step | null;
+    restore: (layout: GridPosition[]) => void;
+  };
 }) {
   const env = useDashboardEnv();
   const help = useId();
@@ -66,7 +80,8 @@ function WidgetFrame({
   // Space or Enter puts it down, Escape puts it back where it was. The same edits as dragging.
   const [grabbed, setGrabbed] = useState(false);
   const [said, setSaid] = useState("");
-  const origin = useRef<GridPosition | null>(null);
+  // The whole layout at pick-up, so Escape puts back the neighbours as well as this widget.
+  const origin = useRef<GridPosition[] | null>(null);
   // Where the widget is while it is picked up. The item prop lags a render behind, and a key
   // pressed in between would otherwise start from the old position and undo the last step.
   const live = useRef<GridPosition | null>(null);
@@ -81,7 +96,7 @@ function WidgetFrame({
         setSaid(`Dropped at ${whereIs(live.current ?? here())}.`);
         live.current = null;
       } else {
-        origin.current = here();
+        origin.current = keyboard?.snapshot() ?? null;
         live.current = here();
         setGrabbed(true);
         setSaid(
@@ -91,19 +106,25 @@ function WidgetFrame({
     } else if (grabbed && event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      if (origin.current) onMove?.(origin.current);
+      if (origin.current) keyboard?.restore(origin.current);
+      origin.current = null;
       live.current = null;
       setGrabbed(false);
       setSaid("Cancelled. Back where it was.");
     } else if (grabbed && isArrowKey(event.key)) {
       event.preventDefault();
-      const next = nudge(live.current ?? here(), event.key, event.shiftKey);
-      if (next) {
-        live.current = next;
-        onMove?.(next);
-        setSaid(whereIs(next));
+      const step = keyboard?.step(live.current ?? here(), event.key, event.shiftKey) ?? null;
+      if (step) {
+        // Follow where the grid really put it (it compacts upwards and pushes neighbours), so the
+        // next key builds on that and the announcement is true.
+        live.current = step.position;
+        setSaid(whereIs(step.position));
       } else {
-        setSaid("Edge reached.");
+        setSaid(
+          event.shiftKey
+            ? "It can't be resized any further that way."
+            : "It can't move any further that way.",
+        );
       }
     }
   };
@@ -175,6 +196,8 @@ export function DashboardGrid({ tab, onLayout, onRemove }: Props) {
   const cols = useRef<number>(GRID_COLUMNS);
 
   const items = tab.items ?? [];
+  const positions = (): GridPosition[] =>
+    items.map((it) => ({ i: it.i, x: it.x, y: it.y, w: it.w, h: it.h }));
   const layout = useMemo(
     () => items.map(({ i, x, y, w, h }) => ({ i, x, y, w, h, minW: 2, minH: 2 })),
     [items],
@@ -196,9 +219,16 @@ export function DashboardGrid({ tab, onLayout, onRemove }: Props) {
           onBreakpointChange={(_breakpoint, columns) => {
             cols.current = columns;
           }}
-          onLayoutChange={(current) => {
-            // Only the 12-column layouts are stored: a narrow screen's re-flow must not
-            // overwrite the desktop arrangement.
+          // The stored layout changes when the user finishes a drag or a resize, or takes a
+          // keyboard step. It is deliberately NOT updated from the grid's own layout-change report:
+          // that report echoes whichever layout it last received, so writing it back sets two
+          // states off against each other (React's "maximum update depth"), and it also fired on
+          // load, marking an untouched dashboard as edited. Only 12-column layouts are stored: a
+          // narrow screen's re-flow must not overwrite the desktop arrangement.
+          onDragStop={(current) => {
+            if (editing && cols.current === GRID_COLUMNS) onLayout?.(current);
+          }}
+          onResizeStop={(current) => {
             if (editing && cols.current === GRID_COLUMNS) onLayout?.(current);
           }}
         >
@@ -207,14 +237,19 @@ export function DashboardGrid({ tab, onLayout, onRemove }: Props) {
               <WidgetFrame
                 item={item}
                 onRemove={onRemove ? () => onRemove(item.i) : undefined}
-                onMove={
+                keyboard={
                   editing && onLayout
-                    ? (pos) =>
-                        onLayout(
-                          items.map((it) =>
-                            it.i === pos.i ? pos : { i: it.i, x: it.x, y: it.y, w: it.w, h: it.h },
-                          ),
-                        )
+                    ? {
+                        snapshot: () => positions(),
+                        step: (from, key, resize) => {
+                          // The widget's own place is the live one; the others come from the doc.
+                          const layout = positions().map((p) => (p.i === from.i ? from : p));
+                          const step = stepLayout(layout, from.i, key, resize);
+                          if (step) onLayout(step.layout);
+                          return step;
+                        },
+                        restore: (layout) => onLayout(layout),
+                      }
                     : undefined
                 }
               />
