@@ -1,0 +1,65 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: print rules must beat utility classes */
+/*
+ * Print layout for dashboards (share pages, the editor and the report). Colours come from the
+ * theme tokens; print forces the light tokens' ink on white so a dark theme still prints legibly.
+ */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* App chrome, edit tools and interactive controls do not print. */
+  header[class*="border-b"],
+  nav,
+  aside,
+  .dashboard-chrome button,
+  .dashboard-widget header,
+  .print\:hidden,
+  .react-resizable-handle,
+  [aria-label="Active filters"] button {
+    display: none !important;
+  }
+
+  /* The sidebar is hidden: let the page content take the whole sheet. */
+  main {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  /* Chart toolbars (table view, export, drill-through) are screen controls. Filter controls stay
+     so the page shows which filter values are in effect. */
+  .dashboard-widget button:not([aria-label$=" filter"]) {
+    display: none !important;
+  }
+
+  .dashboard-grid {
+    /* The grid places items with transforms; a transform that spans pages breaks charts. */
+    overflow: visible !important;
+  }
+
+  .dashboard-widget {
+    /* A widget never splits across pages. */
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border-color: #ccc !important;
+    background: #fff !important;
+  }
+
+  .dashboard-text {
+    overflow: visible !important;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #444;
+  }
+}
