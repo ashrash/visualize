@@ -84,6 +84,9 @@ export const BRUSH_FILTER_PLOTS: ReadonlySet<string> = new Set([
   "area",
   "stacked_area",
   "scatter",
+  "bubble",
+  "timeseries_line",
+  "moving_average",
 ]);
 
 export const canClickFilter = (spec: ChartSpec) => CLICK_FILTER_PLOTS.has(spec.plotType);

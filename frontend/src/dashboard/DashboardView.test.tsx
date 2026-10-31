@@ -21,6 +21,7 @@ interface ViewProps {
   onPointClick?: (hit: ChartPointClick) => void;
   onBrushSelected?: (brush: ChartBrush) => void;
   onLegendChange?: (change: ChartLegendChange) => void;
+  drill?: unknown[];
   onDrillChange?: (path: unknown[], predicates: Predicate[]) => void;
 }
 // Latest props of each rendered chart, by chart id.
@@ -484,7 +485,7 @@ describe("cross-filtering a dashboard", () => {
     expect(mounts.get("a")).toBe(1);
   });
 
-  it("takes a brush band off the chart when a click replaces its selection", () => {
+  it("a click that replaces a brush keeps its filter: the old chart's cleared report must not wipe it", () => {
     vi.useFakeTimers();
     renderDashboard([
       spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
@@ -493,8 +494,150 @@ describe("cross-filtering a dashboard", () => {
     brush("a", { categories: ["South"], values: ["South"] });
     act(() => vi.advanceTimersByTime(200));
     click("a", "North");
+    // the chart was remounted to drop the band, and the old one reported its band cleared
     expect(mounts.get("a")).toBe(2);
     expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
+    // ...and nothing arrives later to overwrite the click
+    act(() => vi.advanceTimersByTime(500));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
+  });
+
+  it("a click within the brush's own pause wins over the brush still waiting to settle", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    brush("a", { categories: ["South"], values: ["South"] });
+    // 50 ms later, before the brush has settled
+    act(() => vi.advanceTimersByTime(50));
+    click("a", "North");
+    act(() => vi.advanceTimersByTime(500));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
+  });
+
+  it("shift-click on a brushed chart extends the selection, and it survives the pause", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    brush("a", { categories: ["South"], values: ["South"] });
+    act(() => vi.advanceTimersByTime(200));
+    click("a", "North", { shiftKey: true });
+    act(() => vi.advanceTimersByTime(500));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["South", "North"] }]);
+  });
+
+  it("drops a band that cannot be a filter, and says why", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        encodings: { x: [{ field: "d", timeUnit: "month" }], y: [{ agg: "count" }] },
+        interactions: { brush: true, linkGroup: "g" } as never,
+      }),
+      spec("b"),
+    ]);
+    // Jan and Jun: bands that do not touch
+    brush("a", {
+      field: "d",
+      categories: ["Jan", "Jun"],
+      values: ["2024-01-01T00:00:00.000Z", "2024-06-01T00:00:00.000Z"],
+    });
+    act(() => vi.advanceTimersByTime(300));
+    expect(filtersOf("b")).toEqual([]);
+    expect(mounts.get("a")).toBe(2); // remounted: no dead band left on screen
+    expect(screen.getByText(/can't be used as a filter/i)).toBeTruthy();
+    // a later valid click works, and clears the message
+    click("a", "2024-02-01T00:00:00.000Z", { field: "d" });
+    expect(screen.queryByText(/can't be used as a filter/i)).toBeNull();
+    expect(filtersOf("b")).toHaveLength(1);
+  });
+
+  it("an unusable band replaces an earlier valid selection rather than leaving it half-applied", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        encodings: { x: [{ field: "d", timeUnit: "month" }], y: [{ agg: "count" }] },
+        interactions: { brush: true, linkGroup: "g" } as never,
+      }),
+      spec("b"),
+    ]);
+    brush("a", { field: "d", categories: ["Jan"], values: ["2024-01-01T00:00:00.000Z"] });
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toHaveLength(1);
+    brush("a", {
+      field: "d",
+      categories: ["Jan", "Jun"],
+      values: ["2024-01-01T00:00:00.000Z", "2024-06-01T00:00:00.000Z"],
+    });
+    act(() => vi.advanceTimersByTime(300));
+    expect(filtersOf("b")).toEqual([]);
+  });
+
+  it("holds the drill position, so a remount does not send the chart back to the top", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        encodings: { x: [{ field: "country" }], y: [{ agg: "count" }] },
+        interactions: {
+          brush: true,
+          linkGroup: "g",
+          drillHierarchy: ["country", "state"],
+        } as never,
+      }),
+      spec("b"),
+    ]);
+    expect(views.get("a")?.drill).toEqual([]);
+    const path: Predicate = { op: "eq", field: "country", value: "US" };
+    act(() => views.get("a")?.onDrillChange?.(["US"], [path]));
+    expect(views.get("a")?.drill).toEqual(["US"]);
+    brush("a", { field: "state", categories: ["TX"], values: ["TX"] });
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([path, { op: "in", field: "state", values: ["TX"] }]);
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    expect(mounts.get("a")).toBe(2); // remounted to drop the band
+    expect(views.get("a")?.drill).toEqual(["US"]); // but still drilled into the US
+    click("a", "CA", { field: "state" });
+    // the click carries the path the chart is really at, once
+    expect(filtersOf("b")).toEqual([path, { op: "in", field: "state", values: ["CA"] }]);
+  });
+
+  it("clears the chart's selection when it drills to another level", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        interactions: { linkGroup: "g", drillHierarchy: ["country", "state"] } as never,
+      }),
+      spec("b"),
+    ]);
+    click("a", "North");
+    expect(filtersOf("b")).toHaveLength(1);
+    act(() =>
+      views.get("a")?.onDrillChange?.(["US"], [{ op: "eq", field: "country", value: "US" }]),
+    );
+    expect(filtersOf("b")).toEqual([]);
+  });
+
+  it("starts at the top again when the chart's hierarchy changes", () => {
+    const base = spec("a", {
+      interactions: { linkGroup: "g", drillHierarchy: ["country", "state"] } as never,
+    });
+    const dash = dashboardWith(["a"]);
+    const view = render(
+      wrap(<DashboardView dashboard={dash} charts={[base]} pipelines={[]} mode="view" />),
+    );
+    act(() =>
+      views.get("a")?.onDrillChange?.(["US"], [{ op: "eq", field: "country", value: "US" }]),
+    );
+    expect(views.get("a")?.drill).toEqual(["US"]);
+    const edited = spec("a", {
+      interactions: { linkGroup: "g", drillHierarchy: ["region", "city"] } as never,
+    });
+    view.rerender(
+      wrap(<DashboardView dashboard={dash} charts={[edited]} pipelines={[]} mode="view" />),
+    );
+    expect(views.get("a")?.drill).toEqual([]);
   });
 });
 

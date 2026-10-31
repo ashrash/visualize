@@ -168,6 +168,9 @@ describe("which plots can brush-filter", () => {
       "line",
       "area",
       "scatter",
+      "bubble",
+      "timeseries_line",
+      "moving_average",
     ]) {
       expect(canBrushFilter(spec({}, { plotType: plotType as never }))).toBe(true);
     }

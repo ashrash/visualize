@@ -5,8 +5,18 @@
  */
 import { create } from "zustand";
 import type { Predicate } from "../api/types";
+import type { DrillValue } from "../charts";
 import { type BusState, EMPTY_BUS, forget, pruneBus, publish, selectionOf } from "./bus";
 import { extendSelection, sameSelection } from "./predicates";
+
+/** A chart's drill-down position, tagged with the hierarchy it belongs to. */
+export interface ChartDrill {
+  /** Identity of the chart's source and drill hierarchy: a different one starts at the top. */
+  key: string;
+  path: DrillValue[];
+  /** The path as predicates (one per level), published in front of selections made below it. */
+  predicates: Predicate[];
+}
 
 export type InteractMode =
   /** Plain click or brush: replace this widget's selection; the same click again clears it. */
@@ -21,6 +31,13 @@ interface RuntimeState {
   activeTabId: string | null;
   /** Cross-filter selections per link group. */
   bus: BusState;
+  /**
+   * Drill-down position per chart widget. Held here, not inside ChartView, so that remounting a
+   * chart (to drop a brush band) or switching tabs does not send it back to the top level while
+   * published selections still carry the old path.
+   */
+  chartDrills: Record<string, ChartDrill>;
+  setChartDrill: (widgetId: string, drill: ChartDrill | null) => void;
   /** Live dashboard filter values by filter id (undefined = the saved predicate applies). */
   filterValues: Record<string, Predicate | null>;
   /** Live values of project-wide filters by filter id. */
@@ -59,6 +76,7 @@ interface RuntimeState {
 
 const clean = {
   bus: EMPTY_BUS,
+  chartDrills: {} as Record<string, ChartDrill>,
   filterValues: {} as Record<string, Predicate | null>,
   drill: [] as Predicate[],
 };
@@ -95,13 +113,24 @@ export const useDashboardRuntime = create<RuntimeState>((set) => ({
   prune: (liveWidgetIds) =>
     set((state) => {
       const bus = pruneBus(state.bus, liveWidgetIds);
-      return bus === state.bus ? state : { bus };
+      const gone = Object.keys(state.chartDrills).filter((id) => !liveWidgetIds.has(id));
+      if (bus === state.bus && gone.length === 0) return state;
+      const chartDrills = { ...state.chartDrills };
+      for (const id of gone) delete chartDrills[id];
+      return { bus, chartDrills };
+    }),
+  setChartDrill: (widgetId, drill) =>
+    set((state) => {
+      const chartDrills = { ...state.chartDrills };
+      if (drill) chartDrills[widgetId] = drill;
+      else delete chartDrills[widgetId];
+      return { chartDrills };
     }),
   setFilter: (filterId, value) =>
     set((state) => ({ filterValues: { ...state.filterValues, [filterId]: value } })),
   setGlobal: (filterId, value) =>
     set((state) => ({ globalValues: { ...state.globalValues, [filterId]: value } })),
   setDrill: (drill) => set({ drill }),
-  resetAll: () => set({ ...clean }),
+  resetAll: () => set((state) => ({ ...clean, chartDrills: state.chartDrills })),
   setGridDrill: (gridDrill) => set({ gridDrill }),
 }));

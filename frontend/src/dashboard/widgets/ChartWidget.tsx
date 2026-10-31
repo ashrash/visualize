@@ -30,7 +30,7 @@ import {
   pointPredicates,
   samePredicate,
 } from "../predicates";
-import { useDashboardRuntime } from "../runtimeStore";
+import { type ChartDrill, useDashboardRuntime } from "../runtimeStore";
 
 interface Props {
   widgetId: string;
@@ -49,6 +49,8 @@ export function ChartWidget({ widgetId, chartId }: Props) {
   }
   return <LoadedChart widgetId={widgetId} spec={spec} />;
 }
+
+const NO_DRILL: ChartDrill = { key: "", path: [], predicates: [] };
 
 function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) {
   const env = useDashboardEnv();
@@ -121,14 +123,41 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
     }
   }, [own.length]);
 
-  // The drill path (`interactions.drillHierarchy`) as predicates: a click at a drilled level keeps
-  // its context, and so does a drill-through.
-  const drill = useRef<Predicate[]>([]);
-  const [drillPath, setDrillPath] = useState<Predicate[]>([]);
-  const onDrillChange = useCallback((_path: unknown, predicates: Predicate[]) => {
-    drill.current = predicates;
-    setDrillPath(predicates);
-  }, []);
+  // The drill-down position (`interactions.drillHierarchy`) is held by the dashboard, so it
+  // survives a remount of the chart and a tab switch, and a selection made at a drilled level
+  // always carries the path it was made under. A different source or hierarchy starts at the top.
+  const hierarchyKey = JSON.stringify([spec.source, spec.interactions?.drillHierarchy ?? []]);
+  const storedDrill = useDashboardRuntime((s) => s.chartDrills[widgetId]);
+  const drill = storedDrill?.key === hierarchyKey ? storedDrill : NO_DRILL;
+  const currentDrill = useCallback((): ChartDrill => {
+    const stored = useDashboardRuntime.getState().chartDrills[latest.current.widgetId];
+    return stored?.key === hierarchyKey ? stored : NO_DRILL;
+  }, [hierarchyKey]);
+
+  // Why the last brush could not be used, shown until the next interaction.
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (notice === null) return;
+    const timer = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  const onDrillChange = useCallback(
+    (path: DrillValue[], predicates: Predicate[]) => {
+      const { group: g, widgetId: w } = latest.current;
+      useDashboardRuntime.getState().setChartDrill(w, { key: hierarchyKey, path, predicates });
+      // The marks changed level: a selection made at the old level no longer describes them.
+      publish.settle.cancel();
+      if (g && selectionOf(useDashboardRuntime.getState().bus, g, w).length > 0) {
+        useDashboardRuntime.getState().clearSelection(g, w);
+        if (origin.current) {
+          origin.current = null;
+          setResetKey((k) => k + 1);
+        }
+      }
+    },
+    [hierarchyKey, publish],
+  );
 
   const clickable = spec.interactions?.clickFilter !== false && canClickFilter(spec);
   const brushable = canBrushFilter(spec);
@@ -140,7 +169,7 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
       const predicates = pointPredicates(s, hit, {
         color: colorValueFor(client, s, hit.seriesName),
         temporal: data?.kinds.x === "temporal",
-        drill: drill.current,
+        drill: currentDrill().predicates,
       });
       if (predicates.length === 0) return;
       if (origin.current) {
@@ -148,17 +177,41 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
         origin.current = null;
         setResetKey((k) => k + 1);
       }
+      // A brush or legend report still waiting out its pause must not land after this click.
+      publish.settle.cancel();
+      setNotice(null);
       publish.send(predicates, hit.shiftKey ? "extend" : "toggle");
     },
-    [client, publish],
+    [client, publish, currentDrill],
   );
   const onBrushSelected = useCallback(
     (brush: ChartBrush) => {
-      const predicates = brushPredicates(latest.current.spec, brush, { drill: drill.current });
-      origin.current = predicates.length > 0 ? "brush" : null;
+      if (brush.cleared) {
+        // Only the user removing their own band is a clear. ChartView also reports one when it is
+        // replaced (a click, a dashboard clear) or unmounted; by then the selection is already
+        // decided and an empty one would overwrite it a moment later.
+        if (origin.current !== "brush") return;
+        origin.current = null;
+        publish.settle([]);
+        return;
+      }
+      const predicates = brushPredicates(latest.current.spec, brush, {
+        drill: currentDrill().predicates,
+      });
+      if (predicates.length === 0) {
+        // A band that cannot be a filter (bands that do not touch, several value ranges, a label
+        // with no value) must not stay on screen as if it were: drop it and say why.
+        origin.current = null;
+        publish.settle([]);
+        setNotice("That selection can't be used as a filter. Select one continuous range.");
+        setResetKey((k) => k + 1);
+        return;
+      }
+      setNotice(null);
+      origin.current = "brush";
       publish.settle(predicates);
     },
-    [publish],
+    [publish, currentDrill],
   );
   const onLegendChange = useCallback(
     (change: ChartLegendChange) => {
@@ -167,24 +220,29 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
       const predicates = legendPredicates(change, {
         domain: colors ? ([...new Set(colors)] as DrillValue[]) : undefined,
         measures: s.encodings?.y?.length ?? 0,
-        drill: drill.current,
+        drill: currentDrill().predicates,
       });
       origin.current = predicates.length > 0 ? "legend" : null;
       publish.settle(predicates);
     },
-    [client, publish],
+    [client, publish, currentDrill],
   );
 
   const drillTargets = (env.onDrillThrough ? (env.otherDashboards ?? []) : []).slice(0, 12);
   // What a drill-through carries: the chart's filters, its drill path and its own selection.
   const drillPredicates = [
     ...filters,
-    ...drillPath.filter((p) => !own.some((o) => samePredicate(o, p))),
+    ...drill.predicates.filter((p) => !own.some((o) => samePredicate(o, p))),
     ...own,
   ];
 
   return (
     <div className="flex h-full flex-col">
+      {notice ? (
+        <p role="status" className="px-1 pb-1 text-xs text-muted">
+          {notice}
+        </p>
+      ) : null}
       {own.length > 0 || (env.onDrillThrough && env.mode !== "embed") ? (
         <div className="flex flex-wrap items-center gap-1 px-1 pb-1 text-xs">
           {own.map((p) => (
@@ -260,6 +318,7 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
           onPointClick={interactive && clickable ? onPointClick : undefined}
           onBrushSelected={interactive && brushable ? onBrushSelected : undefined}
           onLegendChange={interactive ? onLegendChange : undefined}
+          drill={drill.path}
           onDrillChange={onDrillChange}
         />
       </div>
