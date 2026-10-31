@@ -7,6 +7,7 @@ they come with a schemaVersion bump and an upgrader in migrations.py. After any 
 
 from pydantic import BaseModel
 
+from viz.contracts.assets import ImageAsset
 from viz.contracts.base import AggFn, Contract, Scalar, SortKey, SourceRef, new_id
 from viz.contracts.chart import (
     PLOT_FAMILY,
@@ -206,6 +207,7 @@ EXPORTED_MODELS: tuple[type[BaseModel], ...] = (
     FormulaCheckRequest,
     FormulaCheckResult,
     FormulaFunction,
+    ImageAsset,
     ImportPreviewMeta,
     ImportPreviewRequest,
     ImportRequest,
@@ -311,6 +313,7 @@ __all__ = [
     "FormulaCheckRequest",
     "FormulaCheckResult",
     "FormulaFunction",
+    "ImageAsset",
     "ImageWidget",
     "ImportFromPathRequest",
     "ImportOptions",

@@ -103,6 +103,7 @@ async def receive_upload(
     max_bytes: int | None = None,
     accept: Callable[[str], None] | None = None,
     stage_dir: Path | None = None,
+    stage_name: str | None = None,
 ) -> Upload:
     """Stream the request's `file` part to `<stage_dir>/<id>/<name>`; deletes that folder on
     any error.
@@ -112,6 +113,9 @@ async def receive_upload(
       error itself (415/422). Default: a dataset file type (`readers.detect_kind`).
     - `stage_dir`: parent folder for the upload (default `storage.staged_dir`, the dataset
       staging area with its expiry sweep). Callers using another folder clean it up.
+    - `stage_name`: write under this name instead of the client's (sanitized) file name, so a
+      hostile name (a reserved Windows device name, an over-long component, ...) never reaches
+      the filesystem at all. `Upload.file_name` still reports the client's declared name.
     The returned `Upload.staged_id` is the folder name under `stage_dir`.
     """
     content_type, params = parse_options_header(request.headers.get("content-type", ""))
@@ -161,6 +165,9 @@ async def receive_upload(
         _, disposition = parse_options_header(header)
         name = disposition.get(b"name", b"").decode("utf-8", "replace")
         filename = part_file_name(header, disposition)
+        if name == "file" and filename is None:
+            # Otherwise `state["part"]` would be "file" with nothing in `out` to write to.
+            raise InvalidSpecError("the 'file' field must be an uploaded file, not a text value")
         if name != "file" or filename is None:
             state["part"] = name or None
             return
@@ -170,9 +177,12 @@ async def receive_upload(
         state["part"] = "file"
         file_name = filename or "upload.csv"
         check_name(file_name)  # 415/422 before writing anything
-        target = folder / safe_file_name(file_name)
+        disk_name = safe_file_name(stage_name if stage_name is not None else file_name)
+        target = folder / disk_name
         target.parent.mkdir(parents=True, exist_ok=True)
-        result["path"], result["name"] = target, target.name
+        # Report the client's (sanitized) name, not the on-disk name, so `Upload.file_name` means
+        # the same thing whether or not a caller overrode where the bytes are staged.
+        result["path"], result["name"] = target, safe_file_name(file_name)
         out.append(target.open("wb"))
 
     def on_part_data(data: bytes, start: int, end: int) -> None:
