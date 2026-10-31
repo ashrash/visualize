@@ -44,7 +44,7 @@ def _store(storage: LocalStorage, upload_dir_id: str, uploaded: Path) -> ImageAs
         id=asset.id,
         content_type=asset.content_type,
         size_bytes=asset.size_bytes,
-        url=f"/api/assets/{asset.id}",
+        url=storage.asset_url(asset.id),
     )
 
 
@@ -60,6 +60,7 @@ async def upload_image(request: Request, storage: StorageDep, settings: Settings
         max_bytes=settings.max_asset_mb * 1024 * 1024,
         accept=_accept_any_name,
         stage_dir=incoming_dir(storage),
+        stage_name="upload",
     )
     return await run_sync(_store, storage, upload.staged_id, upload.path)
 

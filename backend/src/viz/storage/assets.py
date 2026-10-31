@@ -6,6 +6,7 @@ content type are ignored. Ids are minted here, never taken from the request.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import uuid
@@ -14,8 +15,6 @@ from pathlib import Path
 
 from viz.errors import NotFoundError, UnsupportedFormatError
 from viz.storage.local import LocalStorage
-
-INCOMING = "_incoming"
 
 # Sniffed content type -> stored extension.
 EXTENSIONS: dict[str, str] = {
@@ -30,8 +29,18 @@ _ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _SNIFF_BYTES = 4096
 # Optional BOM / XML declaration, then comments or a DOCTYPE without an internal subset
 # (no entity definitions), then the <svg> root element.
+#
+# Each comment matches exactly one way ((?!-->). instead of a lazy .*?, so a comment can't be
+# mistaken for spanning a later DOCTYPE) and the whole repeated group is possessive (*+, no
+# backtracking into it), which rules out catastrophic backtracking on a run of unclosed-looking
+# comments (confirmed: a crafted ~300-byte upload could otherwise stall the whole process for
+# hours, since `re` holds the GIL while matching). The DOCTYPE's internal-subset exclusion also
+# treats a quoted `>` inside a SYSTEM literal correctly, so it can no longer hide a `[...]`
+# entity block past the naive `[^>\[]*`.
 _SVG = re.compile(
-    rb"^(?:\xef\xbb\xbf)?\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--.*?-->\s*|<!doctype\s+svg[^>\[]*>\s*)*<svg[\s>/]",
+    rb"^(?:\xef\xbb\xbf)?\s*(?:<\?xml\s[^>]*\?>\s*)?"
+    rb"(?:<!--(?:(?!-->).)*-->\s*|<!doctype\s+svg(?:[^>\[\"']|\"[^\"]*\"|'[^']*')*>\s*)*+"
+    rb"<svg[\s>/]",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -60,8 +69,9 @@ def sniff_image_type(head: bytes) -> str | None:
 
 
 def incoming_dir(storage: LocalStorage) -> Path:
-    """Where uploads stream to before they are sniffed (cleaned up by `store_image`)."""
-    return storage.assets_dir / INCOMING
+    """Where uploads stream to before they are sniffed (the caller removes the per-upload
+    sub-folder once `store_image` returns or raises; `storage.sweep()` expires orphans)."""
+    return storage.assets_incoming_dir
 
 
 def store_image(storage: LocalStorage, uploaded: Path) -> StoredAsset:
@@ -83,7 +93,11 @@ def store_image(storage: LocalStorage, uploaded: Path) -> StoredAsset:
         os.replace(uploaded, target)
         return StoredAsset(asset_id, target, content_type, size)
     finally:
-        uploaded.unlink(missing_ok=True)
+        # `os.replace` already consumed `uploaded` on the success path; this only matters on the
+        # 415 branch above. Suppress, don't propagate: a transient lock (e.g. antivirus) here
+        # must never shadow the real 415/exception already in flight.
+        with contextlib.suppress(OSError):
+            uploaded.unlink(missing_ok=True)
 
 
 def find_image(storage: LocalStorage, asset_id: str) -> StoredAsset:
