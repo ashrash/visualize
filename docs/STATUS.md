@@ -847,10 +847,10 @@ Tracked per plot under Plots.md below.
 | Gridline configuration | ui-charts | done | Generated config panel + applyStyle (basic plots). |
 | Data point markers | ui-charts | done | Generated config panel + applyStyle (basic plots). |
 | Line styles and thickness | ui-charts | done | Generated config panel + applyStyle (basic plots). |
-| Error bars | ui-charts | partial | SD/SE/CI/fixed rendered (incl. with color). Server bounds: transform branch in review. |
-| Trendlines | ui-charts | partial | Rendering + config done. Server fits (/api/charts/overlays): transform branch in review. |
-| Regression lines | ui-charts | partial | As trendlines; server fit kernels merged (stats); overlays endpoint merged (OLS/LOESS with bands). |
-| Confidence intervals | ui-charts | partial | CI band primitive done; server bands via overlays (in review). |
+| Error bars | ui-charts | done | SD/SE/CI/fixed rendered (incl. with color), server-computed via `/api/charts/overlays` (merged Wave 1; this row was stale, marked "in review" long after that endpoint shipped). |
+| Trendlines | ui-charts | done | Rendering + config done. Server fits via `/api/charts/overlays`, wired in `charts/core/data.ts`. |
+| Regression lines | ui-charts | done | As trendlines; server fit kernels (stats) and the overlays endpoint (OLS/LOESS with bands) are merged and live. |
+| Confidence intervals | ui-charts | done | CI band primitive + server bands via `/api/charts/overlays`. |
 | Tooltips | ui-charts | done | Formatted axis/item tooltips. |
 | Reference lines | ui-charts | done | Generated config panel + applyStyle (basic plots). |
 | Chart orientation | ui-charts | done | Vertical/horizontal swap. |
@@ -879,7 +879,7 @@ Tracked per plot under Plots.md below.
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Zoom and pan | ui-charts | partial | dataZoom with detail-on-demand re-query (needs transform merge for server xRange). |
+| Zoom and pan | ui-charts | done | dataZoom with detail-on-demand re-query against server `viewport.xRange` (wired in `charts/core/data.ts`/`series.ts`; this row was stale, marked "needs transform merge" long after that merge happened in Wave 1). |
 | Hover tooltips | ui-charts | done |  |
 | Click-to-filter | ui-dashboard | done | Click, brush and legend-toggle all build `Predicate`s from raw chart values (not ECharts' display labels) and publish to the dashboard's cross-filter bus. Gated per plot type for brush (only plots whose x channel matches the brushed screen axis). |
 | Cross-filtering | ui-dashboard | done | Per-`linkGroup` bus; each chart excludes its own predicate from what it applies. 6 review rounds hardened the stateful edge cases — see the Wave 3 log. |
@@ -888,7 +888,7 @@ Tracked per plot under Plots.md below.
 | Data point selection | ui-dashboard | done | Click and brush selection, via the raw-value callbacks. |
 | Multi-select | ui-dashboard | done | Shift-click extends a selection (union for categorical `in`, replace for a non-combinable kind like a date bucket or range, since two ANDed ranges on one field can only ever select nothing). |
 | Interactive legends | ui-charts | done | Legend toggles survive cosmetic edits. |
-| Range sliders | ui-charts | partial | Slider dataZoom; xDomain from server after transform merges. |
+| Range sliders | ui-charts | done | Slider dataZoom; xDomain from the server (same stale-row correction as Zoom and pan above). |
 | Date range filters | ui-dashboard | done | Dashboard filter widgets and global filters support a date-range control. |
 | Dynamic chart updates | ui-dashboard | done | Cross-filter refetches via TanStack Query, debounced (150ms) per chart. |
 | Linked visualizations | ui-charts · ui-dashboard | done | `echarts.connect` (ui-charts): refcounted by `linkGroup` membership, synced tooltip/zoom/legend, with a per-chart gesture gate. ui-dashboard wires `interactions.linkGroup` from the dashboard's own link groups and layers the cross-filter bus on top. |
