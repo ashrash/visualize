@@ -46,6 +46,16 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
   const clearSelection = useDashboardRuntime((s) => s.clearSelection);
   const forgetWidget = useDashboardRuntime((s) => s.forgetWidget);
 
+  // The chart wrapper syncs tooltips and zoom across a link group (echarts.connect) from the
+  // spec; the dashboard link group decides, so hand it the effective group.
+  const viewSpec = useMemo<ChartSpec>(
+    () =>
+      group && spec.interactions?.linkGroup !== group
+        ? ({ ...spec, interactions: { ...spec.interactions, linkGroup: group } } as ChartSpec)
+        : spec,
+    [spec, group],
+  );
+
   const frame = useRef<HTMLDivElement>(null);
   const chart = useChartInstance(frame);
 
@@ -161,7 +171,7 @@ function LoadedChart({ widgetId, spec }: { widgetId: string; spec: ChartSpec }) 
       <div ref={frame} className="min-h-0 flex-1">
         {/* TODO(ui-charts): pass `slot={widgetId}` once ChartView accepts it, so two widgets that
             show one chart do not supersede each other's in-flight requests on the server. */}
-        <ChartView spec={spec} filters={filters} pipelines={env.pipelines} />
+        <ChartView spec={viewSpec} filters={filters} pipelines={env.pipelines} />
       </div>
     </div>
   );

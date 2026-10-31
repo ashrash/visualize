@@ -27,8 +27,6 @@ interface RuntimeState {
   globalValues: Record<string, Predicate | null>;
   /** Predicates pinned by a drill-through into this dashboard. */
   drill: Predicate[];
-  /** Synchronise tooltips and zoom within a link group (`echarts.connect`). */
-  syncCharts: boolean;
   /** Open a dashboard: interaction state starts clean (optionally with drill predicates). */
   open: (dashboardId: string, options?: { drill?: Predicate[]; tabId?: string | null }) => void;
   setTab: (tabId: string | null) => void;
@@ -44,8 +42,13 @@ interface RuntimeState {
   setFilter: (filterId: string, value: Predicate | null) => void;
   setGlobal: (filterId: string, value: Predicate | null) => void;
   setDrill: (predicates: Predicate[]) => void;
-  setSync: (on: boolean) => void;
-  /** Clear every selection, live filter value and drill predicate. */
+  /**
+   * A drill-through to the data grid: the dataset and predicates to show. TODO(ui-data): the
+   * grid should read this on mount, apply the predicates and call `setGridDrill(null)`.
+   */
+  gridDrill: { datasetId: string; predicates: Predicate[] } | null;
+  setGridDrill: (value: RuntimeState["gridDrill"]) => void;
+  /** Back to the saved defaults: no selections, live filter values or drill predicates. */
   resetAll: () => void;
 }
 
@@ -60,7 +63,7 @@ export const useDashboardRuntime = create<RuntimeState>((set) => ({
   activeTabId: null,
   ...clean,
   globalValues: {},
-  syncCharts: true,
+  gridDrill: null,
   open: (dashboardId, options = {}) =>
     set({ dashboardId, activeTabId: options.tabId ?? null, ...clean, drill: options.drill ?? [] }),
   setTab: (activeTabId) => set({ activeTabId }),
@@ -89,7 +92,6 @@ export const useDashboardRuntime = create<RuntimeState>((set) => ({
   setGlobal: (filterId, value) =>
     set((state) => ({ globalValues: { ...state.globalValues, [filterId]: value } })),
   setDrill: (drill) => set({ drill }),
-  setSync: (syncCharts) => set({ syncCharts }),
-  // Filters set to null (not removed) so a saved default predicate is cleared too.
   resetAll: () => set({ ...clean }),
+  setGridDrill: (gridDrill) => set({ gridDrill }),
 }));

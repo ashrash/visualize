@@ -6,6 +6,7 @@ import {
   applyLayout,
   bottomRow,
   createDashboard,
+  duplicateDashboard,
   removeFilter,
   removeTab,
   removeWidget,
@@ -106,5 +107,30 @@ describe("removeWidget", () => {
     const a = addWidget(d, tab.id, chart("a"));
     d = addWidget(a.dashboard, tab.id, chart("b")).dashboard;
     expect(removeWidget(d, tab.id, a.item.i).tabs?.[0]?.items).toHaveLength(1);
+  });
+});
+
+describe("duplicateDashboard", () => {
+  it("gives everything a new id but keeps the content, and re-points filter widgets", () => {
+    let d = createDashboard("Sales");
+    const tab = d.tabs?.[0];
+    if (!tab) throw new Error("no tab");
+    d = addFilter(d, { id: "f1", label: "Date", field: "d", fieldMap: {}, predicate: null });
+    d = addWidget(d, tab.id, { kind: "filter", filterId: "f1", control: "date_range" }).dashboard;
+    d = addWidget(d, tab.id, chart("a")).dashboard;
+    const copy = duplicateDashboard(d);
+    expect(copy.name).toBe("Sales copy");
+    expect(copy.id).not.toBe(d.id);
+    expect(copy.tabs?.[0]?.id).not.toBe(tab.id);
+    const newFilter = copy.filters?.[0];
+    expect(newFilter?.id).not.toBe("f1");
+    const filterWidget = copy.tabs?.[0]?.items?.[0]?.widget;
+    expect(filterWidget).toMatchObject({ kind: "filter", filterId: newFilter?.id });
+    expect(copy.tabs?.[0]?.items?.[1]?.widget).toEqual(chart("a"));
+    const ids = [
+      ...(copy.tabs?.[0]?.items ?? []).map((i) => i.i),
+      ...(d.tabs?.[0]?.items ?? []).map((i) => i.i),
+    ];
+    expect(new Set(ids).size).toBe(4);
   });
 });

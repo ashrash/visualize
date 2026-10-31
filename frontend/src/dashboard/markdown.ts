@@ -47,14 +47,20 @@ function ensureHooks() {
   });
 }
 
+const SANITIZE = {
+  ALLOWED_TAGS,
+  ALLOWED_ATTR,
+  ALLOWED_URI_REGEXP: ALLOWED_URI,
+  ALLOW_DATA_ATTR: false,
+};
+
+/** Sanitize HTML with the text widget allowlist. */
+export function sanitizeHtml(html: string): string {
+  ensureHooks();
+  return DOMPurify.sanitize(html, SANITIZE);
+}
+
 /** Markdown to sanitized HTML, safe to inject into the page. */
 export function renderMarkdown(markdown: string): string {
-  ensureHooks();
-  const html = marked.parse(markdown, { async: false, gfm: true, breaks: false });
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
-    ALLOWED_URI_REGEXP: ALLOWED_URI,
-    ALLOW_DATA_ATTR: false,
-  });
+  return sanitizeHtml(marked.parse(markdown, { async: false, gfm: true, breaks: false }));
 }

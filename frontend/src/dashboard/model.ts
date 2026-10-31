@@ -208,3 +208,29 @@ export function chartItems(dashboard: Dashboard): { tabId: string; item: LayoutI
       .map((item) => ({ tabId: tab.id, item })),
   );
 }
+
+/** A copy with fresh ids for the dashboard, tabs, widgets and filters (charts are shared). */
+export function duplicateDashboard(source: Dashboard, name = `${source.name} copy`): Dashboard {
+  const filterIds = new Map((source.filters ?? []).map((f) => [f.id, newId()]));
+  return {
+    ...source,
+    id: newId(),
+    name,
+    filters: (source.filters ?? []).map((f) => ({ ...f, id: filterIds.get(f.id) ?? newId() })),
+    tabs: (source.tabs ?? []).map((tab) => ({
+      ...tab,
+      id: newId(),
+      items: (tab.items ?? []).map((item) => ({
+        ...item,
+        i: newId(),
+        widget:
+          item.widget.kind === "filter"
+            ? {
+                ...item.widget,
+                filterId: filterIds.get(item.widget.filterId) ?? item.widget.filterId,
+              }
+            : item.widget,
+      })),
+    })),
+  };
+}
