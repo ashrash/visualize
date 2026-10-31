@@ -9,8 +9,16 @@ import type { SharedView } from "./api";
 const getSharedView = vi.fn();
 vi.mock("./api", () => ({ getSharedView: (...a: unknown[]) => getSharedView(...a) }));
 vi.mock("../DashboardView", () => ({
-  DashboardView: ({ mode, dashboard }: { mode: string; dashboard: { name: string } }) => (
-    <div data-testid="dashboard" data-mode={mode}>
+  DashboardView: ({
+    mode,
+    dashboard,
+    globalFilters,
+  }: {
+    mode: string;
+    dashboard: { name: string };
+    globalFilters?: unknown[];
+  }) => (
+    <div data-testid="dashboard" data-mode={mode} data-globals={globalFilters?.length ?? 0}>
       {dashboard.name}
     </div>
   ),
@@ -31,6 +39,7 @@ const view = (over: Partial<SharedView> = {}): SharedView => ({
   pipelines: [],
   datasetIds: [],
   themes: [],
+  globalFilters: [],
   generatedAt: "2026-10-31T00:00:00Z",
   ...over,
 });
@@ -62,6 +71,25 @@ describe("shared views", () => {
     expect(screen.getByRole("heading", { name: "Sales board" })).toBeTruthy();
     expect(screen.getByText("Demo project")).toBeTruthy();
     expect(screen.getByRole("button", { name: /print/i })).toBeTruthy();
+  });
+
+  it("applies the project global filters, so a viewer sees what the owner intended", async () => {
+    getSharedView.mockResolvedValue(
+      view({
+        globalFilters: [
+          {
+            id: "g",
+            label: "Date",
+            field: "d",
+            fieldMap: {},
+            predicate: null,
+            control: "date_range",
+          },
+        ],
+      }),
+    );
+    open("/share/tok");
+    expect((await screen.findByTestId("dashboard")).getAttribute("data-globals")).toBe("1");
   });
 
   it("embeds without page chrome", async () => {

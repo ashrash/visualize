@@ -51,7 +51,7 @@ function SharedViewPage({ via }: { via: "share" | "embed" }) {
     );
   }
 
-  const { dashboard, charts, pipelines, projectName } = view.data;
+  const { dashboard, charts, pipelines, projectName, globalFilters } = view.data;
   const single = dashboard === null ? charts[0] : undefined;
   return (
     <main className={embed ? "shared-embed h-full p-2" : "shared-page mx-auto max-w-[1400px] p-4"}>
@@ -74,6 +74,7 @@ function SharedViewPage({ via }: { via: "share" | "embed" }) {
           dashboard={dashboard}
           charts={charts}
           pipelines={pipelines}
+          globalFilters={globalFilters}
           mode={embed ? "embed" : "view"}
         />
       ) : single ? (

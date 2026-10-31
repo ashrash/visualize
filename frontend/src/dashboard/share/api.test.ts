@@ -14,13 +14,17 @@ describe("share api helpers", () => {
 
   it("resolves a token on the share or embed route, encoding it", async () => {
     const fetchMock = vi.fn(
-      async (_url: string) => new Response(JSON.stringify({ kind: "dashboard" }), { status: 200 }),
+      async (_request: Request) =>
+        new Response(JSON.stringify({ kind: "dashboard" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     vi.stubGlobal("fetch", fetchMock);
     await getSharedView("a/b", "embed");
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/embed/a%2Fb");
+    expect(new URL(fetchMock.mock.calls[0]?.[0].url ?? "").pathname).toBe("/api/embed/a%2Fb");
     await getSharedView("tok", "share");
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/share/tok");
+    expect(new URL(fetchMock.mock.calls[1]?.[0].url ?? "").pathname).toBe("/api/share/tok");
   });
 
   it("turns the 404 for a bad token into an ApiError", async () => {
@@ -28,7 +32,10 @@ describe("share api helpers", () => {
       "fetch",
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ detail: "share link not found" }), { status: 404 }),
+          new Response(JSON.stringify({ detail: "share link not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          }),
       ),
     );
     await expect(getSharedView("nope", "share")).rejects.toMatchObject({
