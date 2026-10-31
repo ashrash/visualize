@@ -7,10 +7,12 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-accent text-accent-fg hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]",
+        primary:
+          "bg-accent text-accent-fg hover:bg-[color-mix(in_srgb,var(--color-accent),var(--color-fg)_15%)]",
         outline: "border border-line bg-transparent hover:bg-surface-2",
         ghost: "bg-transparent hover:bg-surface-2",
-        danger: "bg-danger text-accent-fg hover:bg-[color-mix(in_srgb,var(--color-danger),var(--color-fg)_15%)]",
+        danger:
+          "bg-danger text-accent-fg hover:bg-[color-mix(in_srgb,var(--color-danger),var(--color-fg)_15%)]",
       },
       size: {
         sm: "h-7 px-2",
