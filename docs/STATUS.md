@@ -652,8 +652,34 @@ already tracked under MVP §7/§10.
   the engine's 60s timeout — fixed by narrowing the accent-expansion character class now that the
   fast path is script-scoped, bringing the worst case down to ~26ms. Also fixed: a dataset column
   literally named `file_row_number` broke every filtered/searched page (mirrors an existing guard
-  in `transform/compiler.py`); a thread-unsafe LRU cache; a ~356ms first-search cost. 1207 backend
-  tests passed/6 skipped.
+  in `transform/compiler.py`); a thread-unsafe LRU cache; a ~356ms first-search cost. **Merged**
+  after a second xhigh round re-verified both fixes end-to-end (49+ needles across a dozen scripts
+  at the `rows_page`/HTTP level, a whole-Unicode-range comparison against DuckDB, re-measured
+  worst-case needle timing now 3.5-9x *faster* than `strip_accents`). Lead applied the round-2
+  nits directly (widened the combining-mark class to cover Cyrillic titlo and other marks beyond
+  the original Latin-only range, with no measurable perf cost; corrected the accepted-differences
+  docstring; fixed the cost-bound test's needle to the real worst case) and fixed one related,
+  pre-existing bug the reviewer found while verifying: `RowViews._eligible` didn't carry the same
+  `file_row_number` guard `rows._late_page` and `transform/compiler.py` already had, so a
+  materialized view over such a dataset 500'd on every page past the first once built. 1220
+  backend tests passed/7 skipped, ruff/mypy clean.
+  - Perf budget items now meeting budget: cold sorted first page (190-340ms -> 143ms, budget
+    150ms), cold deep filtered-range pages (0.6-0.7s -> 59ms), free-text search (620-660ms ->
+    ~192ms). **Still over budget, improved but not closed, needs qa's quiet-machine pass**: cold
+    deep sorted pages (1.8-2.7s -> ~435-620ms depending on measurement, budget not specified as a
+    hard number but clearly still above the first-page 150ms budget's spirit).
+- 2026-10-31: `ui-dashboard` found and fixed the keyboard-move/resize render-loop crash qa
+  surfaced (React error #185, ~1-in-3 intermittent): `DashboardGrid` stored whatever
+  `react-grid-layout`'s `onLayoutChange` reported into the dashboard document, but that callback
+  reports the *previous* render's layout, not the current one — two keyboard steps close together
+  made the stored layout and the grid's fed-back prop alternate between two states forever. Fix:
+  stopped using `onLayoutChange` as the source of truth; the stored layout now only changes on
+  `onDragStop`/`onResizeStop` (mouse) or an explicit keyboard step, with keyboard steps computing
+  their own resulting layout via a new `settleLayout` (`model.ts`, built on
+  `react-grid-layout/core`'s own `moveElement` and compactor, so it can't drift from what the grid
+  itself would show). Also fixed a spurious write-back on page load from the same echo. Confirmed
+  in the browser (24 runs, 0 failures) and via Playwright (`--repeat-each 12 --workers 1`, 12/12).
+  In review.
 
 ## MVP.md
 
