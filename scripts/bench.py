@@ -76,17 +76,22 @@ class Known:
 
 KNOWN_ISSUES = {
     # Keys are the case labels used by Bench.cold_case / grid_case (10M-row numbers).
+    # "filtered range, deep offset, cold" met budget on a quiet machine (58-60 ms) and was removed.
+    # "sorted, cold" stays: two quiet runs measured 159-160 ms, a hair over the 150 ms budget.
     "sorted, cold": Known(
-        340, f"{_LARGE_DATASETS}: first sorted page ~190-340 ms cold (ceiling 340 ms); Wave 4"
+        250,
+        f"{_LARGE_DATASETS}: first sorted page ~150-160 ms cold, quiet machine (ceiling 250 ms)",
     ),
     "sorted, deep offset, cold": Known(
-        4000, f"{_LARGE_DATASETS}: deep page before its view is built ~1.8-2.7 s (ceiling 4 s)"
-    ),
-    "filtered range, deep offset, cold": Known(
-        1000, f"{_LARGE_DATASETS}: deep page before its view is built ~0.6-0.7 s (ceiling 1 s)"
+        650,
+        f"{_LARGE_DATASETS}: deep sorted page, view not yet built ~0.4-0.55 s (ceiling 0.65 s)",
     ),
     "search, free text": Known(
-        1000, f"{_LARGE_DATASETS}: free-text search ~620-660 ms (ceiling 1 s); Wave 4 search pass"
+        300, f"{_LARGE_DATASETS}: free-text search ~0.19-0.28 s (ceiling 0.3 s)"
+    ),
+    # Raw-timestamp M4 line: p50 280-300 ms on a quiet machine, i.e. right at the 300 ms budget.
+    "chart aggregate line: order_ts vs score (M4)": Known(
+        400, "transform: M4 over 10M raw timestamps, p50 ~280-300 ms quiet (ceiling 400 ms)"
     ),
 }
 
@@ -466,6 +471,10 @@ AGGREGATE_CASES = [
         "stacked_bar",
         {"x": [enc("region")], "y": [enc(None, "count")], "color": [enc("channel")]},
     ),
+    # Raw-timestamp series path (M4 downsampling), cache-busted like the others.
+    ChartCase(
+        "line: order_ts vs score (M4)", "line", {"x": [enc("order_ts")], "y": [enc("score")]}
+    ),
 ]
 
 DASHBOARD_CASES = [
@@ -758,7 +767,9 @@ class Bench:
                 )
                 continue
             stats = summarize(times)
-            status, known = verdict(stats["p50"] <= CHART_P50_BUDGET_MS)
+            status, known = verdict(
+                stats["p50"] <= CHART_P50_BUDGET_MS, f"chart aggregate {case.label}", stats["p50"]
+            )
             self.add(
                 Result(
                     f"chart aggregate {case.label}",
@@ -785,8 +796,12 @@ class Bench:
                 "line",
                 {"x": [enc("order_ts")], "y": [enc("score")]},
             ),
+            # lat/lon carry the geo semantic, which chart-data rejects for x/y (HTTP 422), so use
+            # two quantitative columns to exercise the scatter payload-cap path.
             ChartCase(
-                "scatter: lat vs lon (all rows)", "scatter", {"x": [enc("lat")], "y": [enc("lon")]}
+                "scatter: unit_price vs score (all rows)",
+                "scatter",
+                {"x": [enc("unit_price")], "y": [enc("score")]},
             ),
             ChartCase(
                 "timeseries_line: order_ts vs score (all rows)",
@@ -1126,6 +1141,48 @@ class Bench:
                 status,
                 note="; ".join(sorted(set(problems))) or "10 fields, ungrouped, modes on, exact",
                 known=known,
+                data=stats,
+            )
+        )
+        self.run_describe_grouped(fields)
+
+    def run_describe_grouped(self, fields: list[str]) -> None:
+        """Grouped describe has no CLAUDE.md budget (Wave 4 item); tracked against a 5 s ceiling."""
+        name = "describe 10 fields with modes, grouped by region"
+        ceiling_s = 5.0
+        times = []
+        for k in range(4):  # one warm-up, then 3 timed runs
+            body = {
+                "source": {"kind": "dataset", "id": self.dataset_id},
+                "fields": [f for f in fields if f != "region"],
+                "groupBy": ["region"],
+                "includeMode": True,
+                "filters": [bust(self.rows)],
+            }
+            started = time.perf_counter()
+            response = self.api.client.post("/api/stats/describe", json=body)
+            elapsed = time.perf_counter() - started
+            if response.status_code != 200:
+                self.add(
+                    Result(
+                        name,
+                        f"<= {ceiling_s:.0f} s (tracked)",
+                        f"HTTP {response.status_code}",
+                        "FAIL",
+                        note=response.text[:200],
+                    )
+                )
+                return
+            if k:
+                times.append(elapsed)
+        stats = summarize(times)
+        self.add(
+            Result(
+                name,
+                f"<= {ceiling_s:.0f} s (tracked, no formal budget)",
+                f"p50 {fmt_s(stats['p50'])} (max {fmt_s(stats['max'])}, n={len(times)})",
+                "PASS" if stats["max"] <= ceiling_s else "FAIL",
+                note="9 fields, grouped, modes on",
                 data=stats,
             )
         )
