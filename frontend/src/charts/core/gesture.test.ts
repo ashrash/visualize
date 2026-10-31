@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { echarts } from "./echarts";
-import { createGestureGate } from "./gesture";
+import { createGestureGate, ownBrush, rememberBrush, sameBrush } from "./gesture";
 
 function fakeZr() {
   const handlers = new Map<string, Set<() => void>>();
@@ -59,14 +59,13 @@ describe("createGestureGate", () => {
     gateB.dispose();
   });
 
-  it("can be marked from code, and stops listening when disposed", () => {
+  it("stops listening when disposed", () => {
     const zr = fakeZr();
-    let t = 0;
+    const t = 0;
     const gate = createGestureGate(zr, { graceMs: 100, now: () => t });
-    gate.mark();
+    zr.fire("mousedown");
     expect(gate.isLocal()).toBe(true);
     gate.dispose();
-    t += 1000;
     zr.fire("mousedown");
     expect(gate.isLocal()).toBe(false);
   });
@@ -135,6 +134,63 @@ describe("linked charts through real ECharts", () => {
     gateA.dispose();
     gateB.dispose();
     echarts.disconnect("pair");
+    a.dispose();
+    b.dispose();
+  });
+
+  type Areas = Parameters<typeof rememberBrush>[1];
+  /** The `brush` events a chart emits, with the areas each carried. */
+  const watch = (chart: ReturnType<typeof make>) => {
+    const seen: Areas[] = [];
+    chart.on("brush", (e) => {
+      seen.push((e as { areas: Areas }).areas);
+    });
+    return seen;
+  };
+  const bandOf = (range: number[]) => ({ brushType: "lineX", coordRange: range, xAxisIndex: 0 });
+
+  it("escapeConnect keeps a brush dispatch from being replayed on the linked chart", () => {
+    const a = make();
+    const b = make();
+    a.group = "bands";
+    b.group = "bands";
+    echarts.connect("bands");
+    const onA = watch(a);
+    const onB = watch(b);
+    // Control: a plain dispatch reaches both charts (the replay this is about).
+    a.dispatchAction({ type: "brush", areas: [bandOf([0, 1])] });
+    expect(onA).toHaveLength(1);
+    expect(onB).toHaveLength(1);
+    // With escapeConnect, a clear on B stays on B.
+    b.dispatchAction({ type: "brush", areas: [], escapeConnect: true } as never);
+    expect(onB).toHaveLength(2);
+    expect(onA).toHaveLength(1);
+    echarts.disconnect("bands");
+    a.dispose();
+    b.dispose();
+  });
+
+  it("restores a chart's own band after a replay, without replaying the restore", () => {
+    const a = make();
+    const b = make();
+    a.group = "restore";
+    b.group = "restore";
+    echarts.connect("restore");
+    const onA = watch(a);
+    const onB = watch(b);
+    a.dispatchAction({ type: "brush", areas: [bandOf([0, 1])] });
+    // What EChart remembers when A's own brush ends.
+    rememberBrush(a, onA[0] as Areas);
+    // B is brushed: the replay lands on A, carrying B's band.
+    b.dispatchAction({ type: "brush", areas: [bandOf([2, 2])] });
+    const replayed = onA.at(-1) as Areas;
+    expect(sameBrush(replayed, ownBrush(a))).toBe(false);
+    // The restore, exactly as EChart does it.
+    const bEvents = onB.length;
+    a.dispatchAction({ type: "brush", areas: ownBrush(a), escapeConnect: true } as never);
+    expect(sameBrush(onA.at(-1) as Areas, ownBrush(a))).toBe(true);
+    expect(onB).toHaveLength(bEvents);
+    echarts.disconnect("restore");
     a.dispose();
     b.dispose();
   });

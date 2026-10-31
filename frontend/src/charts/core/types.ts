@@ -202,6 +202,9 @@ export interface PlotEntry {
    * The `spec.params` names `prepare` reads (a map's level and resolution). The chart waits for
    * a new `prepare` only when one of these changes; any other param edit re-renders in place and
    * keeps roam/legend/brush state. Omit it and every param change waits (safe, but remounts).
+   *
+   * TODO(plots-geo): declare this on the geo plots (their map level / resolution params are
+   * `affectsData: false`, so it cannot be derived), e.g. choropleth: ["level", "resolution"].
    */
   prepareParams?: string[];
   /**

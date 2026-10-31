@@ -334,7 +334,7 @@ describe("brush lifecycle", () => {
     expect(screen.queryByRole("button", { name: "Clear selection" })).toBeNull();
     act(() => lastEChartProps.onBrush?.(drawn));
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
-    expect(chartDispatch).toHaveBeenCalledWith({ type: "brush", areas: [] });
+    expect(chartDispatch).toHaveBeenCalledWith({ type: "brush", areas: [], escapeConnect: true });
     expect(onBrushSelected).toHaveBeenLastCalledWith(
       expect.objectContaining({ cleared: true, field: "year" }),
     );
@@ -368,6 +368,39 @@ describe("brush lifecycle", () => {
     act(() => lastEChartProps.onBrush?.(drawn));
     onBrushSelected.mockClear();
     fireEvent.click(screen.getByRole("button", { name: /View as table/ }));
+    expect(onBrushSelected).toHaveBeenCalledWith(expect.objectContaining({ cleared: true }));
+  });
+
+  it("reports a cleared brush when another branch replaces the chart (no rows after a cross-filter)", () => {
+    ready(data());
+    const onBrushSelected = vi.fn();
+    const { rerender } = render(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    act(() => lastEChartProps.onBrush?.(drawn));
+    onBrushSelected.mockClear();
+    ready(makeData({ x: [], y0: [] }, { x: "year" }));
+    rerender(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    expect(screen.queryByTestId("echart")).toBeNull();
+    expect(onBrushSelected).toHaveBeenCalledTimes(1);
+    expect(onBrushSelected).toHaveBeenCalledWith(expect.objectContaining({ cleared: true }));
+    // Rows come back: the chart returns with no band, and nothing more is reported.
+    ready(data());
+    rerender(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    expect(onBrushSelected).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a cleared brush while the chart is loading again", () => {
+    ready(data());
+    const onBrushSelected = vi.fn();
+    const { rerender } = render(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
+    act(() => lastEChartProps.onBrush?.(drawn));
+    onBrushSelected.mockClear();
+    useChartData.mockReturnValue({
+      data: undefined,
+      error: null,
+      isFetching: true,
+      refetch: vi.fn(),
+    });
+    rerender(<ChartView spec={brushSpec()} onBrushSelected={onBrushSelected} />);
     expect(onBrushSelected).toHaveBeenCalledWith(expect.objectContaining({ cleared: true }));
   });
 

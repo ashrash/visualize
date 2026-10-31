@@ -27,6 +27,7 @@ import {
   type PointHit,
   resolveBrushValues,
 } from "./events";
+import { rememberBrush } from "./gesture";
 import { chartXDomain } from "./primitives/extra";
 import { getPlot } from "./registry";
 import { numericExtent } from "./series";
@@ -38,7 +39,12 @@ import type { ChartData, RenderContext } from "./types";
 export interface ChartPointClick extends PointHit {
   /** The x channel's field (after any drill-down), or null when the channel is empty. */
   field: string | null;
-  /** The raw column value behind `name`; undefined when the label matches no row. */
+  /**
+   * The raw column value behind `name`; undefined when the label matches no row. Temporal values
+   * are ISO text. CAUTION for building Predicates: when the x channel has a `timeUnit` (day,
+   * month, ...), this is the START of the bucket, so `eq`/`in` on it matches only that exact
+   * instant, not the bucket. Use a `between_dates` range spanning the bucket instead.
+   */
   rawValue?: DrillValue;
   /** True when this click drilled one level down instead of ending at a leaf. */
   drilled: boolean;
@@ -48,7 +54,12 @@ export interface ChartPointClick extends PointHit {
 export interface ChartBrush extends BrushPayload {
   /** The x channel's field. */
   field: string | null;
-  /** Category axes: the raw column values of `categories`. */
+  /**
+   * Category axes: the raw column values of `categories` (temporal ones as ISO text). The same
+   * caution as `ChartPointClick.rawValue` applies: with a `timeUnit` these are bucket starts, not
+   * values that exist in the column, so prefer a `between_dates` range over `in` for them. Time
+   * axes report `ranges` in epoch ms instead.
+   */
   values: DrillValue[];
 }
 
@@ -442,16 +453,26 @@ export function ChartView({
   const reportClearedRef = useRef(reportCleared);
   reportClearedRef.current = reportCleared;
   const clearBrush = useCallback(() => {
-    chartRef.current?.dispatchAction({ type: "brush", areas: [] });
+    const chart = chartRef.current;
+    if (chart) {
+      rememberBrush(chart, []);
+      // escapeConnect: a linked chart's own band must not be cleared by this click.
+      chart.dispatchAction({ type: "brush", areas: [], escapeConnect: true });
+    }
     reportCleared();
   }, [reportCleared]);
-  // The chart is rebuilt from scratch when this key changes (and is gone in table view), which
-  // throws away a drawn band: tell the embedder so its filter does not outlive the selection.
+  // The chart is rebuilt from scratch when this key changes, which throws away a drawn band. It
+  // is also gone whenever any other branch renders instead (table view, loading, an error, or a
+  // result with no rows after a cross-filter). Tell the embedder in every case, so its filter does
+  // not outlive the selection.
   const chartResetKey = `${identity}|${spec.interactions?.zoom ?? true}|${spec.interactions?.brush ?? false}`;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on the key and the view mode only
+  const chartShown = Boolean(
+    entry && data && option && !asTable && (data.stat || data.rowCount > 0),
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on the key and on the chart appearing or going away only
   useEffect(() => {
     if (brushState.current.active) reportClearedRef.current();
-  }, [chartResetKey, asTable]);
+  }, [chartResetKey, chartShown]);
   useEffect(
     () => () => {
       if (brushState.current.active) reportClearedRef.current();

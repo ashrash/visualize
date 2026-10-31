@@ -9,7 +9,7 @@ import {
   type PointHit,
   pointHitFrom,
 } from "./events";
-import { createGestureGate } from "./gesture";
+import { type BrushArea, createGestureGate, ownBrush, rememberBrush, sameBrush } from "./gesture";
 import { joinLinkGroup } from "./linkGroup";
 import { buildEChartsTheme } from "./theme";
 import type { ChartTheme } from "./types";
@@ -192,14 +192,26 @@ export function EChart({
       if (gate.isLocal()) latest.current.onLegendChange?.(legendChangeFrom(event));
     });
     // A committed brush; `brush` also fires while dragging, so only its "removed" case is used.
+    const areasOf = (event: unknown) => (event as { areas?: BrushArea[] }).areas ?? [];
     chart.on("brushEnd", (event: unknown) => {
       if (!gate.isLocal()) return;
+      rememberBrush(chart, areasOf(event));
       const payload = brushPayloadFrom(event, chart.getOption() as Record<string, unknown>);
       if (payload) latest.current.onBrush?.(payload);
     });
     chart.on("brush", (event: unknown) => {
-      if (!gate.isLocal()) return;
-      if (((event as { areas?: unknown[] }).areas ?? []).length > 0) return;
+      const areas = areasOf(event);
+      if (!gate.isLocal()) {
+        // Replayed from a linked chart: ECharts has drawn THEIR band against OUR axis. Put this
+        // chart's own band back (not replayed in turn), so what is drawn is what is filtered.
+        const mine = ownBrush(chart);
+        if (!sameBrush(areas, mine)) {
+          chart.dispatchAction({ type: "brush", areas: mine, escapeConnect: true });
+        }
+        return;
+      }
+      if (areas.length > 0) return;
+      rememberBrush(chart, []);
       const payload = brushPayloadFrom(event, chart.getOption() as Record<string, unknown>);
       if (payload) latest.current.onBrush?.(payload);
     });
@@ -244,6 +256,8 @@ export function EChart({
     const rebuild = resetKey === undefined || resetKey !== appliedKey.current;
     appliedKey.current = resetKey;
     if (rebuild) {
+      // A rebuild discards any drawn band, so there is no band of its own to restore.
+      rememberBrush(chart, []);
       chart.setOption(withAria, { notMerge: true });
     } else {
       // replaceMerge only accepts component main types: keep to option keys that are one.
