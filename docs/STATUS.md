@@ -610,6 +610,50 @@ already tracked under MVP §7/§10.
     yet exercise `/api/charts/data` (the DuckDB/Parquet path most sensitive to container memory)
     or `/api/health` itself; a wheel-metadata test asserting the `postgres` extra's `Requires-Dist`
     entry survives future refactors.
+- 2026-10-31: `transform`'s M4 single-pass perf fix merged: eliminates a materialized 10M-row CTE,
+  a second full scan for the x extent, and a semi-join, replacing them with one aggregate-and-pick
+  pipeline (scalar `arg_min`/`arg_max` for one measure, whole-row struct picks via `arg_min(row,
+  key)` for several, avoiding tied-row column mispairing). ~40% faster under heavy concurrent
+  load (p50 ~377ms -> ~223ms in-process, ~312ms -> ~238ms over HTTP). xhigh review found one real
+  blocker: the new integer `epoch_us` bucket path's `least()` silently kept NULL-x rows instead of
+  dropping them (DuckDB's `least()` skips NULL arguments) — reproduced as a 40x-magnitude false
+  spike on a line chart built from CSV rows with empty date cells. Fixed with the same `CASE WHEN
+  isfinite(...)` guard the DOUBLE-literal branch already had; the fix was re-verified by writing a
+  pytest plugin that reverts the guard and confirms the regression tests actually fail without it.
+  1164 backend tests passed/7 skipped, ruff/mypy clean.
+- 2026-10-31: `ui-dashboard` fixed all 4 product bugs qa's Wave 4 e2e pass pinned with `test.fail`
+  sentinels, plus the accessibility findings: share-revoke now handles a 204's empty body instead
+  of routing it through a JSON-expecting `unwrap()`; the date-range filter's draft no longer resets
+  to the stale committed value mid-edit (was racing its own 150ms debounce); react-grid-layout's
+  drag handle is now a real keyboard-operable button (Space/Enter pick up, arrows move/resize,
+  Escape cancels, a live region announces each step) — a genuine race was found and fixed where the
+  live grid position lagged a render behind, dropping the first of two fast keypresses; widget
+  dialogs now return focus to "Add widget" on close instead of dropping to `<body>`. A11y fixes:
+  the dropdown filter's accessible name now includes its value; the edit-mode tablist holds only
+  tabs; print styles use light tokens regardless of the active theme; hand-written buttons picked
+  up the same accent/text color-mix hover fix as the shared `Button` component. Also retired the 4
+  `test.fail` sentinels and 15 now-resolved axe-baseline entries in qa's own e2e files (done while
+  verifying end-to-end against qa's suite, based on qa's pre-round-2 commit — qa is reconciling
+  their own round-2 quality improvements against this separately). Independently re-verified on
+  `main` post-merge: `dashboard.spec.ts` + `a11y-dashboard.spec.ts` = **43/43 passed, zero axe
+  violations across all 34 screens**. 871 vitest passed/4 skipped, biome/tsc clean.
+  - **Known limitation, unrelated to this branch**: in dark-theme print, ECharts draws axis/series
+    text on canvas using the screen theme's colors, which CSS print overrides can't reach — axis
+    labels may print pale on a white page. The token-level print-contrast fix covers everything
+    except canvas-rendered chart text.
+- 2026-10-31: `data-core`'s search/grid-perf branch found genuinely serious bugs on its first
+  review round, both now fixed and in a second xhigh confirmation round: (1) searches in Korean,
+  Hindi and other non-Latin scripts returned **zero rows** on high-cardinality columns, because the
+  new accent-folding fast path didn't match DuckDB's `strip_accents` for Hangul (Python NFD
+  decomposes syllables; DuckDB doesn't) or Mc/Me Unicode marks (only Mn was stripped) — fixed by
+  gating the regex fast path to Latin/Greek/Cyrillic/Vietnamese ranges only, routing everything
+  else to the always-correct `strip_accents` fallback; (2) long search needles were ~200x slower,
+  with the 256-character cap not preventing a 29-62s worst case that could hold a query slot past
+  the engine's 60s timeout — fixed by narrowing the accent-expansion character class now that the
+  fast path is script-scoped, bringing the worst case down to ~26ms. Also fixed: a dataset column
+  literally named `file_row_number` broke every filtered/searched page (mirrors an existing guard
+  in `transform/compiler.py`); a thread-unsafe LRU cache; a ~356ms first-search cost. 1207 backend
+  tests passed/6 skipped.
 
 ## MVP.md
 
