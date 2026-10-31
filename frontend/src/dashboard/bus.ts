@@ -56,12 +56,15 @@ export function forget(state: BusState, widgetId: string): BusState {
   return next;
 }
 
+/** One shared empty list: zustand selectors must return a stable value when nothing changed. */
+const NO_PREDICATES: Predicate[] = [];
+
 export function selectionOf(
   state: BusState,
   groupId: string | null,
   widgetId: string,
 ): Predicate[] {
-  return (groupId && state[groupId]?.[widgetId]?.predicates) || [];
+  return (groupId && state[groupId]?.[widgetId]?.predicates) || NO_PREDICATES;
 }
 
 export function hasSelections(state: BusState): boolean {

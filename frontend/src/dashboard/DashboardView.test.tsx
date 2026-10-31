@@ -1,0 +1,317 @@
+// @vitest-environment jsdom
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type { ECharts } from "echarts/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ChartSpec, Predicate } from "../api/types";
+import { createDashboard } from "./model";
+import { useDashboardRuntime } from "./runtimeStore";
+import type { Dashboard } from "./types";
+
+// ---- stand-ins for the parts that need a browser or a server ----
+
+type Listener = (params: unknown) => void;
+const charts = new Map<string, { emit: (name: string, params?: unknown) => void }>();
+
+function fakeChart(id: string): ECharts {
+  const listeners = new Map<string, Set<Listener>>();
+  charts.set(id, {
+    emit: (name, params) => {
+      for (const fn of listeners.get(name) ?? []) fn(params);
+    },
+  });
+  return {
+    on: (name: string, fn: Listener) => {
+      if (!listeners.has(name)) listeners.set(name, new Set());
+      listeners.get(name)?.add(fn);
+    },
+    off: (name: string, fn: Listener) => listeners.get(name)?.delete(fn),
+    getOption: () => ({ xAxis: [{ type: "category", data: ["N", "S", "E", "W"] }], brush: [{}] }),
+    setOption: () => {},
+  } as unknown as ECharts;
+}
+
+// The chart wrapper: shows the filters it was asked to query with, and names its instance.
+vi.mock("../charts", () => ({
+  ChartView: ({ spec, filters }: { spec: ChartSpec; filters?: Predicate[] }) => (
+    <div data-testid={`chart-${spec.id}`} data-chart={spec.id}>
+      <output aria-label={`filters of ${spec.id}`}>{JSON.stringify(filters ?? [])}</output>
+    </div>
+  ),
+  makeFormatter: () => (v: unknown) => String(v),
+  useChartData: () => ({ data: undefined, error: null }),
+  FORMAT_PRESETS: [],
+}));
+vi.mock("./useChartInstance", () => ({
+  useChartInstance: (frame: { current: HTMLElement | null }) => {
+    const id = frame.current?.querySelector("[data-chart]")?.getAttribute("data-chart");
+    return id ? fakeChart(id) : null;
+  },
+}));
+vi.mock("react-grid-layout", () => ({
+  useContainerWidth: () => ({ width: 1200, containerRef: { current: null }, mounted: true }),
+  Responsive: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+vi.mock("react-grid-layout/css/styles.css", () => ({}));
+vi.mock("../data/hooks", () => ({ useDatasets: () => ({ data: [] }) }));
+vi.mock("../api/pipelines", () => ({ inspectPipeline: vi.fn() }));
+
+import { DashboardView } from "./DashboardView";
+
+const wrap = (ui: React.ReactNode) => (
+  <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>
+);
+
+const spec = (id: string, over: Partial<ChartSpec> = {}): ChartSpec =>
+  ({
+    id,
+    name: `Chart ${id}`,
+    plotType: "bar",
+    source: { kind: "dataset", id: "ds1" },
+    encodings: { x: [{ field: "region" }], y: [{ field: "sales", agg: "sum" }] },
+    interactions: {
+      zoom: true,
+      brush: false,
+      clickFilter: true,
+      drillHierarchy: [],
+      linkGroup: "g",
+    },
+    ...over,
+  }) as ChartSpec;
+
+function dashboardWith(chartIds: string[]): Dashboard {
+  const d = createDashboard("Test");
+  const tab = d.tabs?.[0];
+  if (!tab) throw new Error("no tab");
+  return {
+    ...d,
+    tabs: [
+      {
+        ...tab,
+        items: chartIds.map((id, i) => ({
+          i: `w-${id}`,
+          x: (i % 2) * 6,
+          y: Math.floor(i / 2) * 4,
+          w: 6,
+          h: 4,
+          widget: { kind: "chart" as const, chartId: id },
+        })),
+      },
+    ],
+  };
+}
+
+const filtersOf = (id: string): Predicate[] =>
+  JSON.parse(screen.getByLabelText(`filters of ${id}`).textContent ?? "[]");
+
+const click = (id: string, name: string, extra: Record<string, unknown> = {}) =>
+  act(() =>
+    charts
+      .get(id)
+      ?.emit("click", { componentType: "series", name, seriesName: "series0", ...extra }),
+  );
+
+function renderDashboard(chartSpecs: ChartSpec[], mode: "view" | "edit" | "embed" = "view") {
+  const dashboard = dashboardWith(chartSpecs.map((c) => c.id));
+  return render(
+    wrap(<DashboardView dashboard={dashboard} charts={chartSpecs} pipelines={[]} mode={mode} />),
+  );
+}
+
+beforeEach(() => {
+  charts.clear();
+  useDashboardRuntime.setState({ globalValues: {}, gridDrill: null });
+  useDashboardRuntime.getState().open("fresh");
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+describe("cross-filtering a dashboard", () => {
+  it("filters the other charts in the link group by a click, but never the chart clicked", () => {
+    renderDashboard([
+      spec("a"),
+      spec("b"),
+      spec("c", { interactions: { linkGroup: "other" } as never }),
+    ]);
+    expect(filtersOf("a")).toEqual([]);
+
+    click("a", "North");
+    expect(filtersOf("a")).toEqual([]); // its own selection is excluded
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North"] }]);
+    expect(filtersOf("c")).toEqual([]); // a different group is untouched
+  });
+
+  it("toggles a click off, and shift-click adds to the selection", () => {
+    renderDashboard([spec("a"), spec("b")]);
+    click("a", "North");
+    click("a", "North");
+    expect(filtersOf("b")).toEqual([]);
+
+    click("a", "North");
+    click("a", "South", { event: { event: { shiftKey: true } } });
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["North", "South"] }]);
+  });
+
+  it("shows the active selection as a chip and clears everything from it", () => {
+    renderDashboard([spec("a"), spec("b")]);
+    click("a", "North");
+    const status = screen.getByRole("status", { name: "Active filters" });
+    expect(within(status).getByText("region: North")).toBeTruthy();
+    fireEvent.click(within(status).getByRole("button", { name: "Clear all" }));
+    expect(filtersOf("b")).toEqual([]);
+    expect(screen.queryByRole("status", { name: "Active filters" })).toBeNull();
+  });
+
+  it("drops a chart's selection when the chart leaves the dashboard", () => {
+    const view = renderDashboard([spec("a"), spec("b")]);
+    click("a", "North");
+    expect(filtersOf("b")).toHaveLength(1);
+    const next = dashboardWith(["b"]);
+    view.rerender(
+      wrap(
+        <DashboardView
+          dashboard={next}
+          charts={[spec("a"), spec("b")]}
+          pipelines={[]}
+          mode="view"
+        />,
+      ),
+    );
+    expect(filtersOf("b")).toEqual([]);
+  });
+
+  it("ignores clicks while editing (the chart is being moved, not explored)", () => {
+    renderDashboard([spec("a"), spec("b")], "edit");
+    click("a", "North");
+    expect(filtersOf("b")).toEqual([]);
+  });
+
+  it("ignores clicks on a chart with click filtering switched off", () => {
+    renderDashboard([
+      spec("a", { interactions: { clickFilter: false, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    click("a", "North");
+    expect(filtersOf("b")).toEqual([]);
+  });
+
+  it("commits a brush once after a pause, not on every drag event", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", { interactions: { brush: true, linkGroup: "g" } as never }),
+      spec("b"),
+    ]);
+    const brush = (lo: number, hi: number) =>
+      act(() => charts.get("a")?.emit("brushEnd", { areas: [{ coordRange: [lo, hi] }] }));
+    brush(0, 1);
+    brush(0, 2);
+    brush(1, 2);
+    expect(filtersOf("b")).toEqual([]); // nothing yet
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "region", values: ["S", "E"] }]);
+  });
+
+  it("applies a legend toggle as an `in` filter on the colour field", () => {
+    vi.useFakeTimers();
+    renderDashboard([
+      spec("a", {
+        encodings: {
+          x: [{ field: "region" }],
+          y: [{ agg: "count" }],
+          color: [{ field: "channel" }],
+        },
+      }),
+      spec("b"),
+    ]);
+    act(() =>
+      charts
+        .get("a")
+        ?.emit("legendselectchanged", { selected: { web: true, app: false, store: true } }),
+    );
+    act(() => vi.advanceTimersByTime(200));
+    expect(filtersOf("b")).toEqual([{ op: "in", field: "channel", values: ["web", "store"] }]);
+  });
+});
+
+describe("dashboard filters", () => {
+  it("pass a live filter value to every chart, mapped through fieldMap", () => {
+    const base = dashboardWith(["a"]);
+    const dashboard: Dashboard = {
+      ...base,
+      filters: [
+        {
+          id: "f1",
+          label: "Date",
+          field: "order_date",
+          fieldMap: { ds1: "created" },
+          predicate: null,
+          control: "date_range",
+        },
+      ],
+    };
+    render(
+      wrap(<DashboardView dashboard={dashboard} charts={[spec("a")]} pipelines={[]} mode="view" />),
+    );
+    expect(filtersOf("a")).toEqual([]);
+    act(() =>
+      useDashboardRuntime.getState().setFilter("f1", {
+        op: "between_dates",
+        field: "order_date",
+        min: "2024-01-01",
+        max: "2024-02-01",
+        includeMin: true,
+        includeMax: false,
+      }),
+    );
+    expect(filtersOf("a")).toEqual([
+      expect.objectContaining({ op: "between_dates", field: "created", min: "2024-01-01" }),
+    ]);
+  });
+
+  it("applies a saved filter default until the viewer changes it", () => {
+    const base = dashboardWith(["a"]);
+    const saved: Predicate = { op: "eq", field: "region", value: "West" };
+    const dashboard: Dashboard = {
+      ...base,
+      filters: [{ id: "f1", label: "Region", field: "region", fieldMap: {}, predicate: saved }],
+    };
+    render(
+      wrap(<DashboardView dashboard={dashboard} charts={[spec("a")]} pipelines={[]} mode="view" />),
+    );
+    expect(filtersOf("a")).toEqual([saved]);
+    act(() => useDashboardRuntime.getState().setFilter("f1", null));
+    expect(filtersOf("a")).toEqual([]);
+  });
+});
+
+describe("tabs and embed", () => {
+  it("switches tabs without touching the cross-filter state", () => {
+    const d = dashboardWith(["a"]);
+    const first = d.tabs?.[0];
+    if (!first) throw new Error("no tab");
+    const dashboard: Dashboard = {
+      ...d,
+      tabs: [first, { id: "t2", name: "Second", items: [] }],
+    };
+    render(
+      wrap(<DashboardView dashboard={dashboard} charts={[spec("a")]} pipelines={[]} mode="view" />),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Second" }));
+    expect(screen.getByRole("tab", { name: "Second" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByTestId("chart-a")).toBeNull();
+  });
+
+  it("shows no edit tools in view or embed mode", () => {
+    renderDashboard([spec("a")], "embed");
+    expect(screen.queryByRole("button", { name: /add widget/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
+  });
+});
