@@ -14,8 +14,7 @@ Queries:
   overall row together); values near the top of the double range are rescaled by a power of
   two and the moments retried, since DuckDB's kurtosis/skewness overflow there;
 - numeric quantiles come from one UNPIVOT + GROUP BY field, so they finalize in parallel;
-- one UNION ALL of per-field GROUP BYs gives exact distinct counts and modes, using a top-k
-  aggregate (min_by) rather than a sort of all distinct values.
+- one GROUP BY per field gives exact distinct counts and modes (see _modes).
 """
 
 from __future__ import annotations
@@ -48,6 +47,9 @@ ModeInfo = tuple[int, int, list[Any], bool]  # distinct, mode count, first modes
 
 _QUARTILES = (0.25, 0.5, 0.75)
 _MAX_MODES = 5
+# Mode candidates kept per (field, group) by the fast top-k: the values with the highest
+# counts. When this many all tie for the mode, a tie-exact query picks the smallest ones.
+_MODE_CANDIDATES = 64
 # Outside these magnitudes the moments are computed on rescaled values (DuckDB's kurtosis
 # overflows from about 1e77, skewness from about 1e103; below ~1e-50 x^4 underflows).
 _RESCALE_ABOVE = 1e50
@@ -427,70 +429,134 @@ def _modes(
     groups: _Groups,
     grouping_sets: bool,
 ) -> dict[tuple[str, GroupKey], ModeInfo]:
-    """Exact distinct count and modes per (field, group), all fields in one UNION ALL."""
-    branches: list[str] = []
-    for i, name in enumerate(fields):
-        if grouping_sets and name in groups.by:
-            # GROUPING SETS ((g, g), (g)) can't tell the overall row apart: two branches.
-            branches.append(_mode_branch(rel, i, name, kinds[name], groups, False))
-            branches.append(
-                _mode_branch(rel, i, name, kinds[name], _Groups.none(rel), False, groups)
-            )
-        else:
-            branches.append(_mode_branch(rel, i, name, kinds[name], groups, grouping_sets))
+    """Exact distinct count and modes per (field, group), one query per field.
+
+    One query per field, not one UNION ALL: DuckDB runs the branches of a UNION ALL at the
+    same time, so every field's value-count hash table is alive at once. At 10M rows that
+    took 2-3x the peak memory and was slower (grouped 3.4 s vs 2.6 s, ungrouped 0.84 s vs
+    0.73 s), and it is what made describe sensitive to a low memory_limit.
+    """
     out: dict[tuple[str, GroupKey], ModeInfo] = {}
-    for row in rel.arrow(" UNION ALL ".join(f"({b})" for b in branches)).to_pylist():
-        if row["_m"] is None:  # no values (an ungrouped aggregate still returns a row)
-            continue
-        i = int(row["_f"])
-        name, kind = fields[i], kinds[fields[i]]
-        mode_count = int(row["_m"])
-        tied = [t for t in row["_top"] if t["c"] == mode_count]
-        values: list[Any] = []
-        zoned = kind == "temporal" and _has_zone(rel, name)
-        for t in tied[:_MAX_MODES]:
-            if t["n"] is not None:
-                values.append(t["n"])
-            elif kind == "boolean":
-                values.append(t["t"] == "true")
-            else:
-                values.append(_iso(t["t"], zoned) if kind == "temporal" else t["t"])
-        out[(name, groups.key(row))] = (int(row["_d"]), mode_count, values, len(tied) > _MAX_MODES)
+    for i, name in enumerate(fields):
+        kind = kinds[name]
+        if grouping_sets and name in groups.by:
+            # GROUPING SETS ((g, g), (g)) can't tell the overall row apart: two queries.
+            shapes = [(groups, False, None), (_Groups.none(rel), False, groups)]
+        else:
+            shapes = [(groups, grouping_sets, None)]
+        for branch_groups, sets, output_groups in shapes:
+            branch = _ModeBranch(rel, i, name, kind, branch_groups, sets, output_groups)
+            rows = rel.arrow(branch.sql(exact=False)).to_pylist()
+            if any(_needs_exact_ties(row) for row in rows):
+                rows = rel.arrow(branch.sql(exact=True)).to_pylist()
+            for row in rows:
+                if row["_m"] is None:  # no values (an ungrouped aggregate still returns a row)
+                    continue
+                out[(name, groups.key(row))] = _mode_info(rel, name, kind, row)
     return out
 
 
-def _mode_branch(
-    rel: Relation,
-    i: int,
-    name: str,
-    kind: Kind,
-    groups: _Groups,
-    grouping_sets: bool,
-    output_groups: _Groups | None = None,
-) -> str:
-    """One field's distinct/mode aggregate; every branch has the same output columns."""
-    v = _value(rel, name, kind)
-    present = rel.narrow(exp.Not(this=exp.Is(this=v, expression=exp.Null())))
-    counted = present.select(*_key_selects(rel, groups), alias(v, "_v"), alias(count_star(), "_c"))
-    counted = counted.group_by(*_group_clause(groups, [v], grouping_sets))
-    # The ungrouped branch of a grouped pass still outputs the key columns (NULL, _gid = 1),
-    # so every branch of the UNION ALL has the same columns.
-    n_keys = len((output_groups or groups).by)
-    if groups.by:
-        key_cols = ", ".join([*(f"_g{k}" for k in range(n_keys)), "_gid"])
-        selects, group_by = key_cols, f" GROUP BY {key_cols}"
-    else:
-        key_nulls = [f"NULL AS _g{k}" for k in range(n_keys)] + (["1 AS _gid"] if n_keys else [])
-        selects, group_by = ", ".join(key_nulls), ""
-    selects = f"{selects}, " if selects else ""
-    number = "_v::DOUBLE" if kind == "numeric" else "NULL::DOUBLE"
-    text = "NULL::VARCHAR" if kind == "numeric" else "CAST(_v AS VARCHAR)"
-    return (
-        f"SELECT {i} AS _f, {selects}count(*) AS _d, max(_c) AS _m, "
-        f"min_by(struct_pack(n := {number}, t := {text}, c := _c), "
-        f"struct_pack(nc := -_c, v := _v), {_MAX_MODES + 1}) AS _top "
-        f"FROM ({counted.sql(dialect='duckdb')}) AS _a{group_by}"
-    )
+def _needs_exact_ties(row: dict[str, Any]) -> bool:
+    """True when every fast candidate ties for the mode.
+
+    More values may then tie than were kept, so the smallest of them are unknown. A mode
+    count of 1 shows no modes, so it never needs the exact query.
+    """
+    ties = row["_ties"]
+    return ties is not None and ties >= _MODE_CANDIDATES and int(row["_m"]) > 1
+
+
+def _mode_info(rel: Relation, name: str, kind: Kind, row: dict[str, Any]) -> ModeInfo:
+    mode_count = int(row["_m"])
+    tied = [t for t in row["_top"] if t["c"] == mode_count]
+    values: list[Any] = []
+    zoned = kind == "temporal" and _has_zone(rel, name)
+    for t in tied[:_MAX_MODES]:
+        if t["n"] is not None:
+            values.append(t["n"])
+        elif kind == "boolean":
+            values.append(t["t"] == "true")
+        else:
+            values.append(_iso(t["t"], zoned) if kind == "temporal" else t["t"])
+    return int(row["_d"]), mode_count, values, len(tied) > _MAX_MODES
+
+
+@dataclass(frozen=True)
+class _ModeBranch:
+    """One field's distinct count and modes per group, as SQL.
+
+    Output columns: _f (field index), the group keys (_g0.., _gid), _d (distinct values),
+    _m (mode count), _top (up to _MAX_MODES + 1 of the values with count _m, smallest first,
+    as {n: number, t: text, c: count}) and _ties (how many values with count _m were found;
+    NULL for the tie-exact query).
+    """
+
+    rel: Relation
+    i: int
+    name: str
+    kind: Kind
+    groups: _Groups
+    grouping_sets: bool
+    # The ungrouped query of a grouped pass still outputs the key columns (NULL, _gid = 1).
+    output_groups: _Groups | None = None
+
+    def sql(self, *, exact: bool) -> str:
+        """The fast query (`exact=False`) or the tie-exact one.
+
+        The fast query keeps the _MODE_CANDIDATES values with the highest counts (max_by
+        keyed on the count alone, which is cheap) and sorts the ones that tie for the mode.
+        It is exact whenever fewer values tie; otherwise (_needs_exact_ties) run the exact
+        query, which ranks every value by (count desc, value) with a struct-keyed top-k:
+        the same answer, but several times slower on high-cardinality fields.
+        """
+        v = _value(self.rel, self.name, self.kind)
+        present = self.rel.narrow(exp.Not(this=exp.Is(this=v, expression=exp.Null())))
+        counted = present.select(
+            *_key_selects(self.rel, self.groups), alias(v, "_v"), alias(count_star(), "_c")
+        )
+        counted = counted.group_by(*_group_clause(self.groups, [v], self.grouping_sets))
+        counts = counted.sql(dialect="duckdb")
+        n_keys = len((self.output_groups or self.groups).by)
+        key_names = [*(f"_g{k}" for k in range(n_keys)), "_gid"] if n_keys else []
+        if self.groups.by:
+            inner_keys, group_by = key_names, f" GROUP BY {', '.join(key_names)}"
+        else:
+            nulls = [f"NULL AS _g{k}" for k in range(n_keys)]
+            inner_keys, group_by = nulls + (["1 AS _gid"] if n_keys else []), ""
+        keys = "".join(f"{k}, " for k in inner_keys)
+        if exact:
+            top = (
+                f"min_by(struct_pack(n := {self._number('_v')}, t := {self._text('_v')}, "
+                f"c := _c), struct_pack(nc := -_c, v := _v), {_MAX_MODES + 1})"
+            )
+            return (
+                f"SELECT {self.i} AS _f, {keys}count(*) AS _d, max(_c) AS _m, {top} AS _top, "
+                f"NULL::BIGINT AS _ties FROM ({counts}) AS _a{group_by}"
+            )
+        candidates = (
+            f"SELECT {keys}count(*) AS _d, max(_c) AS _m, "
+            f"max_by(struct_pack(v := _v, c := _c), _c, {_MODE_CANDIDATES}) AS _k "
+            f"FROM ({counts}) AS _a{group_by}"
+        )
+        # The candidates that tie for the mode, sorted by value (natively, like ORDER BY).
+        ties = "list_filter(_k, lambda _x: _x.c = _m)"
+        tied_values = f"list_sort(list_transform({ties}, lambda _x: _x.v))"
+        top = (
+            f"list_transform(list_slice({tied_values}, 1, {_MAX_MODES + 1}), "
+            f"lambda _e: struct_pack(n := {self._number('_e')}, t := {self._text('_e')}, "
+            "c := _m))"
+        )
+        outer_keys = "".join(f"{k}, " for k in key_names)
+        return (
+            f"SELECT {self.i} AS _f, {outer_keys}_d, _m, {top} AS _top, len({ties}) AS _ties "
+            f"FROM ({candidates}) AS _b"
+        )
+
+    def _number(self, value: str) -> str:
+        return f"{value}::DOUBLE" if self.kind == "numeric" else "NULL::DOUBLE"
+
+    def _text(self, value: str) -> str:
+        return "NULL::VARCHAR" if self.kind == "numeric" else f"CAST({value} AS VARCHAR)"
 
 
 def _summary(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from collections import Counter
 from typing import Any
 
 import numpy as np
@@ -13,7 +14,8 @@ from hypothesis import strategies as st
 from scipy import stats as sps
 from sqlglot import exp
 
-from viz.contracts import DescribeRequest, FieldSummary, SourceRef
+from viz.contracts import ColumnSemantic, DescribeRequest, FieldSummary, SourceRef
+from viz.stats import descriptive
 from viz.stats.descriptive import describe
 from viz.stats.relation import col
 
@@ -369,6 +371,104 @@ def test_zoned_timestamps_are_reported_in_utc(table_relation: Any, make_relation
     assert ts.min == "2024-01-01T05:00:00+00:00" and ts.max == "2024-03-01T00:00:00+00:00"
     assert ts.modes == ["2024-01-01T05:00:00+00:00"] and ts.median == "2024-01-01T05:00:00+00:00"
     assert _one(result, "v", ["2024-01-01T05:00:00+00:00"]).mean == 1.5
+
+
+def _expected_modes(values: list[Any]) -> tuple[int, int | None, list[Any], bool]:
+    """(distinct, mode count, first 5 tied values smallest first, more than 5 tie)."""
+    counts = Counter(v for v in values if v is not None)
+    if not counts:
+        return 0, None, [], False
+    top = max(counts.values())
+    tied = sorted(v for v, c in counts.items() if c == top)
+    shown = tied[:5] if top > 1 else []  # a mode count of 1 shows no modes
+    return len(counts), top, shown, len(tied) > 5
+
+
+@pytest.mark.parametrize("candidates", [3, 64])
+@pytest.mark.parametrize("ties", [4, 63, 64, 65, 130])
+def test_many_tied_modes_are_exact(
+    table_relation: Any, monkeypatch: pytest.MonkeyPatch, candidates: int, ties: int
+) -> None:
+    """More values tie for the mode than the fast top-k keeps: the smallest 5 still win."""
+    monkeypatch.setattr(descriptive, "_MODE_CANDIDATES", candidates)
+    rng = np.random.default_rng(ties)
+    tied = rng.permutation(np.arange(-ties, ties, 2)).tolist()  # `ties` even numbers, twice
+    singles = (np.arange(ties) * 2 + 1001).tolist()  # odd, once each
+    values = [float(v) for v in rng.permutation(tied + tied + singles)]
+    text = [f"s{int(v):+05d}" for v in values]
+    groups = ["a"] * len(values) + ["b"] * 7
+    rel = table_relation(
+        {
+            "v": pa.array([*values, *[5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0]], type=pa.float64()),
+            "s": pa.array([*text, *["z"] * 7]),
+            "g": groups,
+        }
+    )
+    result = describe(rel, _request(["v", "s"], group_by=["g"]))
+    for field, column in (("v", values), ("s", text)):
+        b_part = [5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0] if field == "v" else ["z"] * 7
+        for group, part in ((["a"], column), (["b"], b_part), (None, [*column, *b_part])):
+            summary = _one(result, field, group)
+            distinct, top, shown, more = _expected_modes(part)
+            assert (summary.distinct, summary.mode_count, summary.modes) == (
+                distinct,
+                top,
+                shown,
+            ), (field, group)
+            where = "overall" if group is None else f"g={group[0]}"
+            warning = f"'{field}': more than 5 values tie for the mode; showing 5"
+            assert any(w.startswith(warning) and where in w for w in result.warnings) == more
+
+
+def test_tied_modes_sort_natively_not_as_text(table_relation: Any) -> None:
+    """Ties are ordered by value: nominal integers 9 < 10 (as text '10' < '9'), dates by day."""
+    numbers = [10, 10, 9, 9, 100, 100, 2, 2, 11, 11, 3, 3, 1]
+    days = [dt.date(2024, 1, d) for d in (10, 10, 9, 9, 2, 2, 11, 11, 3, 3, 30, 30, 1)]
+    rel = table_relation(
+        {"k": pa.array(numbers, type=pa.int64()), "d": days},
+        semantics={"k": ColumnSemantic.NOMINAL},
+    )
+    result = describe(rel, _request(["k", "d"]))
+    k, d = _one(result, "k"), _one(result, "d")
+    assert k.kind == "categorical" and k.modes == ["2", "3", "9", "10", "11"]
+    assert d.modes == ["2024-01-02", "2024-01-03", "2024-01-09", "2024-01-10", "2024-01-11"]
+    assert k.mode_count == d.mode_count == 2
+
+
+@settings(
+    max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    st.lists(
+        st.tuples(
+            st.one_of(st.none(), st.integers(min_value=-6, max_value=6)),
+            st.sampled_from(["a", "b", None]),
+        ),
+        min_size=0,
+        max_size=60,
+    ),
+    st.sampled_from([1, 2, 64]),
+)
+def test_fuzz_modes_against_counter(
+    table_relation: Any, rows: list[tuple[int | None, str | None]], candidates: int
+) -> None:
+    """Distinct counts, mode counts and tied modes per group and overall, for both the fast
+    top-k and the tie-exact query (a small candidate count forces the exact one)."""
+    values = [None if v is None else float(v) for v, _ in rows]
+    labels = [g for _, g in rows]
+    rel = table_relation(
+        {"v": pa.array(values, type=pa.float64()), "g": pa.array(labels, type=pa.string())}
+    )
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(descriptive, "_MODE_CANDIDATES", candidates)
+        result = describe(rel, _request(["v"], group_by=["g"]))
+    parts: list[tuple[list[str | None] | None, list[float | None]]] = [(None, values)]
+    for label in set(labels):
+        parts.append(([label], [v for v, g in zip(values, labels, strict=True) if g == label]))
+    for key, part in parts:
+        summary = _one(result, "v", key)
+        distinct, top, shown, _ = _expected_modes(part)
+        assert (summary.distinct, summary.mode_count, summary.modes) == (distinct, top, shown)
 
 
 def test_modes_of_high_cardinality_doubles(table_relation: Any) -> None:
