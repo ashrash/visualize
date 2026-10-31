@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from viz import __version__
-from viz.api import charts, datasets, exports, jobs, pipelines, projects, stats
+from viz.api import charts, datasets, exports, jobs, pipelines, projects, share, stats
 from viz.auth import current_user
 
 api_router = APIRouter(dependencies=[Depends(current_user)])
@@ -29,3 +29,7 @@ api_router.include_router(charts.router)
 api_router.include_router(pipelines.router)
 api_router.include_router(projects.router)
 api_router.include_router(stats.router)
+api_router.include_router(share.router)
+
+# Token holders resolve share/embed links without a user; the app mounts this router bare.
+public_router = share.public_router
