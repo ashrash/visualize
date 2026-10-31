@@ -206,6 +206,7 @@ function pieEntry(donut: boolean): PlotEntry {
         : []),
     ],
     styleSections: SECTIONS,
+    drill: { channel: "x" },
     defaults: {
       params: donut
         ? {

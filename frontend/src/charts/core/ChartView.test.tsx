@@ -13,13 +13,18 @@ vi.mock("./data", async (importOriginal) => ({
   useChartOverlays: () => useChartOverlays(),
 }));
 
-let lastEChartProps: { onViewport?(r: [number, number] | null): void; resetKey?: string } = {};
+interface FakeEChartProps {
+  onReady?(c: unknown): void;
+  onViewport?(r: [number, number] | null): void;
+  resetKey?: string;
+  linkGroup?: string | null;
+  onPointClick?(hit: unknown): void;
+  onBrush?(brush: unknown): void;
+  onLegendChange?(change: unknown): void;
+}
+let lastEChartProps: FakeEChartProps = {};
 vi.mock("./EChart", () => ({
-  EChart: (props: {
-    onReady?(c: unknown): void;
-    onViewport?(r: [number, number] | null): void;
-    resetKey?: string;
-  }) => {
+  EChart: (props: FakeEChartProps) => {
     lastEChartProps = props;
     useEffect(() => {
       props.onReady?.({});
@@ -153,6 +158,176 @@ describe("zoom reset (nit)", () => {
     rerender(<ChartView spec={{ ...a, name: "renamed", params: { barWidth: 30 } }} />);
     expect(useChartData.mock.calls[0]?.[3]).toMatchObject({ xRange: [10, 20] });
     expect(lastEChartProps.resetKey).toBeDefined();
+  });
+});
+
+const hit = (name: string, extra: Record<string, unknown> = {}) => ({
+  seriesIndex: 0,
+  seriesName: "v",
+  name,
+  dataIndex: 0,
+  value: 1,
+  shiftKey: false,
+  ...extra,
+});
+
+describe("drill-down", () => {
+  const drillSpec = () =>
+    makeSpec({
+      id: "d",
+      encodings: { x: [{ field: "country" }], y: [{ field: "sales", agg: "sum" }] },
+      interactions: {
+        zoom: true,
+        brush: false,
+        clickFilter: true,
+        drillHierarchy: ["country", "state"],
+      },
+    });
+
+  it("drills into a clicked category: next level, filtered to it, with a breadcrumb back", () => {
+    ready(makeData({ x: ["DE", "FR"], y0: [1, 2] }, { x: "country" }));
+    const onDrillChange = vi.fn();
+    const onPointClick = vi.fn();
+    render(
+      <ChartView spec={drillSpec()} onDrillChange={onDrillChange} onPointClick={onPointClick} />,
+    );
+    expect(useChartData.mock.lastCall?.[0].encodings.x[0].field).toBe("country");
+
+    act(() => lastEChartProps.onPointClick?.(hit("DE")));
+    const [querySpec, queryFilters] = useChartData.mock.lastCall ?? [];
+    expect(querySpec.encodings.x[0].field).toBe("state");
+    expect(queryFilters).toEqual([{ op: "eq", field: "country", value: "DE" }]);
+    expect(onDrillChange).toHaveBeenCalledWith(
+      ["DE"],
+      [{ op: "eq", field: "country", value: "DE" }],
+    );
+    expect(onPointClick).toHaveBeenCalledWith(
+      expect.objectContaining({ field: "country", rawValue: "DE", drilled: true }),
+    );
+    expect(screen.getByText("Lowest level")).toBeTruthy();
+
+    // At the leaf level a click does not drill, but is still reported.
+    act(() => lastEChartProps.onPointClick?.(hit("DE")));
+    expect(onDrillChange).toHaveBeenCalledTimes(1);
+    expect(onPointClick).toHaveBeenLastCalledWith(expect.objectContaining({ drilled: false }));
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(useChartData.mock.lastCall?.[0].encodings.x[0].field).toBe("country");
+    expect(onDrillChange).toHaveBeenLastCalledWith([], []);
+  });
+
+  it("follows the drill path it is given when controlled", () => {
+    ready(makeData({ x: ["a"], y0: [1] }, { x: "state" }));
+    const { rerender } = render(<ChartView spec={drillSpec()} drill={["DE"]} />);
+    expect(useChartData.mock.lastCall?.[1]).toEqual([{ op: "eq", field: "country", value: "DE" }]);
+    act(() => lastEChartProps.onPointClick?.(hit("a")));
+    // Controlled: nothing changes until the parent passes a new path.
+    expect(useChartData.mock.lastCall?.[1]).toEqual([{ op: "eq", field: "country", value: "DE" }]);
+    rerender(<ChartView spec={drillSpec()} drill={[]} />);
+    expect(useChartData.mock.lastCall?.[0].encodings.x[0].field).toBe("country");
+  });
+
+  it("can drill from the table view, which a keyboard can reach", () => {
+    ready(makeData({ x: ["DE", "FR"], y0: [1, 2] }, { x: "country" }));
+    render(<ChartView spec={drillSpec()} />);
+    fireEvent.click(screen.getByRole("button", { name: /View as table/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Drill into FR" }));
+    expect(useChartData.mock.lastCall?.[1]).toEqual([{ op: "eq", field: "country", value: "FR" }]);
+  });
+
+  it("shows no breadcrumb or drilling for a chart without a hierarchy", () => {
+    ready(makeData({ x: ["a"], y0: [1] }));
+    const onPointClick = vi.fn();
+    render(<ChartView spec={makeSpec()} onPointClick={onPointClick} />);
+    expect(screen.queryByRole("navigation", { name: "Drill-down" })).toBeNull();
+    act(() => lastEChartProps.onPointClick?.(hit("a")));
+    expect(onPointClick).toHaveBeenCalledWith(expect.objectContaining({ drilled: false }));
+  });
+});
+
+describe("interaction signals for an embedder", () => {
+  it("adds the field and raw values to brush and legend events", () => {
+    ready(makeData({ x: [2024, 2025], color: ["east", "west"], y0: [1, 2] }, { x: "year" }));
+    const spec = makeSpec({
+      encodings: {
+        x: [{ field: "year" }],
+        y: [{ field: "n", agg: "sum" }],
+        color: [{ field: "region" }],
+      },
+    });
+    const onBrushSelected = vi.fn();
+    const onLegendChange = vi.fn();
+    render(
+      <ChartView spec={spec} onBrushSelected={onBrushSelected} onLegendChange={onLegendChange} />,
+    );
+    act(() =>
+      lastEChartProps.onBrush?.({
+        axis: "x",
+        kind: "category",
+        ranges: [],
+        categories: ["2025"],
+        cleared: false,
+      }),
+    );
+    expect(onBrushSelected).toHaveBeenCalledWith(
+      expect.objectContaining({ field: "year", values: [2025] }),
+    );
+    act(() =>
+      lastEChartProps.onLegendChange?.({
+        toggled: "west",
+        selected: { east: true, west: false },
+        shown: ["east"],
+        hidden: ["west"],
+      }),
+    );
+    expect(onLegendChange).toHaveBeenCalledWith(
+      expect.objectContaining({ field: "region", shownValues: ["east"], hiddenValues: ["west"] }),
+    );
+  });
+
+  it("joins the chart's link group and passes the slot through", () => {
+    ready(makeData({ x: ["a"], y0: [1] }));
+    const spec = makeSpec({
+      interactions: { zoom: true, brush: false, clickFilter: true, linkGroup: "g1" },
+    });
+    render(<ChartView spec={spec} slot="widget-2" />);
+    expect(lastEChartProps.linkGroup).toBe("g1");
+    expect(useChartData.mock.lastCall?.[3]).toMatchObject({ slot: "widget-2" });
+  });
+
+  it("resets the chart when brushing is switched on or off", () => {
+    ready(makeData({ x: ["a"], y0: [1] }));
+    const { rerender } = render(<ChartView spec={makeSpec()} />);
+    const before = lastEChartProps.resetKey;
+    rerender(
+      <ChartView
+        spec={makeSpec({ interactions: { zoom: true, brush: true, clickFilter: true } })}
+      />,
+    );
+    expect(lastEChartProps.resetKey).not.toBe(before);
+  });
+});
+
+describe("view as table for stat results", () => {
+  it("renders a StatResult as tables, not JSON", () => {
+    const data = {
+      ...makeData({}, {}),
+      stat: {
+        values: { auc: 0.91, fpr: [0, 1], tpr: [0, 1] },
+        method: "roc",
+        n: 20,
+        nMissing: 0,
+        sampled: false,
+        warnings: [],
+      },
+    };
+    useChartData.mockReturnValue({ data, error: null, isFetching: false, refetch: vi.fn() });
+    render(<ChartView spec={makeSpec({ plotType: "roc" })} />);
+    fireEvent.click(screen.getByRole("button", { name: /View as table/ }));
+    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("columnheader", { name: "tpr" })).toBeTruthy();
+    expect(screen.getByText("0.91")).toBeTruthy();
+    expect(screen.getByText("roc, n = 20")).toBeTruthy();
   });
 });
 

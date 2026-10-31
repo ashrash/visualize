@@ -205,6 +205,13 @@ export interface PlotEntry {
   warnings?(spec: ChartSpec, data: ChartData): string[];
   /** 0–1 suitability for the given columns (chart recommendations). */
   recommend?(columns: Column[]): number;
+  /**
+   * Opt in to drill-down (`interactions.drillHierarchy`): `channel` is the encoding channel
+   * whose field is swapped for the next hierarchy level when a category is clicked. Set it only
+   * when the plot's marks are category marks with their name in the `x` data column (bar, line,
+   * area, pie). Plots that drill natively (treemap, sunburst) leave it unset.
+   */
+  drill?: { channel: string };
 }
 
 /** Type helper for plot modules: `export const histogram = definePlot({...})`. */

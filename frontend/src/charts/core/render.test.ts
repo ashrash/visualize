@@ -153,6 +153,53 @@ describe("replaceMergeTypes with real ECharts (W3)", () => {
   });
 });
 
+describe("brush and linked charts through ECharts", () => {
+  const brushed = (orientation: "vertical" | "horizontal") => {
+    const entry = getPlot("bar");
+    if (!entry) throw new Error("bar missing");
+    const data = makeData({ x: ["a", "b", "c"], y0: [1, 2, 3] }, { x: "k", y0: "v" });
+    const spec = makeSpec({
+      interactions: { zoom: true, brush: true, clickFilter: true },
+      style: { orientation } as never,
+    });
+    return entry.render(spec, data, makeTheme()) as Record<string, unknown>;
+  };
+
+  it("registers the brush component, which tree-shaking would otherwise leave out", () => {
+    expect(
+      (echarts.ComponentModel as unknown as { hasClass(t: string): boolean }).hasClass("brush"),
+    ).toBe(true);
+    for (const orientation of ["vertical", "horizontal"] as const) {
+      const option = brushed(orientation);
+      const chart = ssr(option);
+      expect(() =>
+        chart.dispatchAction({
+          type: "takeGlobalCursor",
+          key: "brush",
+          brushOption: { brushType: "lineX", brushMode: "multiple" },
+        }),
+      ).not.toThrow();
+      chart.dispose();
+    }
+  });
+
+  it("brushes the category axis in both orientations", () => {
+    expect(brushed("vertical").brush).toMatchObject({ xAxisIndex: 0, brushType: "lineX" });
+    expect(brushed("horizontal").brush).toMatchObject({ yAxisIndex: 0, brushType: "lineY" });
+  });
+
+  it("puts charts in a connect group", () => {
+    const a = ssr({ series: [] });
+    const b = ssr({ series: [] });
+    a.group = "linked";
+    b.group = "linked";
+    expect(() => echarts.connect("linked")).not.toThrow();
+    expect(() => echarts.disconnect("linked")).not.toThrow();
+    a.dispose();
+    b.dispose();
+  });
+});
+
 describe("donut through ECharts", () => {
   it("draws the total in the hole (GraphicComponent is registered)", () => {
     const entry = getPlot("donut");

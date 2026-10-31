@@ -77,6 +77,11 @@ export function validateEntry(entry: PlotEntry): string[] {
       problems.push(`${where} defaults.encodings has unknown channel "${channel}"`);
     }
   }
+  if (entry.drill) {
+    const channel = entry.encodingsSchema.find((c) => c.name === entry.drill?.channel);
+    if (!channel) problems.push(`${where} drill.channel "${entry.drill.channel}" is not a channel`);
+    else if (channel.multiple) problems.push(`${where} drill.channel must be a single channel`);
+  }
   if (entry.styleSections.length === 0) problems.push(`${where} styleSections is empty`);
   return problems;
 }

@@ -104,7 +104,12 @@ function niceStep(span: number, count: number): number {
  */
 export function niceTickLabels(
   extent: [number, number],
-  o: { log?: boolean; logBase?: number; format?: (v: unknown) => string; splitNumber?: number } = {},
+  o: {
+    log?: boolean;
+    logBase?: number;
+    format?: (v: unknown) => string;
+    splitNumber?: number;
+  } = {},
 ): string[] {
   const show = (v: number) => (o.format ? o.format(v) : String(v));
   let [lo, hi] = extent;
@@ -538,6 +543,20 @@ export function applyStyle(
       out.xAxis = xOut;
       out.yAxis = yAxes.length === 1 ? yAxes[0] : yAxes;
     }
+  }
+
+  // Brush: a band along the x channel's axis (categories run down the y axis when horizontal).
+  // EChart switches the brush tool on; the chart reports what the band covers.
+  if (managed && spec.interactions?.brush) {
+    out.brush = {
+      [horizontal ? "yAxisIndex" : "xAxisIndex"]: 0,
+      brushType: horizontal ? "lineY" : "lineX",
+      brushMode: "multiple",
+      throttleType: "debounce",
+      throttleDelay: 150,
+      brushStyle: { color: `${t.textMuted}33`, borderColor: t.textMuted, borderWidth: 1 },
+      toolbox: [],
+    };
   }
 
   // Series.

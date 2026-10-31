@@ -1,6 +1,15 @@
 import type { ECharts, EChartsCoreOption } from "echarts/core";
 import { useEffect, useRef } from "react";
 import { echarts } from "./echarts";
+import {
+  type BrushPayload,
+  brushPayloadFrom,
+  type LegendChange,
+  legendChangeFrom,
+  type PointHit,
+  pointHitFrom,
+} from "./events";
+import { joinLinkGroup } from "./linkGroup";
 import { buildEChartsTheme } from "./theme";
 import type { ChartTheme } from "./types";
 
@@ -26,6 +35,20 @@ interface EChartProps {
    * null when the zoom is reset. Category axes zoom client-side and never fire.
    */
   onViewport?(range: XRange | null): void;
+  /**
+   * Charts with the same group sync tooltips, zoom, legend toggles and highlights
+   * (`echarts.connect`). Pass `interactions.linkGroup`.
+   */
+  linkGroup?: string | null;
+  /** A click on a series mark. */
+  onPointClick?(hit: PointHit): void;
+  /**
+   * A committed brush (the option has a `brush`): the covered range or categories on the x
+   * channel's axis, or `cleared`. Brushing is turned on whenever the option carries `brush`.
+   */
+  onBrush?(brush: BrushPayload): void;
+  /** The legend state after an entry was toggled. */
+  onLegendChange?(change: LegendChange): void;
 }
 
 type DataZoomState = {
@@ -120,12 +143,16 @@ export function EChart({
   resetKey,
   onReady,
   onViewport,
+  linkGroup,
+  onPointClick,
+  onBrush,
+  onLegendChange,
 }: EChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ECharts | null>(null);
   // Latest callbacks and initial theme, read inside the mount-once effect.
-  const latest = useRef({ onReady, onViewport, theme });
-  latest.current = { onReady, onViewport, theme };
+  const latest = useRef({ onReady, onViewport, theme, onPointClick, onBrush, onLegendChange });
+  latest.current = { onReady, onViewport, theme, onPointClick, onBrush, onLegendChange };
   const themeKey = useRef<string>("");
   const appliedKey = useRef<string | undefined>(undefined);
   const appliedZoomShape = useRef<string>("");
@@ -153,6 +180,23 @@ export function EChart({
         if (range !== undefined) latest.current.onViewport?.(range);
       }, 150);
     });
+    chart.on("click", (params: unknown) => {
+      const hit = pointHitFrom(params);
+      if (hit) latest.current.onPointClick?.(hit);
+    });
+    chart.on("legendselectchanged", (event: unknown) => {
+      latest.current.onLegendChange?.(legendChangeFrom(event));
+    });
+    // A committed brush; `brush` also fires while dragging, so only its "removed" case is used.
+    chart.on("brushEnd", (event: unknown) => {
+      const payload = brushPayloadFrom(event, chart.getOption() as Record<string, unknown>);
+      if (payload) latest.current.onBrush?.(payload);
+    });
+    chart.on("brush", (event: unknown) => {
+      if (((event as { areas?: unknown[] }).areas ?? []).length > 0) return;
+      const payload = brushPayloadFrom(event, chart.getOption() as Record<string, unknown>);
+      if (payload) latest.current.onBrush?.(payload);
+    });
 
     return () => {
       clearTimeout(timer);
@@ -162,6 +206,12 @@ export function EChart({
       chartRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !linkGroup) return;
+    return joinLinkGroup(chart, linkGroup);
+  }, [linkGroup]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -196,6 +246,19 @@ export function EChart({
         // dataZoom holds the user's zoom, so it is only replaced when its shape changes
         // (a slider appears or goes away), not on every update.
         replaceMerge: replaced,
+      });
+    }
+    // A `brush` component draws nothing until a brush tool is active: switch it on so the user
+    // can drag a band over the chart without a toolbox.
+    const brush = base.brush as { brushType?: string; brushMode?: string } | undefined;
+    if (brush) {
+      chart.dispatchAction({
+        type: "takeGlobalCursor",
+        key: "brush",
+        brushOption: {
+          brushType: brush.brushType ?? "lineX",
+          brushMode: brush.brushMode ?? "multiple",
+        },
       });
     }
   }, [option, theme, ariaLabel, resetKey]);

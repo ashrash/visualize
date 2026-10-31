@@ -1,6 +1,6 @@
 import type { AggFn, ChartSpec, Column, Encoding } from "../../api/types";
 import type { ChannelSchema, PlotEntry } from "../core/types";
-import { SelectField, SmallButton } from "./controls";
+import { CheckboxField, SelectField, SmallButton } from "./controls";
 import { setChannel } from "./spec";
 
 const ALL_AGGS: { value: AggFn; label: string }[] = [
@@ -184,6 +184,84 @@ function Channel({ channel, encodings, columns, onChange }: ChannelProps) {
   );
 }
 
+const setInteractions = (
+  spec: ChartSpec,
+  patch: Partial<NonNullable<ChartSpec["interactions"]>>,
+): ChartSpec => ({
+  ...spec,
+  interactions: {
+    zoom: true,
+    brush: false,
+    clickFilter: true,
+    ...spec.interactions,
+    ...patch,
+  },
+});
+
+/** Ordered drill-down levels (`interactions.drillHierarchy`), coarse to fine. */
+function DrillLevels({
+  spec,
+  columns,
+  onChange,
+}: {
+  spec: ChartSpec;
+  columns: Column[];
+  onChange(spec: ChartSpec): void;
+}) {
+  const levels = spec.interactions?.drillHierarchy ?? [];
+  const eligible = columns.filter((c) => c.semantic === "nominal" || c.semantic === "ordinal");
+  const write = (next: string[]) => onChange(setInteractions(spec, { drillHierarchy: next }));
+  return (
+    <fieldset className="flex flex-col gap-3 rounded-md border border-line p-2">
+      <legend className="px-1 text-xs font-medium text-muted">Drill-down levels</legend>
+      <p className="text-xs text-muted">
+        Click a bar, slice or point to show the next level, filtered to what you clicked. Needs at
+        least two levels.
+      </p>
+      {levels.map((level, i) => {
+        const options = eligible.map((c) => ({ value: c.name, label: c.name }));
+        if (!options.some((o) => o.value === level))
+          options.unshift({ value: level, label: level });
+        return (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: levels are positional
+            key={i}
+            className="flex items-end gap-2"
+          >
+            <div className="min-w-0 flex-1">
+              <SelectField
+                label={`Drill-down level ${i + 1}`}
+                value={level}
+                options={options}
+                onChange={(next) => write(levels.map((l, k) => (k === i ? next : l)))}
+              />
+            </div>
+            <SmallButton
+              danger
+              label={`Remove drill-down level ${i + 1}`}
+              onClick={() => write(levels.filter((_, k) => k !== i))}
+            >
+              Remove
+            </SmallButton>
+          </div>
+        );
+      })}
+      <div>
+        <SmallButton
+          label="Add drill-down level"
+          onClick={() => {
+            const used = new Set(levels);
+            const next = eligible.find((c) => !used.has(c.name))?.name;
+            if (next) write([...levels, next]);
+          }}
+        >
+          + Add level
+        </SmallButton>
+      </div>
+    </fieldset>
+  );
+}
+
 /** The Data tab: one editor per channel of the plot's `encodingsSchema`. */
 export function DataTab({
   spec,
@@ -207,6 +285,15 @@ export function DataTab({
           onChange={(encodings) => onChange(setChannel(spec, channel.name, encodings))}
         />
       ))}
+      {entry.drill ? <DrillLevels spec={spec} columns={columns} onChange={onChange} /> : null}
+      {entry.styleSections.includes("axes") ? (
+        <CheckboxField
+          label="Select ranges by dragging on the chart"
+          checked={spec.interactions?.brush ?? false}
+          onChange={(brush) => onChange(setInteractions(spec, { brush }))}
+          hint="Reports the selected range to a dashboard; drag-to-pan is off while this is on."
+        />
+      ) : null}
     </div>
   );
 }
