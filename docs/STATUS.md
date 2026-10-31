@@ -679,7 +679,25 @@ already tracked under MVP §7/§10.
   `react-grid-layout/core`'s own `moveElement` and compactor, so it can't drift from what the grid
   itself would show). Also fixed a spurious write-back on page load from the same echo. Confirmed
   in the browser (24 runs, 0 failures) and via Playwright (`--repeat-each 12 --workers 1`, 12/12).
-  In review.
+  **Review found two further issues, both fixed and merged**: `settleLayout` placed the mover at
+  its *target* position before calling `react-grid-layout`'s `moveElement`, which short-circuits
+  as a no-op when already at the target — collision resolution silently fell back to array order
+  alone, which could displace the wrong widget (the mover instead of the neighbor it landed on).
+  Fixed by seeding the mover at its old position, matching `onDragStop`'s own approach. Separately,
+  keyboard users had lost the ability to swap two vertically-stacked widgets (a capability a
+  mouse-drag user still had), since each step settled straight back to its start from the
+  already-compacted position — fixed with a row-by-row continuation that extends a step until the
+  layout actually changes, the keyboard equivalent of dragging far enough past a neighbor. Both
+  fixes were confirmed with extensive fuzzing against the real `react-grid-layout/core` (3000
+  random move/resize comparisons against the library's own drag-stop behavior: 0 mismatches;
+  16,034 stack-swap steps across 2-5-widget stacks: 0 failures; 92,768 random multi-column steps
+  checking no-overlap/in-bounds/compacted invariants: 0 violations), not just the unit tests.
+  **Merged — this closes the last known Wave 4 dashboard blocker.** 890 vitest passed/4 skipped,
+  43/43 dashboard+a11y e2e including 12/12 repeat-each on the keyboard test, biome/tsc clean.
+  - Deferred, not blockers: keyboard steps aren't yet breakpoint-aware below the 12-column desktop
+    layout (a pre-existing gap, not introduced by this round); Escape's whole-layout restore has
+    thinner test coverage against the simpler single-widget-restore alternative than ideal, though
+    fuzzing showed both converge in practice for the cases tried.
 
 ## MVP.md
 
