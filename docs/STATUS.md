@@ -283,6 +283,49 @@ tracked below for Wave 4, not blockers.
   null group either rendered off-canvas or silently merged into the wrong category; both now
   label every x value as a string first. pytest 1054 passed/6 skipped, ruff/mypy clean, vitest
   495 passed/1 skipped, biome/build clean.
+- 2026-10-31: `plots-composition-specialized` merged (Plots.md §5 + §9, all 18): stacked area,
+  100% stacked bar, waterfall, funnel, treemap, sunburst, mosaic, marimekko, sankey, network,
+  alluvial, gantt, pareto, error bar, lollipop, dumbbell, ridgeline, raincloud. Three review
+  rounds. Round 1 found 3 blockers: stored XSS in mosaic/waterfall/gantt tooltips; Gantt
+  rendering nothing (custom series data held row indices while encode expected real dimensions,
+  axis extent stuck at [0,1]ms — reproduced with ECharts SSR); sankey/alluvial cycle detection
+  via Kahn's algorithm dropping every edge downstream of any cycle, not just the cycle's own
+  (reproduced: 0 links on an otherwise-acyclic graph). All fixed — cycle removal rewritten as DFS
+  back-edge removal, verified by hand and with a 3000-iteration random-graph property test (every
+  output a DAG, every dropped edge genuinely closes a cycle). Round 2 found the round-1 mosaic/
+  marimekko SQL rewrite let tied-total categories share one rank and bypass the cap entirely
+  (500 tied categories, cap of 20, all 500 returned) — fixed with a secondary ORDER BY key. Also
+  fixed: stacked_area exceeding the mark cap with categorical x + color; Gantt collapsing to the
+  1970 epoch on a null date; treemap/sunburst not actually bounded despite the docstring's claim
+  (the agent's own first attempt regressed a passing test, caught via the full suite, corrected
+  the gate from max_leaves to mark_cap). Round 3 found one more regression: the cycle-removal tie-
+  break could compare an incomparable pair (a NULL node vs a string, or an INTEGER column once it
+  met the "(Other: ...)" rollup's string bucket) and crash — fixed directly by the lead (VARCHAR
+  cast in `_edges`, a total sort order placing None first). Also fixed directly by the lead: the
+  two `TODO(lead)` "unimplemented plot" stand-in tests (flagged since Wave 1) broke the moment
+  sankey became real — switched to `viz.plots.scoped_registry()` with a plots/-family type
+  (histogram; "bar" doesn't touch the plots registry at all, it's transform's generic aggregate
+  path). **This completes Wave 2**: every Plots.md chart type (74) is now implemented and
+  reviewed. pytest 1108 passed/6 skipped, ruff/mypy clean, vitest 521 passed/1 skipped, biome and
+  build clean.
+
+**Wave 2 exit criteria (CLAUDE.md §10) are met**: every Plots.md chart renders from `samples/`
+(backend known-answer tests cross-checked against SciPy/statsmodels/R/NIST throughout; frontend
+renderer + registry-smoke tests cover every plot type in both themes). Statistics tests match
+SciPy/statsmodels to published precision (t-tests, ANOVA all three SS types, chi-square,
+correlation, NIST regression, PCA, Kaplan-Meier, ROC, meta-analysis). Known gaps carried forward,
+not blockers: contour is a server-exact binned-density heatmap, not true isoline contouring
+(partial); the stats panel's non-describe tests (§5 correlation/regression/t-tests/etc.) are
+built but gated behind a `statsTests` flag pending a ui-data wiring pass, the same pattern Wave 1
+used for pipelines; several ui-charts bugs were found by plot agents and documented below as
+follow-ups rather than fixed (outside those agents' owned paths).
+
+### ui-charts follow-ups found during Wave 2 (not yet fixed; see entries above for detail)
+- Axis title gap sizing from unrounded data instead of tick labels (can clip off-screen).
+- A log-x-axis filter drops array rows whose first element is <=0 (breaks some error-bar layouts).
+- "View as table" shows raw JSON for StatResult-based plots instead of a real table.
+- `ChartView` keys map-readiness on a plot's registry key, not the prepare inputs, so switching a
+  choropleth's map resolution leaves the chart blank after the new map loads.
 
 ## MVP.md
 
@@ -481,14 +524,14 @@ Tracked per plot under Plots.md below.
 | 4 | Moving Average Plot | `moving_average` | plots-timeseries | done |
 | 4 | Candlestick Chart | `candlestick` | plots-timeseries | done |
 | 4 | Calendar Heatmap | `calendar_heatmap` | plots-timeseries | done |
-| 5 | Stacked Area Chart | `stacked_area` | plots-composition-specialized | todo |
-| 5 | 100% Stacked Bar Chart | `percent_stacked_bar` | plots-composition-specialized | todo |
-| 5 | Waterfall Chart | `waterfall` | plots-composition-specialized | todo |
-| 5 | Funnel Chart | `funnel` | plots-composition-specialized | todo |
-| 5 | Treemap | `treemap` | plots-composition-specialized | todo |
-| 5 | Sunburst Chart | `sunburst` | plots-composition-specialized | todo |
-| 5 | Mosaic Plot | `mosaic` | plots-composition-specialized | todo |
-| 5 | Marimekko Chart | `marimekko` | plots-composition-specialized | todo |
+| 5 | Stacked Area Chart | `stacked_area` | plots-composition-specialized | done |
+| 5 | 100% Stacked Bar Chart | `percent_stacked_bar` | plots-composition-specialized | done |
+| 5 | Waterfall Chart | `waterfall` | plots-composition-specialized | done |
+| 5 | Funnel Chart | `funnel` | plots-composition-specialized | done |
+| 5 | Treemap | `treemap` | plots-composition-specialized | done |
+| 5 | Sunburst Chart | `sunburst` | plots-composition-specialized | done |
+| 5 | Mosaic Plot | `mosaic` | plots-composition-specialized | done |
+| 5 | Marimekko Chart | `marimekko` | plots-composition-specialized | done |
 | 6 | Radar Chart | `radar` | plots-multivariate-econometric | done |
 | 6 | Parallel Coordinates Plot | `parallel_coordinates` | plots-multivariate-econometric | done |
 | 6 | PCA Biplot | `pca_biplot` | plots-multivariate-econometric | done |
@@ -511,16 +554,16 @@ Tracked per plot under Plots.md below.
 | 8 | Coefficient Plot | `coefficient` | plots-multivariate-econometric | done |
 | 8 | Impulse Response Function (IRF) | `impulse_response` | plots-multivariate-econometric | done |
 | 8 | Event Study Plot | `event_study` | plots-multivariate-econometric | done |
-| 9 | Sankey Diagram | `sankey` | plots-composition-specialized | todo |
-| 9 | Network Graph | `network` | plots-composition-specialized | todo |
-| 9 | Alluvial Diagram | `alluvial` | plots-composition-specialized | todo |
-| 9 | Gantt Chart | `gantt` | plots-composition-specialized | todo |
-| 9 | Pareto Chart | `pareto` | plots-composition-specialized | todo |
-| 9 | Error Bar Plot | `error_bar` | plots-composition-specialized | todo |
-| 9 | Lollipop Chart | `lollipop` | plots-composition-specialized | todo |
-| 9 | Dumbbell Plot | `dumbbell` | plots-composition-specialized | todo |
-| 9 | Ridgeline Plot | `ridgeline` | plots-composition-specialized | todo |
-| 9 | Raincloud Plot | `raincloud` | plots-composition-specialized | todo |
+| 9 | Sankey Diagram | `sankey` | plots-composition-specialized | done |
+| 9 | Network Graph | `network` | plots-composition-specialized | done |
+| 9 | Alluvial Diagram | `alluvial` | plots-composition-specialized | done |
+| 9 | Gantt Chart | `gantt` | plots-composition-specialized | done |
+| 9 | Pareto Chart | `pareto` | plots-composition-specialized | done |
+| 9 | Error Bar Plot | `error_bar` | plots-composition-specialized | done |
+| 9 | Lollipop Chart | `lollipop` | plots-composition-specialized | done |
+| 9 | Dumbbell Plot | `dumbbell` | plots-composition-specialized | done |
+| 9 | Ridgeline Plot | `ridgeline` | plots-composition-specialized | done |
+| 9 | Raincloud Plot | `raincloud` | plots-composition-specialized | done |
 
 ## Next.md (iteration 2)
 
