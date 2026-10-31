@@ -135,7 +135,8 @@ def test_import_and_grid_budgets(client: TestClient, tmp_path: Path) -> None:
         during_build.append(timed_ms(lambda: engine.query_arrow(agg_sql)))
 
     # Free-text search (a unique string per row) with no match: every text column is scanned.
-    # Measured, not asserted; plain lower() is expected to be over the 150 ms grid budget.
+    # Measured, not asserted (accent-insensitive; ~190 ms at 10M in the Wave 4 bench, over
+    # the 150 ms grid budget).
     version = Dataset.model_validate(dataset).current()
     search_full: list[float] = []
     search_count: list[float] = []

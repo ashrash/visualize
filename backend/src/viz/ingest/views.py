@@ -1,7 +1,7 @@
 """Materialized grid views, so deep pages of a sorted or filtered grid stay fast.
 
-DuckDB answers `ORDER BY ... LIMIT 200 OFFSET 5,000,000` over 10M rows by sorting every
-column (~1.4 s), and a deep filtered page has to re-scan the filter (~0.8 s). Instead, once a
+Even late-materialized (`rows._late_page`), a deep sorted page of 10M rows still sorts the
+whole sort column (~0.4 s), and a deep filtered page re-scans the filter. Instead, once a
 second or deeper page of a sorted/filtered/searched view of a large dataset is requested, a
 background build writes the whole view to `temp/views/<dataset>@v<n>-<hash>.parquet`. Until
 it is ready pages are answered directly; afterwards every page is a `file_row_number` range
