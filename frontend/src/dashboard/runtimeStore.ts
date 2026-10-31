@@ -64,9 +64,10 @@ interface RuntimeState {
   /**
    * A drill-through to the data grid: the dataset and predicates to show. The predicates use the
    * field names of the chart's own source: for a pipeline source those can be calculated or
-   * renamed fields that the underlying dataset does not have (TODO(ui-data): drop or translate
-   * those when applying them to the grid, or open the pipeline's preview instead). TODO(ui-data): the
-   * grid should read this on mount, apply the predicates and call `setGridDrill(null)`.
+   * renamed fields that the underlying dataset does not have. The grid (`drillFilters.ts`) drops
+   * any predicate whose field isn't one of its own columns rather than solving the general
+   * pipeline-to-dataset field-mapping problem. The grid reads this once on mount, applies the
+   * predicates and calls `setGridDrill(null)` so a later refresh doesn't replay it.
    */
   gridDrill: { datasetId: string; predicates: Predicate[] } | null;
   setGridDrill: (value: RuntimeState["gridDrill"]) => void;
