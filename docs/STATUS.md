@@ -500,6 +500,22 @@ follow-ups rather than fixed (outside those agents' owned paths).
     workaround can be removed; a controlled-clear mechanism for the native brush (an imperative
     handle or `brushClearKey` prop) so clearing a dashboard-side selection can also hide the
     drawn band, which neither side currently does.
+- 2026-10-31: `ui-dashboard` round 3 fixes (all 3 blockers + 7 should-fixes from the round-3
+  review) landed as `b2ce267`, confirmed independently against the actual renderer code (not just
+  the agent's own claims) in round 4 — brush plot-type allowlist checked plot-by-plot, the
+  `disposed`-ref unmount fix checked against React's actual parent-before-child cleanup order, the
+  bucket-contiguity check confirmed to use real UTC calendar boundaries (handles 28/29/31-day
+  months and DST-free since the engine runs in UTC). One unplanned fix landed with it: the Image
+  widget can now actually upload (`POST /api/assets` through a typed client), closing a real
+  MVP §7 gap. Round 4 found one new blocker introduced by the "band outliving its filter" fix: a
+  click that replaces a brush selection gets silently wiped ~150ms later by the outgoing chart's
+  own unmount-time "cleared" report racing the click's publish — reproduced in a scratch test
+  harness, sent back with a precise fix (gate the "cleared" handling on the selection's actual
+  origin, cancel a pending brush-settle on click). Also sent back: the same remount loses the
+  chart's drill path, so a click after "Clear all" post-drill can publish a stale+wrong predicate
+  pair; and a fail-closed brush (non-contiguous buckets, multiple value-axis ranges, an
+  unresolvable category) leaves a visibly drawn band with silently no active filter, which breaks
+  the round-3 invariant that there's never a band with no filter behind it. Round 5 in progress.
 
 ## MVP.md
 
