@@ -3,21 +3,15 @@
   "entries": [
     {
       "rule": "label-content-name-mismatch",
-      "screen": "data-grid",
-      "owner": "ui-data",
-      "reason": "Project menu button: aria-label 'Project menu' does not contain its visible text (the project name)"
-    },
-    {
-      "rule": "label-content-name-mismatch",
       "screen": "charts-config-data",
-      "owner": "ui-data",
-      "reason": "same button"
+      "owner": "ui-charts",
+      "reason": "Wave 3 drill-down control in the Data tab: button aria-label 'Add drill-down level' does not contain its visible text '+ Add level' (WCAG 2.5.3). Fix: drop the aria-label, or make it 'Add level, drill-down' / visible text 'Add drill-down level'. Previously masked by the project-menu entry, which ui-data has since fixed"
     },
     {
-      "rule": "label-content-name-mismatch",
-      "screen": "charts-style-export-menu",
+      "rule": "color-contrast",
+      "screen": "share-dialog",
       "owner": "ui-data",
-      "reason": "same button"
+      "reason": "Intermittent (only while the pointer rests on it after the click): the shared primary Button (components/ui/button.tsx) fades to opacity 0.9 on hover, which takes white on the accent blue to 3.98:1 (needs 4.5:1). Same cause as the dashboard-add-menu entry. Fix: darken the hover colour instead of fading it"
     },
     {
       "rule": "aria-hidden-focus",

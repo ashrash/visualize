@@ -173,10 +173,7 @@ function Channel({ channel, encodings, columns, onChange }: ChannelProps) {
         />
       ))}
       <div>
-        <SmallButton
-          onClick={() => onChange([...encodings, { agg: "count" }])}
-          label={`Add ${channel.label}`}
-        >
+        <SmallButton onClick={() => onChange([...encodings, { agg: "count" }])}>
           + Add {channel.label.toLowerCase()}
         </SmallButton>
       </div>
@@ -251,7 +248,7 @@ function DrillLevels({
       })}
       <div>
         <SmallButton
-          label="Add drill-down level"
+          label="+ Add level to drill-down hierarchy"
           onClick={() => {
             const used = new Set(levels);
             const next = eligible.find((c) => !used.has(c.name))?.name;

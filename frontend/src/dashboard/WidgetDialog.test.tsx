@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createRef, type RefObject, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDashboard } from "./model";
 
@@ -76,5 +77,53 @@ describe("adding an image widget", () => {
     expect(screen.getByText("unsupported image type")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
     expect(onAdd).not.toHaveBeenCalled();
+  });
+});
+
+function Host({ triggerRef }: { triggerRef: RefObject<HTMLButtonElement | null> }) {
+  const [kind, setKind] = useState<"text" | null>("text");
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      <DashboardEnvProvider
+        value={{
+          dashboard: createDashboard(),
+          charts: [],
+          pipelines: [],
+          globalFilters: [],
+          mode: "edit",
+          columnsOf: () => undefined,
+        }}
+      >
+        <button type="button" ref={triggerRef}>
+          Add widget
+        </button>
+        <WidgetDialog
+          kind={kind}
+          onClose={() => setKind(null)}
+          onAdd={() => {}}
+          returnFocusTo={triggerRef}
+        />
+      </DashboardEnvProvider>
+    </QueryClientProvider>
+  );
+}
+
+describe("closing a widget dialog", () => {
+  it("gives focus back to the control that stands in for its trigger, on Escape", async () => {
+    const triggerRef = createRef<HTMLButtonElement>();
+    render(<Host triggerRef={triggerRef} />);
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(triggerRef.current));
+  });
+
+  it("and on Cancel", async () => {
+    const triggerRef = createRef<HTMLButtonElement>();
+    render(<Host triggerRef={triggerRef} />);
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(triggerRef.current));
   });
 });

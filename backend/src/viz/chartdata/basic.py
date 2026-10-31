@@ -26,7 +26,10 @@ from sqlglot import exp
 from viz.chartdata.context import ChartContext, ChartOutput
 from viz.chartdata.reduce import (
     aggregate_query,
+    bucket_position,
     epoch_ms_values,
+    m4_extent,
+    m4_extent_query,
     m4_query,
     minmaxlttb,
     numeric_x,
@@ -306,17 +309,24 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
     # Points per series: 2 x the viewport width, but all series together stay within the cap.
     n_out = max(3, min(2 * max(1, ctx.viewport.width_px), per_measure_cap // n_series))
 
+    matched: int | None = None
+
     def m4_sql() -> exp.Select:
-        # rowsMatched comes from the count query on this path, so M4 skips the per-group
-        # count (~10% of the M4 query at 10M groups).
+        # One cheap scan (often Parquet statistics alone) for x's extent and the row count:
+        # with the extent known up front, M4 is a single pipeline over the grouped rows, and
+        # the count is rowsMatched, so M4 also skips the per-group count.
+        nonlocal matched
+        extent_row = ctx.query(m4_extent_query(relation, x_dim, x_column.semantic)).to_pylist()
+        matched = int(extent_row[0]["n"])
         lean = [(n, e) for n, e in measures if n not in ("__viz_n", "__viz_rank")]
         return m4_query(
             aggregate_query(relation, dimensions, lean),
             x="x",
-            x_position=numeric_x(col("x"), x_column.semantic),
+            x_position=bucket_position(col("x"), x_column.semantic),
             ys=y_names,
             series=series_col,
             buckets=max(1, min(ctx.viewport.width_px, n_out)),
+            extent=m4_extent(extent_row[0]),
         )
 
     # When the import profile says x alone has more distinct values than the cap (and there
@@ -337,8 +347,12 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
         table = ctx.query(probe.limit(per_measure_cap + 1))
         truncated = table.num_rows > per_measure_cap
     if truncated:
-        count = relation.select(alias(exp.Count(this=exp.Star()), "n"))
-        rows_matched = int(ctx.query(count).column("n")[0].as_py())
+        if continuous and m4_table is None:
+            table = ctx.query(m4_sql())
+        if matched is None:
+            count = relation.select(alias(exp.Count(this=exp.Star()), "n"))
+            matched = int(ctx.query(count).column("n")[0].as_py())
+        rows_matched = matched
     else:
         rows_matched = int(pc.sum(table.column("__viz_n")).as_py() or 0)
         if sort_in_arrow:
@@ -349,8 +363,6 @@ def aggregate_chart(ctx: ChartContext) -> ChartOutput:
 
     if truncated:
         if continuous:
-            if m4_table is None:
-                table = ctx.query(m4_sql())
             table, _ = minmaxlttb(table, x="x", ys=y_names, series=series_col, n_out=n_out)
             reduction, method = Reduction.DOWNSAMPLED, "m4+minmaxlttb"
             params["nOut"] = n_out

@@ -4,6 +4,20 @@
  * theme tokens; print forces the light tokens' ink on white so a dark theme still prints legibly.
  */
 @media print {
+  /* Print is a white page: the light token values apply whatever theme is on screen, or the dark
+     theme's pale muted text would print on white at a fraction of the contrast needed. */
+  :root,
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]) {
+    color-scheme: light;
+    --viz-bg: #fff !important;
+    --viz-surface: #fff !important;
+    --viz-surface-2: #f3f4f6 !important;
+    --viz-border: #cfd3da !important;
+    --viz-text: #000 !important;
+    --viz-text-muted: #4a4f5a !important;
+  }
+
   @page {
     margin: 12mm;
   }
@@ -36,7 +50,7 @@
 
   /* Chart toolbars (table view, export, drill-through) are screen controls. Filter controls stay
      so the page shows which filter values are in effect. */
-  .dashboard-widget button:not([aria-label$=" filter"]) {
+  .dashboard-widget button:not([aria-label*=" filter: "]) {
     display: none !important;
   }
 

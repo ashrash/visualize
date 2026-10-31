@@ -222,6 +222,9 @@ class _Instance:
             self.con.execute(f"SET max_temp_directory_size = {_sql_string(max_temp_size)}")
         # Results must not depend on the server's zone (TIMESTAMPTZ casts and comparisons).
         self.con.execute("SET GLOBAL TimeZone = 'UTC'")  # GLOBAL: cursors inherit it
+        # Parquet files are written once (a refresh is a new file), and the cache checks the
+        # file's modification time anyway. Saves ~5 ms of footer parsing per query.
+        self.con.execute("SET GLOBAL parquet_metadata_cache = true")
 
     def fresh(self) -> _Instance:
         return _Instance(self.threads, self.memory_limit, self.temp_dir, self.max_temp_size)

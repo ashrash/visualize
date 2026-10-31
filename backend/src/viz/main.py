@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic.json_schema import models_json_schema
 
 from viz import __version__
-from viz.api import api_router, public_router
+from viz.api import api_router, health_router, public_router
 from viz.chartdata.reduce import warm_up as warm_up_downsampling
 from viz.config import Settings, get_settings
 from viz.contracts import EXPORTED_MODELS
@@ -88,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(api_router, prefix="/api")
     app.include_router(public_router, prefix="/api")  # token-gated share/embed resolution
+    app.include_router(health_router, prefix="/api")  # unauthenticated: a load balancer probe
     _mount_frontend(app)
 
     def _openapi() -> dict[str, Any]:

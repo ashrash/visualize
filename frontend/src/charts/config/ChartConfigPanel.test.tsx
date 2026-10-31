@@ -57,13 +57,13 @@ describe("ChartConfigPanel", () => {
 
   it("lets multiple-channel rows be added", () => {
     const onChange = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Add Value" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add value" }));
     expect(call(onChange, 0).encodings?.y).toEqual([{ agg: "count" }]);
   });
 
   it("edits drill-down levels for plots that can drill, offering only category columns", () => {
     const onChange = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Add drill-down level" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add level to drill-down hierarchy" }));
     expect(call(onChange, 0).interactions?.drillHierarchy).toEqual(["region"]);
     // Existing levels stay editable and removable.
     cleanup();
@@ -96,7 +96,9 @@ describe("ChartConfigPanel", () => {
 
   it("hides drill-down for plots that cannot drill, and offers brushing on axis plots", () => {
     setup(makeSpec({ plotType: "histogram" }));
-    expect(screen.queryByRole("button", { name: "Add drill-down level" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "+ Add level to drill-down hierarchy" }),
+    ).toBeNull();
     cleanup();
     const onChange = setup();
     fireEvent.click(screen.getByLabelText("Select ranges by dragging on the chart"));
