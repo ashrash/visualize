@@ -104,6 +104,26 @@ def test_intervals_and_outliers_drop_nan_keys(table_relation: Any, table: pa.Tab
     assert [s.group for s in summaries if s.n == 12] == [[None]]
 
 
+def test_cap_groups_merges_nan_and_inf_before_capping(table_relation: Any, table: pa.Table) -> None:
+    # `g` has exactly 3 real groups once NaN and +inf merge into the null group: 1.0, 2.0 and
+    # null (its 10 NaN + 2 inf rows). Before the fix, cap_groups grouped on the raw column, so
+    # NaN and inf counted as 2 extra, separate groups (4 total) during capping - with
+    # max_groups=3 that wasted a slot and spuriously dropped the smallest raw group (inf, 2
+    # rows) with a "largest of 4" warning, even though nothing should have been capped. It also
+    # meant the surviving "null" slot's reported size (from the raw NaN group alone, 10) didn't
+    # match the true merged null group's size (12).
+    found = outliers(
+        table_relation(table),
+        OutlierRequest(source=SOURCE, fields=["y"], group_by="g", max_groups=3),
+    )
+    assert not any("largest of" in w for w in found.warnings), (
+        "only 3 groups once NaN/inf merge; none should be capped at max_groups=3"
+    )
+    v = OutlierValues.model_validate(found.values)
+    null_group = next(s for s in v.summaries if s.group == [None])
+    assert null_group.n == 12, "NULL + 10 NaN + 2 inf must all land in one null group of size 12"
+
+
 def test_describe_groups_nan_keys_as_missing(table_relation: Any, table: pa.Table) -> None:
     result = describe(
         table_relation(table), DescribeRequest(source=SOURCE, fields=["y"], group_by=["g"])

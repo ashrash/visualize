@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 from sqlglot import exp
 
-from viz.stats.relation import Relation, col
+from viz.stats.fields import key_expr
+from viz.stats.relation import Relation
 from viz.stats.sql import alias, count_star, lit
 
 DEFAULT_MAX_GROUPS = 100
@@ -38,13 +39,18 @@ def cap_groups(rel: Relation, by: Sequence[str], max_groups: int) -> GroupCap:
     """Keep the `max_groups` largest groups of `by` (ties broken by key, NULL last).
 
     Groups are matched on their text form, so any column type works without typed literals.
+    Grouping uses `key_expr`, the same NaN/+-inf-as-NULL guard the downstream kernels use, so a
+    float column's NULL, NaN and +-inf values collapse into one group here too - otherwise they'd
+    count as up to four separate groups during capping but merge into one afterwards, wasting cap
+    slots and occasionally reporting a group's count wrong.
     """
     if max_groups < 1:
         raise ValueError("max_groups must be >= 1")
     if not by:
         return GroupCap(rel, 1, 0)
-    keys = [alias(_text(col(b)), f"_k{i}") for i, b in enumerate(by)]
-    grouped = rel.select(*keys, alias(count_star(), "_n")).group_by(*[col(b) for b in by])
+    by_keys = [key_expr(rel, b) for b in by]
+    keys = [alias(_text(k), f"_k{i}") for i, k in enumerate(by_keys)]
+    grouped = rel.select(*keys, alias(count_star(), "_n")).group_by(*by_keys)
     order = ", ".join(f"_k{i} NULLS LAST" for i in range(len(by)))
     sql = (
         f"SELECT *, count(*) OVER () AS _groups FROM ({grouped.sql(dialect='duckdb')}) AS _g "
@@ -57,10 +63,10 @@ def cap_groups(rel: Relation, by: Sequence[str], max_groups: int) -> GroupCap:
     conditions: list[exp.Expr] = []
     for row in rows:
         parts: list[exp.Expr] = []
-        for name, value in zip(by, row[: len(by)], strict=True):
+        for key, value in zip(by_keys, row[: len(by)], strict=True):
             if value is None:
-                parts.append(exp.Is(this=col(name), expression=exp.Null()))
+                parts.append(exp.Is(this=key, expression=exp.Null()))
             else:
-                parts.append(exp.EQ(this=_text(col(name)), expression=lit(str(value))))
+                parts.append(exp.EQ(this=_text(key), expression=lit(str(value))))
         conditions.append(exp.and_(*parts))
     return GroupCap(rel.narrow(exp.or_(*conditions)), n_groups, n_groups - len(rows))
