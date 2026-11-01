@@ -847,6 +847,22 @@ question, still awaiting the user.
   an update matters) shows availability and apply progress. 19 new backend tests (check/apply/API,
   including both bugs above as regression cases) and 6 new frontend tests; full backend (1266) and
   frontend (896) suites pass.
+- 2026-11-01: Cut the first real release (v0.2.0) — made the repo public (the one-command install
+  and the update checker's unauthenticated GitHub API calls both need that), tagged, and confirmed
+  `uv tool install <release-wheel-url>` downloads correctly. `viz serve` from that install then
+  crashed with `ModuleNotFoundError: No module named 'httpx'`: `httpx` was only ever in
+  `[dependency-groups].dev` (pulled in for FastAPI's `TestClient`), and `uv tool install` resolves
+  only `[project.dependencies]`. It had worked in every local `uv run`/`uv sync` and in CI the whole
+  time because the dev venv already had it from the dev group — so the gap was invisible until a
+  real end user actually installed the released wheel, exactly the scenario this release process
+  exists to cover. Fixed by moving `httpx` to the core dependencies; added
+  `test_installed_wheel_imports_with_only_its_declared_dependencies`, which installs the built
+  wheel into a fresh isolated venv (full resolution, not `--no-deps`) and imports `viz.main` there
+  — confirmed to reproduce the user's exact crash without the fix and pass with it. Also found
+  **this packaging test file had never once run in CI**: `pytest` ran before `uv run viz build`,
+  so every test in `test_packaging.py` (including this new one) always hit its own
+  "frontend not built" skip. Reordered `.github/workflows/ci.yml` to build the frontend first.
+  Shipping as v0.2.1.
 
 ## MVP.md
 

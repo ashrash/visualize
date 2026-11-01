@@ -1911,6 +1911,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "fastapi" },
     { name = "fastexcel" },
+    { name = "httpx" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "platformdirs" },
@@ -1937,7 +1938,6 @@ postgres = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "hypothesis" },
     { name = "mypy" },
     { name = "psutil" },
@@ -1953,6 +1953,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=2.0,<2.1" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastexcel", specifier = ">=0.12" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "numpy", specifier = ">=2.1" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "platformdirs", specifier = ">=4.3" },
@@ -1976,7 +1977,6 @@ provides-extras = ["postgres"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28" },
     { name = "hypothesis", specifier = ">=6.120" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "psutil", specifier = ">=7.2" },

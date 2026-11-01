@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -55,3 +56,39 @@ def test_full_build_contains_static_and_migrations(tmp_path: Path) -> None:
     )
     _assert_wheel_complete(next(tmp_path.glob("visualize-*.whl")))
     assert next(tmp_path.glob("visualize-*.tar.gz"), None) is not None
+
+
+@pytest.mark.skipif(not (STATIC / "index.html").is_file(), reason="frontend not built")
+@pytest.mark.skipif(shutil.which("uv") is None, reason="uv not on PATH")
+def test_installed_wheel_imports_with_only_its_declared_dependencies(tmp_path: Path) -> None:
+    """`uv tool install` (what end users and the release doc run) resolves only
+    [project.dependencies], never [dependency-groups].dev - so a package imported only from
+    production code that happens to already be installed via the dev group (httpx, pulled in by
+    FastAPI's TestClient) can work in every `uv run`/`uv sync` in this repo's own venv while
+    still being missing from the wheel's own Requires-Dist, and only blow up as a
+    ModuleNotFoundError for someone who actually installs the released wheel. Installs the built
+    wheel into a fresh, isolated venv (full dependency resolution, not --no-deps) and imports
+    viz.main there to catch that gap before it ships."""
+    subprocess.run(
+        ["uv", "build", "--wheel", "--out-dir", str(tmp_path)],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+    )
+    wheel = next(tmp_path.glob("visualize-*.whl"))
+    venv = tmp_path / "venv"
+    subprocess.run(["uv", "venv", str(venv)], cwd=REPO_ROOT, check=True, capture_output=True)
+    python = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    subprocess.run(
+        ["uv", "pip", "install", "--python", str(python), str(wheel)],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [str(python), "-c", "import viz.main"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )

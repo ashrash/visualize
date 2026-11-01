@@ -56,6 +56,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm --prefix frontend ci
 
+      # `viz build` runs tsc (which also type-checks frontend/e2e) and vite build into
+      # backend/src/viz/static. Built before pytest: backend/tests/test_packaging.py builds and
+      # installs the real wheel, which skips itself if static/ doesn't exist yet - running pytest
+      # first would make those packaging regression tests silently never execute.
+      - name: Build the frontend
+        run: uv run viz build
+
       # -- backend -----------------------------------------------------------------------------
       - name: pytest
         run: uv run pytest
@@ -75,11 +82,6 @@ jobs:
 
       - name: biome
         run: npm --prefix frontend run lint
-
-      # `viz build` runs tsc (which also type-checks frontend/e2e) and vite build into
-      # backend/src/viz/static.
-      - name: Build the frontend
-        run: uv run viz build
 
       # -- contracts ---------------------------------------------------------------------------
       - name: Contract drift (openapi.json and schema.d.ts are up to date)
