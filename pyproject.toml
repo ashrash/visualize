@@ -1,6 +1,6 @@
 [project]
 name = "visualize"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Local-first data visualization and analysis tool"
 requires-python = ">=3.12"
 dependencies = [
@@ -52,8 +52,16 @@ dev = [
 requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
+[tool.hatch.version]
+path = "backend/src/viz/__init__.py"
+
 [tool.hatch.build]
 dev-mode-dirs = ["backend/src"]
+
+[tool.hatch.build.targets.sdist]
+# The built frontend is git-ignored. `uv build` builds the wheel FROM the sdist, so the sdist
+# must force-include it too, or the wheel below never sees it even though it also lists it.
+artifacts = ["backend/src/viz/static/**"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend/src/viz"]

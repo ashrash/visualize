@@ -1,0 +1,72 @@
+name: Release
+
+# Builds the wheel (pure Python, "py3-none-any" - DuckDB/pyarrow/etc. are separate runtime
+# dependencies resolved per-platform at install time, not bundled in, so one runner is enough)
+# and attaches it to a GitHub Release. Triggered by pushing a tag like v0.2.0; the tag's version
+# (after stripping the leading "v") must match viz.__version__ (the single source of truth for
+# both the package version and the running app's reported version), or the build fails before
+# anything is published.
+#
+# Install/upgrade (see CLAUDE.md section on packaging):
+#   uv tool install https://github.com/<owner>/<repo>/releases/download/vX.Y.Z/visualize-X.Y.Z-py3-none-any.whl
+#   uv tool install --reinstall --force <same URL>   # upgrade
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write # to create the release and upload assets
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: uv sync --locked
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Check the tag matches viz.__version__
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(uv run python -c 'from viz import __version__; print(__version__)')"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag v$tag does not match viz.__version__ ($pkg) in backend/src/viz/__init__.py"
+            exit 1
+          fi
+
+      # Builds the frontend into backend/src/viz/static (git-ignored, force-included in the
+      # sdist and the wheel by pyproject.toml's [tool.hatch.build.targets.*] artifacts - see
+      # test_full_build_contains_static_and_migrations, which guards this exact build command).
+      - name: Build the frontend
+        run: uv run viz build
+
+      - name: Build the wheel and sdist
+        run: uv build
+
+      - name: Verify the wheel carries the frontend (the release gate, not just CI)
+        run: uv run pytest backend/tests/test_packaging.py -v
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/*.whl dist/*.tar.gz
