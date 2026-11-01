@@ -942,6 +942,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/update/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description The last-known update status; cheap, since it reuses the cached GitHub check.
+         */
+        get: operations["get_status_api_update_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/update/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Now
+         * @description Forces an immediate GitHub check, bypassing the cache.
+         */
+        post: operations["check_now_api_update_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/update/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Update */
+        post: operations["apply_update_api_update_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/embed/{token}": {
         parameters: {
             query?: never;
@@ -3189,6 +3246,34 @@ export interface components {
              */
             valueField: string;
         };
+        /** UpdateInfo */
+        UpdateInfo: {
+            status: components["schemas"]["UpdateStatus"];
+            /** Currentversion */
+            currentVersion: string;
+            /** Latestversion */
+            latestVersion?: string | null;
+            /** Releaseurl */
+            releaseUrl?: string | null;
+            /**
+             * Canapply
+             * @default false
+             */
+            canApply: boolean;
+            /** Progress */
+            progress?: number | null;
+            /** Message */
+            message?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Checkedat */
+            checkedAt?: string | null;
+        };
+        /**
+         * UpdateStatus
+         * @enum {string}
+         */
+        UpdateStatus: "idle" | "available" | "applying" | "done" | "failed";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -5728,6 +5813,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_status_api_update_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
+                };
+            };
+        };
+    };
+    check_now_api_update_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
+                };
+            };
+        };
+    };
+    apply_update_api_update_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
                 };
             };
         };

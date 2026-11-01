@@ -171,6 +171,7 @@ from viz.contracts.stats import (
     TukeyComparison,
     WelchAnova,
 )
+from viz.contracts.update import UpdateInfo, UpdateStatus
 
 # Models always published in the OpenAPI schema (and so in the generated TypeScript types),
 # even before an endpoint uses them. Request/response models of planned endpoints go here so the
@@ -399,6 +400,8 @@ __all__ = [
     "Trendline",
     "TrendlineKind",
     "TukeyComparison",
+    "UpdateInfo",
+    "UpdateStatus",
     "ValueCount",
     "Viewport",
     "WelchAnova",

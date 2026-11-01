@@ -18,6 +18,7 @@ import {
   UndoRedo,
 } from "./ProjectHeader";
 import { ThemeSwitch } from "./ThemeSwitch";
+import { UpdateIndicator } from "./UpdateIndicator";
 import { useProjectBootstrap, useProjectShortcuts } from "./useProjectSession";
 
 const NAV = [
@@ -61,6 +62,7 @@ export function AppShell() {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            <UpdateIndicator />
             <JobsIndicator />
             <SaveIndicator />
             <UndoRedo />

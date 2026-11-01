@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     autosave_snapshots_keep: int = 20
     max_vizproj_mb: int = 8_192
 
+    # Self-update (local mode only; set to false for a hosted deployment, which is redeployed
+    # from a rebuilt image rather than self-upgraded in place).
+    update_enabled: bool = True
+    update_repo: str = "ashrash/visualize"
+    update_check_interval_s: int = 21_600
+
     @property
     def db_url(self) -> str:
         if self.database_url:

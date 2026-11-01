@@ -88,3 +88,5 @@ export type OutlierValues = Schemas["OutlierValues"];
 export type ConfidenceIntervalValues = Schemas["ConfidenceIntervalValues"];
 export type AssumptionCheck = Schemas["AssumptionCheck"];
 export type SampleSummary = Schemas["SampleSummary"];
+export type UpdateInfo = Schemas["UpdateInfo"];
+export type UpdateStatus = Schemas["UpdateStatus"];

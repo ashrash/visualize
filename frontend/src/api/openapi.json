@@ -2591,6 +2591,71 @@
         }
       }
     },
+    "/api/update/status": {
+      "get": {
+        "tags": [
+          "update"
+        ],
+        "summary": "Get Status",
+        "description": "The last-known update status; cheap, since it reuses the cached GitHub check.",
+        "operationId": "get_status_api_update_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/update/check": {
+      "post": {
+        "tags": [
+          "update"
+        ],
+        "summary": "Check Now",
+        "description": "Forces an immediate GitHub check, bypassing the cache.",
+        "operationId": "check_now_api_update_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/update/apply": {
+      "post": {
+        "tags": [
+          "update"
+        ],
+        "summary": "Apply Update",
+        "operationId": "apply_update_api_update_apply_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/embed/{token}": {
       "get": {
         "tags": [
@@ -9123,6 +9188,107 @@
           "valueFields"
         ],
         "title": "UnpivotStep"
+      },
+      "UpdateInfo": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/UpdateStatus"
+          },
+          "currentVersion": {
+            "type": "string",
+            "title": "Currentversion"
+          },
+          "latestVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestversion"
+          },
+          "releaseUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Releaseurl"
+          },
+          "canApply": {
+            "type": "boolean",
+            "title": "Canapply",
+            "default": false
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "checkedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkedat"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "currentVersion"
+        ],
+        "title": "UpdateInfo"
+      },
+      "UpdateStatus": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "available",
+          "applying",
+          "done",
+          "failed"
+        ],
+        "title": "UpdateStatus"
       },
       "ValidationError": {
         "properties": {

@@ -826,6 +826,27 @@ question, still awaiting the user.
   right side (top or bottom) for it and shifts a bottom-positioned legend above a bottom title so
   they don't overlap. Verified against the running demo project (rebuilt the frontend — `viz serve`
   only serves the built bundle, so a source-only change doesn't show up without `uv run viz build`).
+- 2026-11-01: Packaging and self-update, so a new PC can `uv tool install <release-wheel-url>` and
+  run `viz serve` with no git clone, Node/npm or build step. `pyproject.toml`'s version is now
+  `dynamic`, read from `viz.__version__` via `[tool.hatch.version]`, so there is one place to bump
+  for a release. `.github/workflows/release.yml` builds and tags a release from a pushed `vX.Y.Z`
+  tag (one `ubuntu-latest` runner — the wheel is pure-Python `py3-none-any`), failing the build if
+  the tag doesn't match `__version__`. Found and fixed a real packaging bug while building this:
+  `uv build`'s default sdist-then-wheel path silently drops the gitignored built frontend, even
+  though `uv build --wheel` alone worked — the sdist target needed its own `artifacts` entry, not
+  just the wheel target's (new regression test: `test_full_build_contains_static_and_migrations`,
+  confirmed to fail without the fix and pass with it). New `/api/update/*` endpoints (`viz/update/`)
+  poll GitHub Releases (cached ~6h) and can self-upgrade via `uv tool install --reinstall --force`
+  in a background thread, reported stage-by-stage by polling (SSE/the jobs system would be overkill
+  for something this infrequent and simple); a dev checkout (editable install) is detected via
+  `direct_url.json` and never self-updated. Also found and fixed a real bug in the check's own
+  cache while writing its tests: the "never checked" sentinel was `0.0`, which collided with
+  `time.monotonic()`'s epoch (time since boot on Windows) and made the very first check after a
+  normal restart look falsely "already fresh" for the whole 6h window — i.e. the checker would have
+  silently never run on most real app launches. A header icon (`UpdateIndicator.tsx`, hidden unless
+  an update matters) shows availability and apply progress. 19 new backend tests (check/apply/API,
+  including both bugs above as regression cases) and 6 new frontend tests; full backend (1266) and
+  frontend (896) suites pass.
 
 ## MVP.md
 

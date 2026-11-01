@@ -170,6 +170,12 @@ uv run python scripts/bench.py            # check perf budgets
 
 Prerequisites: `uv` and Node LTS (≥22). On Windows, `winget install astral-sh.uv` installs uv; open a new terminal afterwards so it's on PATH. Wave 4 ships the built frontend inside the Python wheel, so people who only run the app need just `uv`.
 
+### Releasing and self-update
+
+A first-time user needs only `uv`: install it, then `uv tool install <release-wheel-url>` and run `viz serve`. No git clone, no Node/npm, no build step. `__version__` in `backend/src/viz/__init__.py` is the single source of truth for the version (`pyproject.toml`'s `version` is `dynamic`, read from it via `[tool.hatch.version]`); bump it and push a `vX.Y.Z` tag to cut a release. `.github/workflows/release.yml` then builds the wheel (`uv build`; one `ubuntu-latest` runner is enough since the wheel is pure-Python `py3-none-any` — DuckDB/pyarrow/etc. are separate runtime dependencies resolved per-platform at install time, not bundled in), fails the build if the tag doesn't match `__version__`, and attaches the wheel and sdist to a GitHub Release. Upgrading is `uv tool install --reinstall --force <new-release-wheel-url>`.
+
+The app can also check for and apply this itself: `GET /api/update/status` polls GitHub Releases (cached ~6h, `VIZ_UPDATE_CHECK_INTERVAL_S`) and `POST /api/update/apply` runs that same `uv tool install --reinstall` in a background thread, reported stage-by-stage (uv has no install-progress API) through polling, not SSE — infrequent and short enough that the job/SSE machinery used for imports would be overkill. A dev checkout (editable install, e.g. `uv sync`) is detected via `direct_url.json`'s `dir_info.editable` and never self-updated; it shows "update available" but tells the user to `git pull` instead. `VIZ_UPDATE_ENABLED=false` turns the whole feature off, for a hosted deployment that's redeployed from a rebuilt image rather than self-upgraded in place. The header's update icon (`frontend/src/app/UpdateIndicator.tsx`) is hidden whenever status is `idle` (up to date, or nothing to report).
+
 ## 6. Engineering rules
 
 ### Data and performance
@@ -379,6 +385,11 @@ Backend paths are relative to `backend/src/viz/`, with tests mirrored under `bac
 **Python tooling**
 - `ruff format --check` also formats Python code blocks inside Markdown files. `docs/` is excluded in `pyproject.toml`; any other Markdown with Python blocks must be formatted.
 - mypy types `int ** float` as `Any`; use `math.pow` or `math.cbrt`.
+- `time.monotonic()`'s epoch is implementation-defined (on Windows it's time since boot). A cache's "never checked" sentinel must be `None`, not `0.0`: comparing `time.monotonic() - 0.0 < interval` reads as "already fresh" whenever uptime is under the interval, which for a several-hour cache is true after nearly every normal restart - silently skipping the real first check (found in the self-update checker, `viz/update/check.py`).
+
+**Packaging**
+- `uv build` (no `--wheel`) builds an sdist first and the wheel FROM that sdist. `[tool.hatch.build.targets.wheel].artifacts` force-includes a gitignored directory (here, the built frontend) in the *wheel*, but if the *sdist* target has no matching `artifacts` entry, the sdist step drops those files before the wheel step ever sees them - so the two-step path silently ships a UI-less package even though `uv build --wheel` alone works fine. Both targets need the same `artifacts` glob. `backend/tests/test_packaging.py` builds with both invocations to catch this.
+- A plain `version = "x.y.z"` in `[project]` and a hand-kept `__version__` in code drift apart. Make `pyproject.toml`'s version `dynamic` and point `[tool.hatch.version] path` at the `__version__` line instead; there is then exactly one place to bump for a release.
 
 **Metadata DB**
 - Optimistic concurrency needs a conditional write: `UPDATE ... WHERE id = ? AND revision = ?`, with a 409 when no row matches. Reading the revision first and comparing in Python loses edits under concurrent saves.
