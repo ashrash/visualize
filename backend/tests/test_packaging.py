@@ -68,7 +68,15 @@ def test_installed_wheel_imports_with_only_its_declared_dependencies(tmp_path: P
     still being missing from the wheel's own Requires-Dist, and only blow up as a
     ModuleNotFoundError for someone who actually installs the released wheel. Installs the built
     wheel into a fresh, isolated venv (full dependency resolution, not --no-deps) and imports
-    viz.main there to catch that gap before it ships."""
+    viz.main there to catch that gap before it ships.
+
+    Installed against uv.lock's own versions as a constraint file, not a fresh unconstrained
+    resolution: the wheel's Requires-Dist ranges (e.g. `scipy>=1.14`) would otherwise let uv
+    resolve a brand-new release of a heavy scientific dependency that may not ship a macOS
+    x86_64 wheel yet (CLAUDE.md section 2 notes exactly this risk for DuckDB 2.1), which can
+    hang this test on a source build instead of testing the dependency gap it exists to catch.
+    The lockfile's versions are already proven to have wheels on every CI platform.
+    """
     subprocess.run(
         ["uv", "build", "--wheel", "--out-dir", str(tmp_path)],
         cwd=REPO_ROOT,
@@ -76,11 +84,36 @@ def test_installed_wheel_imports_with_only_its_declared_dependencies(tmp_path: P
         capture_output=True,
     )
     wheel = next(tmp_path.glob("visualize-*.whl"))
+    constraints = tmp_path / "constraints.txt"
+    subprocess.run(
+        [
+            "uv",
+            "export",
+            "--locked",
+            "--no-dev",
+            "--no-emit-project",
+            "--no-hashes",
+            "-o",
+            str(constraints),
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+    )
     venv = tmp_path / "venv"
     subprocess.run(["uv", "venv", str(venv)], cwd=REPO_ROOT, check=True, capture_output=True)
     python = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     subprocess.run(
-        ["uv", "pip", "install", "--python", str(python), str(wheel)],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(python),
+            "--constraint",
+            str(constraints),
+            str(wheel),
+        ],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,

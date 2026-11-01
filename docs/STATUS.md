@@ -863,6 +863,17 @@ question, still awaiting the user.
   so every test in `test_packaging.py` (including this new one) always hit its own
   "frontend not built" skip. Reordered `.github/workflows/ci.yml` to build the frontend first.
   Shipping as v0.2.1.
+- 2026-11-01: v0.2.1's CI exposed a second packaging-test bug the first run (local, Windows,
+  warm uv cache) couldn't have shown: `test_installed_wheel_imports_with_only_its_declared_
+  dependencies` installed the wheel with a fresh, unconstrained `uv pip install`, so on the
+  macOS x86_64 runner uv resolved a brand-new, un-cached version of a heavy scientific
+  dependency against the wheel's loose `Requires-Dist` ranges (e.g. `scipy>=1.14`) instead of
+  the lockfile's proven one - stuck for 25+ minutes before the Windows and macOS arm64 legs
+  (which hit the same code path but apparently resolved differently or hit a warm cache) had
+  long since passed. Fixed by installing with `--constraint` against `uv export`'s own lockfile
+  output, so resolution always lands on versions every CI platform has already proven to have
+  wheels for. Re-verified locally that it's fast again (~10-15s) and still fails at the right
+  place (`import viz.main`) when httpx is removed from both pyproject.toml and the lockfile.
 
 ## MVP.md
 
