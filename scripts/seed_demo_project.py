@@ -38,7 +38,8 @@ def import_dataset(client: httpx.Client, existing: dict[str, Any], name: str, pa
     resp = client.post("/datasets/import-path", json={"path": str(path), "name": name})
     resp.raise_for_status()
     dataset = resp.json()
-    print(f"dataset {name!r}: imported {dataset['id']} ({dataset['versions'][-1]['rowCount']:,} rows)")
+    rows = dataset["versions"][-1]["rowCount"]
+    print(f"dataset {name!r}: imported {dataset['id']} ({rows:,} rows)")
     return dataset
 
 
@@ -234,9 +235,13 @@ def build_charts(datasets: dict[str, dict]) -> dict[str, list[dict]]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000", help="server base URL")
-    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR, help="dir with the demo CSVs")
+    parser.add_argument(
+        "--data-dir", type=Path, default=DEFAULT_DATA_DIR, help="dir with the demo CSVs"
+    )
     args = parser.parse_args()
 
     files = {
@@ -248,7 +253,8 @@ def main() -> int:
     }
     missing = [p for p in files.values() if not p.is_file()]
     if missing:
-        print(f"missing demo data files: {missing}; run scripts/gen_demo_data.py first", file=sys.stderr)
+        print(f"missing demo data files: {missing}", file=sys.stderr)
+        print("run scripts/gen_demo_data.py first", file=sys.stderr)
         return 1
 
     with httpx.Client(base_url=f"{args.base_url}/api", timeout=120.0) as client:

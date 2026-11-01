@@ -171,8 +171,7 @@ GEO_EVENTS_ROWS = 10_000
 def geo_events_query(rows: int) -> str:
     country_count = len(COUNTRIES)
     values = ", ".join(
-        f"('{iso3}', '{name.replace(chr(39), chr(39) * 2)}', '{continent}', {lat}, {lon}, "
-        f"{pop})"
+        f"('{iso3}', '{name.replace(chr(39), chr(39) * 2)}', '{continent}', {lat}, {lon}, {pop})"
         for iso3, name, continent, lat, lon, pop, _gdp in COUNTRIES
     )
     return f"""
@@ -293,8 +292,12 @@ def generate_all(out_dir: Path, force: bool) -> list[Path]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output dir (default data/demo)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        "--out", type=Path, default=DEFAULT_OUT, help="output dir (default data/demo)"
+    )
     parser.add_argument("--force", action="store_true", help="regenerate even if files exist")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
